@@ -55,7 +55,7 @@ export default async function PurchasesPage() {
                 </div>
             ) : (
                 <div className="space-y-0 border-t border-border">
-                    {purchases.map((purchase) => (
+                    {purchases.map((purchase: any) => (
                         <Link key={purchase.id} href={`/listings/${purchase.listing_id}`} className="block group">
                             <div className="flex items-center gap-6 py-6 border-b border-border hover:bg-muted/20 transition-colors px-2">
                                 {/* Image */}

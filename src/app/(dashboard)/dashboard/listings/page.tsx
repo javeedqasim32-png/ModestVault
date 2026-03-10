@@ -50,7 +50,7 @@ export default async function ListingsPage() {
                 </div>
             ) : (
                 <div className="grid grid-cols-2 lg:grid-cols-3 gap-6">
-                    {listings.map((listing) => (
+                    {listings.map((listing: any) => (
                         <Link key={listing.id} href={`/listings/${listing.id}`} className="group block">
                             <div className="relative aspect-[3/4] overflow-hidden bg-muted mb-3">
                                 <Image
