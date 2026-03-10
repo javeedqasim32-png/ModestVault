@@ -3,7 +3,9 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
-import { uploadToS3 } from "@/lib/s3";
+import { writeFile, mkdir } from "fs/promises";
+import { join } from "path";
+import { existsSync } from "fs";
 
 /**
  * Activates seller status for the current user.
@@ -63,8 +65,22 @@ export async function createListing(formData: FormData) {
             return { error: "Your seller account is not fully activated with Stripe." };
         }
 
-        // 2. Handle Image Upload (AWS S3)
-        const image_url = await uploadToS3(image);
+        // 2. Handle Image Upload (Local Filesystem)
+        const bytes = await image.arrayBuffer();
+        const buffer = Buffer.from(bytes);
+
+        // Ensure the directory exists
+        const uploadDir = join(process.cwd(), "public/uploads");
+        if (!existsSync(uploadDir)) {
+            await mkdir(uploadDir, { recursive: true });
+        }
+
+        const uniqueSuffix = Date.now() + Math.round(Math.random() * 1E9);
+        const fileName = `${uniqueSuffix}-${image.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+        const filePath = join(uploadDir, fileName);
+
+        await writeFile(filePath, buffer);
+        const image_url = `/uploads/${fileName}`;
 
         // 3. Save listing to database
         await prisma.listing.create({
