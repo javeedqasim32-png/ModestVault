@@ -14,6 +14,7 @@ function generateVerificationCode(): string {
  * Validates inputs, checks for existing active users, creates/updates PendingUser, and sends email.
  */
 export async function startSignup(formData: FormData) {
+    console.log("🚀 START_SIGNUP ACTION CALLED AT:", new Date().toISOString());
     const firstName = formData.get("first_name") as string;
     const lastName = formData.get("last_name") as string;
     let email = formData.get("email") as string;
@@ -86,9 +87,14 @@ export async function startSignup(formData: FormData) {
         // Return success so frontend can swap to verification state
         return { success: true, email };
 
-    } catch (error) {
-        console.error("Signup error:", error);
-        return { error: "Something went wrong while starting the signup process." };
+    } catch (error: any) {
+        console.error("❌ SIGNUP_ERROR_DETAILS:", {
+            message: error.message,
+            stack: error.stack,
+            code: error.code,
+            name: error.name
+        });
+        return { error: `Something went wrong: ${error.message || "Unknown error"}` };
     }
 }
 
