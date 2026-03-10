@@ -130,7 +130,7 @@ export async function verifyEmail(email: string, code: string) {
 
         // Success: Create User, delete PendingUser
         // Execute in transaction for safety
-        await prisma.$transaction(async (tx) => {
+        await prisma.$transaction(async (tx: any) => {
             // Re-check User doesn't exist
             const existing = await tx.user.findUnique({ where: { email } });
             if (existing) throw new Error("USER_EXISTS");

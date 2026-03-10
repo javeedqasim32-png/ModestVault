@@ -200,8 +200,10 @@ export default function SellPageClient({ isSellerInitially }: { isSellerInitiall
                                 className="w-full h-12 border border-border bg-background px-4 text-sm focus:border-primary focus:outline-none transition-colors"
                             >
                                 <option value="">Select Category</option>
-                                {["Dresses", "Tops", "Outerwear", "Bottoms", "Activewear", "Accessories"].map(cat => (
-                                    <option key={cat} value={cat}>{cat}</option>
+                                {["Dresses", "Tops", "Outerwear", "Bottoms", "Activewear", "Accessories"].map((cat: any) => (
+                                    <option key={cat} value={cat.toUpperCase()}>
+                                        {cat}
+                                    </option>
                                 ))}
                             </select>
                         </div>

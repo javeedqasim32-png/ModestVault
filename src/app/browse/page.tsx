@@ -36,7 +36,7 @@ export default async function BrowsePage() {
                                     Categories
                                 </h3>
                                 <ul className="space-y-3">
-                                    {["All", "Dresses", "Tops", "Outerwear", "Bottoms", "Accessories"].map((cat) => (
+                                    {["Dresses", "Tops", "Outerwear", "Bottoms", "Activewear", "Accessories"].map((cat: any) => (
                                         <li key={cat}>
                                             <button className="text-sm text-muted-foreground hover:text-foreground transition-colors w-full text-left py-1">
                                                 {cat}
@@ -51,7 +51,7 @@ export default async function BrowsePage() {
                                     Condition
                                 </h3>
                                 <ul className="space-y-3">
-                                    {["New", "Like New", "Good", "Fair"].map((cond) => (
+                                    {["New with tags", "Like new", "Good", "Fair"].map((cond: any) => (
                                         <li key={cond}>
                                             <button className="text-sm text-muted-foreground hover:text-foreground transition-colors w-full text-left py-1">
                                                 {cond}
@@ -94,7 +94,7 @@ export default async function BrowsePage() {
                             </div>
                         ) : (
                             <div className="grid grid-cols-2 xl:grid-cols-3 gap-x-6 gap-y-12">
-                                {listings.map((listing) => (
+                                {listings.map((listing: any) => (
                                     <Link
                                         href={`/listings/${listing.id}`}
                                         key={listing.id}

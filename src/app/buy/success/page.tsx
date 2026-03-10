@@ -32,7 +32,7 @@ export default async function BuySuccessPage({ searchParams }: { searchParams: P
 
         if (!existingPurchase) {
             try {
-                await prisma.$transaction(async (tx) => {
+                await prisma.$transaction(async (tx: any) => {
                     const updatedListing = await tx.listing.updateMany({
                         where: { id: listingId, status: "AVAILABLE" },
                         data: { status: "SOLD" }
