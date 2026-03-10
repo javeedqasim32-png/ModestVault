@@ -1,0 +1,71 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                 String   @id @default(uuid())
+  first_name         String
+  last_name          String
+  email              String   @unique
+  password_hash      String
+  phone              String?
+  profile_image      String?
+  stripe_customer_id String?
+  stripe_account_id  String?
+  seller_enabled     Boolean  @default(false)
+  is_admin           Boolean  @default(false)
+  is_disabled        Boolean  @default(false)
+  email_verified     Boolean   @default(true)
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
+  listings           Listing[]
+  purchases          Purchase[] @relation("BuyerPurchases")
+}
+
+model Listing {
+  id          String   @id @default(uuid())
+  user_id     String
+  user        User     @relation(fields: [user_id], references: [id])
+  title       String
+  description String
+  price       Decimal
+  image_url   String
+  category    String
+  condition   String?
+  brand       String?
+  size        String?
+  status      String   @default("AVAILABLE") // AVAILABLE, SOLD
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  purchases   Purchase[]
+}
+
+model PendingUser {
+  id                     String    @id @default(uuid())
+  first_name             String
+  last_name              String
+  email                  String    @unique
+  password_hash          String
+  verification_code_hash String
+  code_expiry            DateTime
+  attempt_count          Int       @default(0)
+  resend_count           Int       @default(0)
+  last_sent_at           DateTime?
+  created_at             DateTime  @default(now())
+  updated_at             DateTime  @updatedAt
+}
+
+model Purchase {
+  id                String   @id @default(uuid())
+  buyer_id          String
+  buyer             User     @relation("BuyerPurchases", fields: [buyer_id], references: [id])
+  listing_id        String
+  listing           Listing  @relation(fields: [listing_id], references: [id])
+  amount            Decimal
+  stripe_session_id String?  @unique
+  created_at        DateTime @default(now())
+}
