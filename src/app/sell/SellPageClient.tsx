@@ -144,14 +144,14 @@ export default function SellPageClient({ isSellerInitially }: { isSellerInitiall
                         Product Photo
                     </h2>
 
-                    <div className="group relative aspect-[4/3] w-full cursor-pointer overflow-hidden border border-dashed border-border transition-all hover:border-primary bg-muted/20">
+                    <div className="group relative w-full cursor-pointer overflow-hidden border border-dashed border-border transition-all hover:border-primary bg-muted/20 min-h-[300px]">
                         {previewUrl ? (
-                            <div className="relative w-full h-full bg-muted/30">
-                                <Image
+                            <div className="relative w-full">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
                                     src={previewUrl}
                                     alt="Preview"
-                                    fill
-                                    className="object-contain p-2"
+                                    className="w-full h-auto object-contain block"
                                 />
                                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center">
                                     <div className="text-white text-center">
@@ -161,7 +161,7 @@ export default function SellPageClient({ isSellerInitially }: { isSellerInitiall
                                 </div>
                             </div>
                         ) : (
-                            <div className="flex flex-col items-center justify-center h-full p-12 text-center">
+                            <div className="flex flex-col items-center justify-center h-full p-12 text-center absolute inset-0">
                                 <UploadCloud className="w-10 h-10 text-muted-foreground mb-4" />
                                 <h3 className="text-sm font-medium text-foreground mb-1">Upload photo</h3>
                                 <p className="text-xs text-muted-foreground">
