@@ -1,7 +1,7 @@
 import { Resend } from 'resend';
 
-// NOTE: Replace 're_xxxxxxxxx' with your real API key from resend.com
-const resend = new Resend('re_xxxxxxxxx');
+// Securely load the API key from the .env file
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 export async function sendVerificationEmail(email: string, code: string): Promise<void> {
     try {
