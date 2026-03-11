@@ -146,12 +146,12 @@ export default function SellPageClient({ isSellerInitially }: { isSellerInitiall
 
                     <div className="group relative aspect-[4/3] w-full cursor-pointer overflow-hidden border border-dashed border-border transition-all hover:border-primary bg-muted/20">
                         {previewUrl ? (
-                            <div className="relative w-full h-full">
+                            <div className="relative w-full h-full bg-muted/30">
                                 <Image
                                     src={previewUrl}
                                     alt="Preview"
                                     fill
-                                    className="object-cover"
+                                    className="object-contain p-2"
                                 />
                                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center">
                                     <div className="text-white text-center">
