@@ -1,23 +1,19 @@
-/**
- * Placeholder Email Service Utility
- * 
- * In the future, this can be integrated with:
- * - AWS SES
- * - SendGrid
- * - Resend
- * - Mailgun
- * - Postmark
- */
+import { Resend } from 'resend';
+
+// NOTE: Replace 're_xxxxxxxxx' with your real API key from resend.com
+const resend = new Resend('re_xxxxxxxxx');
 
 export async function sendVerificationEmail(email: string, code: string): Promise<void> {
-    // TODO: Connect to real email provider here
-    console.log("=========================================");
-    console.log("✉️  MOCK EMAIL SENT");
-    console.log(`To: ${email}`);
-    console.log(`Subject: Your ModestVault Verification Code`);
-    console.log(`Code: ${code}`);
-    console.log("=========================================");
+    try {
+        await resend.emails.send({
+            from: 'onboarding@resend.dev',
+            to: email, // The user's email address
+            subject: 'Your ModestVault Verification Code',
+            html: `<p>Your verification code is: <strong>${code}</strong></p>`
+        });
 
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 500));
+        console.log(`✉️ VERIFICATION EMAIL SENT to ${email} via Resend`);
+    } catch (error) {
+        console.error("❌ Failed to send verification email:", error);
+    }
 }
