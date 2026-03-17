@@ -31,8 +31,8 @@ export default function MobileOrdersClient({ orders }: { orders: MobileOrderItem
     const filtered = useMemo(() => orders.filter((order) => order.tab === activeTab), [orders, activeTab]);
 
     return (
-        <div className="min-h-[100dvh] bg-[#f7f3ef] px-4 pb-28 pt-4 sm:hidden flex flex-col">
-            <div className="mb-4 border-b border-border/80 pb-1.5">
+        <div className="min-h-[100dvh] bg-[#f7f3ef] px-4 pb-28 pt-3 sm:hidden flex flex-col">
+            <div className="mb-4 border-y border-border/80 px-1 py-1.5">
                 <div
                     className="scroll-smooth [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
                     style={{
@@ -43,32 +43,32 @@ export default function MobileOrdersClient({ orders }: { orders: MobileOrderItem
                         overscrollBehaviorX: "contain",
                     }}
                 >
-                    <div className="inline-flex min-w-max items-center gap-5 pr-6">
+                    <div className="inline-flex min-w-max items-center gap-3 pr-6">
                     {orderTabs.map((tab) => (
                         <button
                             key={tab}
                             type="button"
                             onClick={() => setActiveTab(tab)}
-                            className={`relative shrink-0 whitespace-nowrap py-2 text-[1.08rem] leading-none ${activeTab === tab ? "font-semibold text-foreground" : "text-foreground/80"}`}
+                            className={`relative shrink-0 whitespace-nowrap px-2 py-2 text-[1.02rem] leading-none ${activeTab === tab ? "font-semibold text-foreground" : "text-foreground/70"}`}
                         >
                             {tab}
-                            {activeTab === tab ? <span className="absolute bottom-0 left-0 right-0 h-[3px] rounded-full bg-[#5f4437]" /> : null}
+                            {activeTab === tab ? <span className="absolute bottom-0 left-2 right-2 h-[3px] rounded-full bg-[#5f4437]" /> : null}
                         </button>
                     ))}
                     </div>
                 </div>
             </div>
 
-            <h2 className="mb-4 font-serif text-4xl leading-none text-foreground">{activeTab}</h2>
+            <h2 className="mb-3 font-serif text-3xl leading-none text-foreground">{activeTab}</h2>
 
             {filtered.length === 0 ? (
-                <div className="flex flex-1 items-center">
-                    <div className="w-full rounded-[1.25rem] border border-dashed border-border bg-card/80 px-5 py-12 text-center">
+                <div className="flex flex-1 items-center justify-center pb-4 pt-2">
+                    <div className="w-full max-w-[42rem] rounded-[1.25rem] border border-dashed border-border bg-card/80 px-5 py-12 text-center">
                         <ShoppingBag className="mx-auto mb-4 h-10 w-10 text-muted-foreground/40" />
                         <p className="text-base text-muted-foreground">No orders in this tab yet.</p>
                         <Link
                             href="/browse"
-                            className="mt-4 inline-flex items-center rounded-full bg-[#5f4437] px-4 py-2 text-sm text-white"
+                            className="mx-auto mt-4 inline-flex items-center rounded-full bg-[#5f4437] px-4 py-2 text-sm text-white"
                         >
                             Explore marketplace
                         </Link>
