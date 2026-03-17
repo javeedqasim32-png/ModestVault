@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, Playfair_Display } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/layout/Navbar";
+import MobileBottomNav from "@/components/layout/MobileBottomNav";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const playfair = Playfair_Display({ subsets: ["latin"], variable: "--font-playfair" });
@@ -20,9 +21,10 @@ export default function RootLayout({
     <html lang="en" className="scroll-smooth">
       <body className={`${inter.variable} ${playfair.variable} font-sans antialiased bg-background text-foreground min-h-screen flex flex-col`}>
         <Navbar />
-        <main className="flex-1 flex flex-col w-full">
+        <main className="flex-1 flex flex-col w-full pb-24 lg:pb-0">
           {children}
         </main>
+        <MobileBottomNav />
       </body>
     </html>
   );

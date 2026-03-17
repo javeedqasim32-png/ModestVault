@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 import Image from "next/image";
 import { auth } from "@/auth";
 import { createCheckoutSession } from "@/app/actions/checkout";
-import { ShieldCheck, Truck, ShoppingCart, ChevronLeft, Share2, Heart } from "lucide-react";
+import { addToCartAndRedirect } from "@/app/actions/cart";
+import { getOrderedListingGallery, getPrimaryListingImage } from "@/lib/listing-images";
+import { ShieldCheck, Truck, ShoppingCart, ChevronLeft, CreditCard } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -17,6 +19,16 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
     const listing = await prisma.listing.findUnique({
         where: { id },
         include: {
+            images: {
+                orderBy: { imageOrder: "asc" },
+                select: {
+                    id: true,
+                    imageUrl: true,
+                    thumbUrl: true,
+                    mediumUrl: true,
+                    imageOrder: true,
+                },
+            },
             user: {
                 select: {
                     first_name: true,
@@ -31,8 +43,19 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
         notFound();
     }
 
+    await prisma.listing.updateMany({
+        where: { id },
+        data: {
+            view_count: {
+                increment: 1,
+            },
+        },
+    });
+
     const isOwner = session?.user?.id === listing.user_id;
     const isAvailable = listing.status === "AVAILABLE";
+    const orderedImages = getOrderedListingGallery(listing);
+    const primaryImage = getPrimaryListingImage(listing, "detail");
 
     return (
         <div className="min-h-screen bg-background">
@@ -46,24 +69,17 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                         <ChevronLeft className="w-4 h-4" />
                         Back to Shop
                     </Link>
-                    <div className="flex gap-3">
-                        <button className="text-muted-foreground hover:text-foreground transition-colors">
-                            <Share2 className="w-5 h-5" />
-                        </button>
-                        <button className="text-muted-foreground hover:text-foreground transition-colors">
-                            <Heart className="w-5 h-5" />
-                        </button>
-                    </div>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 xl:gap-20">
                     {/* Product Image */}
+                    <div className="space-y-3">
                     <div className="relative aspect-[3/4] overflow-hidden bg-muted">
                         <Image
-                            src={listing.image_url}
+                            src={primaryImage}
                             alt={listing.title}
                             fill
-                            className="object-cover"
+                            className="object-contain bg-card/60 p-2"
                             priority
                         />
                         {listing.status === "SOLD" && (
@@ -73,6 +89,22 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                                 </span>
                             </div>
                         )}
+                    </div>
+                    {orderedImages.length > 1 ? (
+                        <div className="grid grid-cols-5 gap-2">
+                            {orderedImages.map((image, index) => (
+                                <div key={`${listing.id}-${index}`} className="relative aspect-[3/4] overflow-hidden border border-border/70 bg-muted">
+                                    <Image
+                                        src={image.thumbUrl || image.mediumUrl || image.originalUrl}
+                                        alt={`${listing.title} view ${index + 1}`}
+                                        fill
+                                        className="object-contain bg-card/60 p-1"
+                                        sizes="20vw"
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    ) : null}
                     </div>
 
                     {/* Product Info */}
@@ -137,21 +169,30 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                             <div className="border-t border-border pt-8 space-y-4">
                                 {isAvailable ? (
                                     isOwner ? (
-                                        <Link href="/dashboard/listings" className="block">
-                                            <Button variant="outline" className="w-full py-4 text-sm">
-                                                Manage Your Listing
-                                            </Button>
-                                        </Link>
+                                        <Button disabled className="w-full py-4 text-sm bg-muted text-muted-foreground border border-border">
+                                            This is your listing
+                                        </Button>
                                     ) : (
-                                        <form action={async () => {
-                                            "use server";
-                                            await createCheckoutSession(listing.id);
-                                        }}>
-                                            <Button type="submit" className="w-full py-4 text-sm">
-                                                <ShoppingCart className="w-4 h-4 mr-2" />
-                                                Add to Bag
-                                            </Button>
-                                        </form>
+                                        <div className="space-y-3">
+                                            <form action={async () => {
+                                                "use server";
+                                                await addToCartAndRedirect(listing.id);
+                                            }}>
+                                                <Button type="submit" className="w-full py-4 text-sm">
+                                                    <ShoppingCart className="w-4 h-4 mr-2" />
+                                                    Add to Bag
+                                                </Button>
+                                            </form>
+                                            <form action={async () => {
+                                                "use server";
+                                                await createCheckoutSession(listing.id);
+                                            }}>
+                                                <Button type="submit" variant="outline" className="w-full py-4 text-sm">
+                                                    <CreditCard className="w-4 h-4 mr-2" />
+                                                    Buy now
+                                                </Button>
+                                            </form>
+                                        </div>
                                     )
                                 ) : (
                                     <Button disabled className="w-full py-4 text-sm bg-muted text-muted-foreground border border-border">

@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 import Link from "next/link";
-import { User, ShoppingBag, Tag, DollarSign, Settings, TrendingUp, LayoutDashboard } from "lucide-react";
-import { auth } from "@/auth";
+import { CirclePlus, Heart, House, LayoutDashboard, LogOut, Settings, ShoppingBag, TrendingUp, Wallet } from "lucide-react";
+import { auth, signOut } from "@/auth";
 import { redirect } from "next/navigation";
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
@@ -12,60 +12,68 @@ export default async function DashboardLayout({ children }: { children: ReactNod
     }
 
     const navLinks = [
-        { name: "Overview", href: "/dashboard", icon: LayoutDashboard },
-        { name: "My Purchases", href: "/dashboard/purchases", icon: ShoppingBag },
-        { name: "My Listings", href: "/dashboard/listings", icon: Tag },
-        { name: "My Sales", href: "/dashboard/sales", icon: TrendingUp },
-        { name: "My Earnings", href: "/dashboard/earnings", icon: DollarSign },
+        { name: "Home", href: "/dashboard", icon: House },
+        { name: "Explore", href: "/browse", icon: LayoutDashboard },
+        { name: "Orders", href: "/dashboard/purchases", icon: ShoppingBag },
+        { name: "Favorites", href: "/browse", icon: Heart },
+        { name: "Sell", href: "/sell", icon: CirclePlus },
+        { name: "Sales", href: "/dashboard/sales", icon: TrendingUp },
+        { name: "Earnings", href: "/dashboard/earnings", icon: Wallet },
+        { name: "Settings", href: "/dashboard/settings", icon: Settings },
     ];
 
     return (
-        <div className="flex-1 w-full bg-background">
-            <div className="container mx-auto px-6 lg:px-10 py-12 flex flex-col lg:flex-row gap-12">
-                {/* Sidebar */}
-                <aside className="w-full lg:w-60 shrink-0">
-                    <div className="sticky top-40 space-y-8">
-                        {/* User Info */}
-                        <div className="pb-6 border-b border-border">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-primary flex items-center justify-center text-sm font-semibold text-primary-foreground">
-                                    {session.user.name?.[0]?.toUpperCase() || "U"}
-                                </div>
-                                <div className="overflow-hidden">
-                                    <p className="text-sm font-medium text-foreground truncate">{session.user.name}</p>
-                                    <p className="text-xs text-muted-foreground truncate">{session.user.email}</p>
-                                </div>
+        <div className="flex-1 w-full px-0 py-0 sm:px-6 sm:py-6 lg:px-8">
+            <div className="mx-auto flex min-h-[calc(100vh-11rem)] w-full max-w-[1360px] overflow-hidden bg-card sm:rounded-[2rem] sm:border sm:border-border/80 sm:shadow-[0_35px_80px_rgba(114,86,67,0.10)]">
+                <aside className="hidden w-[310px] shrink-0 border-r border-border/80 bg-[linear-gradient(180deg,#f8f3f0_0%,#f1e7e1_100%)] lg:flex lg:flex-col">
+                    <div className="border-b border-border/80 px-8 py-10">
+                        <div className="mb-8 flex items-center gap-3">
+                            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[linear-gradient(135deg,#b89881_0%,#7f5f4e_100%)] text-lg font-semibold text-white shadow-[0_12px_30px_rgba(111,81,67,0.18)]">
+                                {session.user.name?.[0]?.toUpperCase() || "U"}
+                            </div>
+                            <div className="min-w-0">
+                                <p className="truncate text-3xl font-serif text-foreground">{session.user.name}</p>
+                                <p className="truncate text-base text-muted-foreground">{session.user.email}</p>
                             </div>
                         </div>
+                    </div>
 
-                        {/* Nav */}
-                        <nav className="space-y-1">
-                            {navLinks.map((link) => {
-                                const Icon = link.icon;
-                                return (
-                                    <Link key={link.name} href={link.href}>
-                                        <div className="flex items-center gap-3 px-3 py-2.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                                            <Icon className="w-4 h-4" />
-                                            {link.name}
-                                        </div>
-                                    </Link>
-                                );
-                            })}
-                        </nav>
+                    <nav className="flex-1 space-y-1 px-4 py-5">
+                        {navLinks.map((link) => {
+                            const Icon = link.icon;
+                            return (
+                                <Link key={link.name} href={link.href}>
+                                    <div className="flex items-center gap-4 rounded-2xl px-4 py-4 text-[1.08rem] text-foreground/85 hover:bg-background hover:text-foreground">
+                                        <Icon className="h-5 w-5 text-primary" />
+                                        {link.name}
+                                    </div>
+                                </Link>
+                            );
+                        })}
+                    </nav>
 
-                        {/* Quick Action */}
-                        <div className="pt-4 border-t border-border">
-                            <Link href="/sell" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-2">
-                                <Tag className="w-4 h-4" />
-                                New Listing
-                            </Link>
-                        </div>
+                    <div className="border-t border-border/80 px-4 py-5">
+                        <form
+                            action={async () => {
+                                "use server";
+                                await signOut();
+                            }}
+                        >
+                            <button
+                                type="submit"
+                                className="flex w-full items-center gap-4 rounded-2xl px-4 py-4 text-left text-[1.08rem] text-foreground/85 hover:bg-background hover:text-foreground"
+                            >
+                                <LogOut className="h-5 w-5 text-primary" />
+                                Log Out
+                            </button>
+                        </form>
                     </div>
                 </aside>
 
-                {/* Content */}
-                <main className="flex-1 min-h-[600px]">
-                    {children}
+                <main className="flex-1 bg-card">
+                    <div className="min-h-[600px] p-0 sm:p-5 md:p-8">
+                        {children}
+                    </div>
                 </main>
             </div>
         </div>

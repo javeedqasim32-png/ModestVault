@@ -1,11 +1,12 @@
 import { auth } from "@/auth";
+import { getPrimaryListingImage } from "@/lib/listing-images";
 import { prisma } from "@/lib/prisma";
-import Image from "next/image";
 import Link from "next/link";
-import { Calendar, ShoppingBag } from "lucide-react";
+import { ShoppingBag } from "lucide-react";
 import { redirect } from "next/navigation";
-import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import ListingCard from "@/components/marketplace/ListingCard";
+import MobileOrdersClient from "./MobileOrdersClient";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,11 @@ export default async function PurchasesPage() {
         include: {
             listing: {
                 include: {
+                    images: {
+                        orderBy: { imageOrder: "asc" },
+                        take: 1,
+                        select: { imageUrl: true, thumbUrl: true, mediumUrl: true, imageOrder: true },
+                    },
                     user: {
                         select: {
                             first_name: true,
@@ -33,70 +39,79 @@ export default async function PurchasesPage() {
         orderBy: { created_at: "desc" }
     });
 
+    const mobileStatusCycle = [
+        { status: "Processing", tab: "Active Orders" },
+        { status: "Completed", tab: "Completed" },
+        { status: "Pending", tab: "Pending" },
+        { status: "Dispute Open", tab: "Disputes / Refunds" },
+    ] as const;
+
+    const mobileOrders = purchases.map((purchase, index) => {
+        const mapping = mobileStatusCycle[index % mobileStatusCycle.length];
+
+        return {
+            id: purchase.id,
+            listing_id: purchase.listing_id,
+            amount: Number(purchase.amount),
+            created_at: purchase.created_at.toISOString(),
+            status: mapping.status,
+            tab: mapping.tab,
+            listing: {
+                image_url: getPrimaryListingImage(purchase.listing, "card"),
+                title: purchase.listing.title,
+                description: purchase.listing.description,
+                user: {
+                    first_name: purchase.listing.user.first_name,
+                    last_name: purchase.listing.user.last_name,
+                },
+            },
+        };
+    });
+
     return (
-        <div className="space-y-10">
-            <div>
-                <h1 className="font-serif text-3xl md:text-4xl font-bold text-foreground mb-3">
-                    My Purchases
-                </h1>
-                <p className="text-muted-foreground">Track and manage your order history.</p>
-            </div>
+        <>
+            <MobileOrdersClient orders={mobileOrders} />
 
-            {purchases.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-24 border border-dashed border-border text-center px-6">
-                    <ShoppingBag className="w-12 h-12 text-muted-foreground/30 mb-6" />
-                    <h2 className="font-serif text-2xl font-semibold text-foreground mb-2">No purchases yet</h2>
-                    <p className="text-muted-foreground max-w-sm mx-auto mb-8">
-                        Start exploring the marketplace to find unique pieces.
-                    </p>
-                    <Link href="/browse">
-                        <Button>Explore Marketplace</Button>
-                    </Link>
+            <div className="hidden space-y-6 sm:block">
+                <div className="rounded-[1.75rem] border border-border/80 bg-[linear-gradient(180deg,#faf5f1_0%,#f1e7e0_100%)] p-6 sm:p-8">
+                    <p className="text-[11px] uppercase tracking-[0.28em] text-muted-foreground">Orders</p>
+                    <h1 className="mt-2 font-serif text-3xl md:text-4xl font-bold text-foreground mb-3">
+                        My Purchases
+                    </h1>
+                    <p className="text-muted-foreground">Track and manage your order history.</p>
                 </div>
-            ) : (
-                <div className="space-y-0 border-t border-border">
-                    {purchases.map((purchase: any) => (
-                        <Link key={purchase.id} href={`/listings/${purchase.listing_id}`} className="block group">
-                            <div className="flex items-center gap-6 py-6 border-b border-border hover:bg-muted/20 transition-colors px-2">
-                                {/* Image */}
-                                <div className="relative w-20 h-20 overflow-hidden bg-muted shrink-0">
-                                    <Image
-                                        src={purchase.listing.image_url}
-                                        alt={purchase.listing.title}
-                                        fill
-                                        className="object-cover"
-                                    />
-                                </div>
 
-                                {/* Details */}
-                                <div className="flex-1 min-w-0">
-                                    <h3 className="text-sm font-medium text-foreground truncate group-hover:opacity-70 transition-opacity">
-                                        {purchase.listing.title}
-                                    </h3>
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                        Sold by {purchase.listing.user.first_name} {purchase.listing.user.last_name}
-                                    </p>
-                                </div>
-
-                                {/* Status */}
-                                <Badge variant="outline" className="hidden sm:inline-flex">
-                                    Completed
-                                </Badge>
-
-                                {/* Price */}
-                                <div className="text-right shrink-0">
-                                    <p className="text-sm font-semibold text-foreground">
-                                        ${Number(purchase.amount).toLocaleString()}
-                                    </p>
-                                    <p className="text-[11px] text-muted-foreground mt-0.5">
-                                        {new Date(purchase.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                                    </p>
-                                </div>
-                            </div>
+                {purchases.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center rounded-[1.75rem] border border-dashed border-border py-24 text-center px-6">
+                        <ShoppingBag className="w-12 h-12 text-muted-foreground/30 mb-6" />
+                        <h2 className="font-serif text-2xl font-semibold text-foreground mb-2">No purchases yet</h2>
+                        <p className="text-muted-foreground max-w-sm mx-auto mb-8">
+                            Start exploring the marketplace to find unique pieces.
+                        </p>
+                        <Link href="/browse">
+                            <Button>Explore Marketplace</Button>
                         </Link>
-                    ))}
-                </div>
-            )}
-        </div>
+                    </div>
+                ) : (
+                    <div className="grid gap-4 md:grid-cols-2">
+                        {purchases.map((purchase) => (
+                            <ListingCard
+                                key={purchase.id}
+                                href={`/listings/${purchase.listing_id}`}
+                                imageUrl={getPrimaryListingImage(purchase.listing, "card")}
+                                title={purchase.listing.title}
+                                description={purchase.listing.description}
+                                price={Number(purchase.amount)}
+                                category={purchase.listing.category}
+                                status="COMPLETED"
+                                sellerName={`Sold by ${purchase.listing.user.first_name} ${purchase.listing.user.last_name}`}
+                                dateText={new Date(purchase.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                                compact
+                            />
+                        ))}
+                    </div>
+                )}
+            </div>
+        </>
     );
 }

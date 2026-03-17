@@ -3,9 +3,7 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
-import { redirect } from "next/navigation";
-
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+import { getAppUrl } from "@/lib/app-url";
 
 /**
  * Creates a Stripe Connect onboarding link for the user.
@@ -25,6 +23,7 @@ export async function onboardSellerAction() {
     if (!user) throw new Error("User not found.");
 
     let stripeAccountId = user.stripe_account_id;
+    const appUrl = await getAppUrl();
 
     // 2. Create Stripe account if it doesn't exist
     if (!stripeAccountId) {
@@ -48,8 +47,8 @@ export async function onboardSellerAction() {
     // 3. Create Account Link for onboarding
     const accountLink = await stripe.accountLinks.create({
         account: stripeAccountId,
-        refresh_url: `${APP_URL}/sell`,
-        return_url: `${APP_URL}/sell/onboarding-complete`,
+        refresh_url: `${appUrl}/sell`,
+        return_url: `${appUrl}/sell/onboarding-complete`,
         type: "account_onboarding",
     });
 
@@ -103,6 +102,7 @@ export async function getStripeBalance(stripeAccountId: string) {
 export async function createStripeDashboardLink() {
     const session = await auth();
     if (!session?.user?.id) throw new Error("Unauthorized");
+    const appUrl = await getAppUrl();
 
     const user = await prisma.user.findUnique({
         where: { id: session.user.id },
@@ -116,15 +116,16 @@ export async function createStripeDashboardLink() {
     try {
         const loginLink = await stripe.accounts.createLoginLink(user.stripe_account_id);
         return { url: loginLink.url };
-    } catch (error: any) {
-        console.error("Error creating Stripe login link, attempting fallback:", error.message);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error("Error creating Stripe login link, attempting fallback:", message);
 
         // Fallback 1: If account onboarding is incomplete
-        if (error.message?.includes("onboarding")) {
+        if (message.includes("onboarding")) {
             const accountLink = await stripe.accountLinks.create({
                 account: user.stripe_account_id,
-                refresh_url: `${APP_URL}/dashboard/earnings`,
-                return_url: `${APP_URL}/dashboard/earnings`,
+                refresh_url: `${appUrl}/`,
+                return_url: `${appUrl}/sell/onboarding-complete`,
                 type: "account_onboarding",
             });
             return { url: accountLink.url };
@@ -132,7 +133,7 @@ export async function createStripeDashboardLink() {
 
         // Fallback 2: If it's a Standard account or Platform account (doesn't support login links)
         // We can check the account type or just redirect to the main Stripe dashboard
-        if (error.message?.includes("Standard") || error.message?.includes("type")) {
+        if (message.includes("Standard") || message.includes("type")) {
             return { url: "https://dashboard.stripe.com" };
         }
 

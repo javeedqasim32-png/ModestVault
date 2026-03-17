@@ -24,6 +24,7 @@ model User {
   updated_at         DateTime  @updatedAt
   listings           Listing[]
   purchases          Purchase[] @relation("BuyerPurchases")
+  cartItems          CartItem[]
 }
 
 model Listing {
@@ -34,6 +35,8 @@ model Listing {
   description String
   price       Decimal
   image_url   String
+  images      ListingImage[]
+  view_count  Int      @default(0)
   category    String
   condition   String?
   brand       String?
@@ -42,6 +45,7 @@ model Listing {
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
   purchases   Purchase[]
+  cartItems   CartItem[]
 }
 
 model PendingUser {
@@ -68,4 +72,30 @@ model Purchase {
   amount            Decimal
   stripe_session_id String?  @unique
   created_at        DateTime @default(now())
+}
+
+model ListingImage {
+  id          String   @id @default(uuid())
+  listingId   String
+  listing     Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  imageUrl    String
+  thumbUrl    String?
+  mediumUrl   String?
+  imageOrder  Int
+  createdAt   DateTime @default(now())
+
+  @@index([listingId, imageOrder])
+  @@unique([listingId, imageOrder])
+}
+
+model CartItem {
+  id         String   @id @default(uuid())
+  user_id    String
+  listing_id String
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  listing    Listing  @relation(fields: [listing_id], references: [id], onDelete: Cascade)
+  created_at DateTime @default(now())
+
+  @@unique([user_id, listing_id])
+  @@index([user_id, created_at])
 }
