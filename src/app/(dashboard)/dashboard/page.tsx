@@ -1,4 +1,4 @@
-import { auth } from "@/auth";
+import { auth, signOut } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { ArrowUpRight, ShieldCheck, ShoppingBag, Sparkles, Tag, Wallet } from "lucide-react";
 import Link from "next/link";
@@ -83,6 +83,20 @@ export default async function ProfileDashboard() {
                                 <ArrowUpRight className="h-4 w-4" />
                             </Link>
                         </div>
+                        <form
+                            className="lg:hidden"
+                            action={async () => {
+                                "use server";
+                                await signOut();
+                            }}
+                        >
+                            <button
+                                type="submit"
+                                className="inline-flex h-11 w-full items-center justify-center rounded-full border border-border/80 bg-card px-4 text-sm text-foreground hover:bg-background"
+                            >
+                                Log out
+                            </button>
+                        </form>
                     </div>
                 </div>
             </section>

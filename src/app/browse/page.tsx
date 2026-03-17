@@ -9,9 +9,60 @@ export const dynamic = "force-dynamic";
 
 const categories = ["Everyday Modest", "Luxury Pret", "Formal Wear", "Abayas", "Wedding", "Accessories"];
 
-export default async function BrowsePage() {
+function getParamValue(value: string | string[] | undefined) {
+    if (!value) return "";
+    return Array.isArray(value) ? value[0] ?? "" : value;
+}
+
+export default async function BrowsePage({
+    searchParams,
+}: {
+    searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+    const params = await searchParams;
+    const selectedSize = getParamValue(params.size);
+    const minPriceRaw = getParamValue(params.minPrice);
+    const maxPriceRaw = getParamValue(params.maxPrice);
+    const showMobileFilters = getParamValue(params.filters) === "1";
+
+    const minPrice = minPriceRaw ? Number(minPriceRaw) : undefined;
+    const maxPrice = maxPriceRaw ? Number(maxPriceRaw) : undefined;
+    const hasMinPrice = typeof minPrice === "number" && Number.isFinite(minPrice);
+    const hasMaxPrice = typeof maxPrice === "number" && Number.isFinite(maxPrice);
+
+    const sizeFilter = selectedSize.trim();
+
+    const filterQuery = new URLSearchParams();
+    if (sizeFilter) filterQuery.set("size", sizeFilter);
+    if (minPriceRaw) filterQuery.set("minPrice", minPriceRaw);
+    if (maxPriceRaw) filterQuery.set("maxPrice", maxPriceRaw);
+
+    const mobileFilterHref = (() => {
+        const next = new URLSearchParams(filterQuery);
+        next.set("filters", "1");
+        return `/browse?${next.toString()}`;
+    })();
+
     const listings = await prisma.listing.findMany({
-        where: { status: "AVAILABLE" },
+        where: {
+            status: "AVAILABLE",
+            ...(sizeFilter
+                ? {
+                      size: {
+                          equals: sizeFilter,
+                          mode: "insensitive",
+                      },
+                  }
+                : {}),
+            ...(hasMinPrice || hasMaxPrice
+                ? {
+                      price: {
+                          ...(hasMinPrice ? { gte: minPrice } : {}),
+                          ...(hasMaxPrice ? { lte: maxPrice } : {}),
+                      },
+                  }
+                : {}),
+        },
         orderBy: { created_at: "desc" },
         include: {
             images: {
@@ -37,10 +88,13 @@ export default async function BrowsePage() {
                             className="w-full bg-transparent text-base text-foreground placeholder:text-muted-foreground focus:outline-none"
                         />
                     </div>
-                    <button className="inline-flex items-center gap-2 rounded-full border border-border/80 bg-[#f1ebe5] px-4 py-3 text-base text-foreground">
+                    <Link
+                        href={mobileFilterHref}
+                        className="inline-flex items-center gap-2 rounded-full border border-border/80 bg-[#f1ebe5] px-4 py-3 text-base text-foreground"
+                    >
                         <SlidersHorizontal className="h-5 w-5" />
                         Filter
-                    </button>
+                    </Link>
                     <Link
                         href="/dashboard/purchases"
                         aria-label="Orders"
@@ -49,6 +103,66 @@ export default async function BrowsePage() {
                         <ShoppingBag className="h-5 w-5" />
                     </Link>
                 </div>
+
+                {showMobileFilters ? (
+                    <form className="mb-4 rounded-[1.2rem] border border-border/80 bg-card p-4" method="get" action="/browse">
+                        <div className="grid grid-cols-1 gap-3">
+                            <label className="text-sm text-foreground">
+                                Size
+                                <select
+                                    name="size"
+                                    defaultValue={sizeFilter}
+                                    className="mt-1 h-11 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                                >
+                                    <option value="">All sizes</option>
+                                    <option value="XS">XS</option>
+                                    <option value="S">S</option>
+                                    <option value="M">M</option>
+                                    <option value="L">L</option>
+                                    <option value="XL">XL</option>
+                                </select>
+                            </label>
+                            <div className="grid grid-cols-2 gap-2">
+                                <label className="text-sm text-foreground">
+                                    Min price
+                                    <input
+                                        type="number"
+                                        name="minPrice"
+                                        min="0"
+                                        step="1"
+                                        defaultValue={minPriceRaw}
+                                        className="mt-1 h-11 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                                    />
+                                </label>
+                                <label className="text-sm text-foreground">
+                                    Max price
+                                    <input
+                                        type="number"
+                                        name="maxPrice"
+                                        min="0"
+                                        step="1"
+                                        defaultValue={maxPriceRaw}
+                                        className="mt-1 h-11 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground"
+                                    />
+                                </label>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="submit"
+                                    className="inline-flex h-10 items-center justify-center rounded-full bg-primary px-4 text-xs uppercase tracking-[0.2em] text-primary-foreground"
+                                >
+                                    Apply
+                                </button>
+                                <Link
+                                    href="/browse"
+                                    className="inline-flex h-10 items-center justify-center rounded-full border border-border px-4 text-xs uppercase tracking-[0.2em] text-foreground"
+                                >
+                                    Clear
+                                </Link>
+                            </div>
+                        </div>
+                    </form>
+                ) : null}
 
                 {listingsWithCover.length === 0 ? (
                     <div className="mt-14 flex flex-col items-center justify-center rounded-[1.5rem] border border-dashed border-border bg-card/70 px-6 py-16 text-center">
@@ -117,12 +231,60 @@ export default async function BrowsePage() {
                                     <SlidersHorizontal className="h-4 w-4" />
                                     Refine edit
                                 </div>
-                                <div className="mt-4 space-y-3">
-                                    {["Newest first", "Under $200", "Ready to wear", "Bridal occasion", "Seller verified"].map((item) => (
-                                        <button key={item} className="block text-left text-sm text-foreground/80 hover:text-foreground">
-                                            {item}
-                                        </button>
-                                    ))}
+                                <div className="mt-4">
+                                    <form className="space-y-3" method="get" action="/browse">
+                                        <label className="block text-sm text-foreground">
+                                            Size
+                                            <select
+                                                name="size"
+                                                defaultValue={sizeFilter}
+                                                className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                                            >
+                                                <option value="">All sizes</option>
+                                                <option value="XS">XS</option>
+                                                <option value="S">S</option>
+                                                <option value="M">M</option>
+                                                <option value="L">L</option>
+                                                <option value="XL">XL</option>
+                                            </select>
+                                        </label>
+                                        <label className="block text-sm text-foreground">
+                                            Min price
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                step="1"
+                                                name="minPrice"
+                                                defaultValue={minPriceRaw}
+                                                className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                                            />
+                                        </label>
+                                        <label className="block text-sm text-foreground">
+                                            Max price
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                step="1"
+                                                name="maxPrice"
+                                                defaultValue={maxPriceRaw}
+                                                className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                                            />
+                                        </label>
+                                        <div className="flex items-center gap-2 pt-1">
+                                            <button
+                                                type="submit"
+                                                className="inline-flex h-9 items-center justify-center rounded-full bg-primary px-4 text-[10px] uppercase tracking-[0.2em] text-primary-foreground"
+                                            >
+                                                Apply
+                                            </button>
+                                            <Link
+                                                href="/browse"
+                                                className="inline-flex h-9 items-center justify-center rounded-full border border-border px-4 text-[10px] uppercase tracking-[0.2em] text-foreground"
+                                            >
+                                                Clear
+                                            </Link>
+                                        </div>
+                                    </form>
                                 </div>
                             </div>
 

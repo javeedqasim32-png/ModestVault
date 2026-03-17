@@ -83,6 +83,10 @@ body {
     linear-gradient(180deg, #f2ebe7 0%, #efe7e2 100%);
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 .font-serif {
   font-family: var(--font-serif);
 }
@@ -91,4 +95,13 @@ a,
 button,
 input {
   transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease, opacity 160ms ease, transform 160ms ease;
+}
+
+/* Prevent iOS Safari auto-zoom when focusing form fields on mobile. */
+@media (max-width: 1024px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
 }

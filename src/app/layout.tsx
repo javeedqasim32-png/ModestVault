@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Playfair_Display } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/layout/Navbar";
@@ -10,6 +10,13 @@ const playfair = Playfair_Display({ subsets: ["latin"], variable: "--font-playfa
 export const metadata: Metadata = {
   title: "ModestVault | Modest Fashion Marketplace",
   description: "Shop the latest modest fashion — curated collections, premium quality, and global community.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 };
 
 export default function RootLayout({
