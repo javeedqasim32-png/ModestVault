@@ -362,36 +362,62 @@ export async function deleteListing(listingId: string) {
 
     try {
         let continuationToken: string | undefined;
-        do {
-            const listed = await s3.send(
-                new ListObjectsV2Command({
-                    Bucket: bucket,
-                    Prefix: prefix,
-                    ContinuationToken: continuationToken,
-                })
-            );
-
-            const keys = (listed.Contents ?? [])
-                .map((obj) => obj.Key)
-                .filter((key): key is string => Boolean(key));
-
-            if (keys.length > 0) {
-                await s3.send(
-                    new DeleteObjectsCommand({
+        try {
+            do {
+                const listed = await s3.send(
+                    new ListObjectsV2Command({
                         Bucket: bucket,
-                        Delete: {
-                            Objects: keys.map((key) => ({ Key: key })),
-                            Quiet: true,
-                        },
+                        Prefix: prefix,
+                        ContinuationToken: continuationToken,
                     })
                 );
+
+                const keys = (listed.Contents ?? [])
+                    .map((obj) => obj.Key)
+                    .filter((key): key is string => Boolean(key));
+
+                if (keys.length > 0) {
+                    await s3.send(
+                        new DeleteObjectsCommand({
+                            Bucket: bucket,
+                            Delete: {
+                                Objects: keys.map((key) => ({ Key: key })),
+                                Quiet: true,
+                            },
+                        })
+                    );
+                }
+
+                continuationToken = listed.IsTruncated ? listed.NextContinuationToken : undefined;
+            } while (continuationToken);
+        } catch (s3Error) {
+            console.error("Failed to delete images from S3 for listing:", listingId, s3Error);
+            // Non-fatal, proceed with database deletion so the user isn't blocked
+        }
+
+        // Best-effort cart cleanup. If cart model/table is unavailable in a running env,
+        // do not block listing deletion.
+        try {
+            const cartDelegate = (prisma as unknown as {
+                cartItem?: { deleteMany: (args: unknown) => Promise<unknown> };
+            }).cartItem;
+            if (cartDelegate) {
+                await cartDelegate.deleteMany({
+                    where: { listing_id: listingId },
+                });
             }
+        } catch (cartDeleteError) {
+            console.error("Cart cleanup skipped for listing:", listingId, cartDeleteError);
+        }
 
-            continuationToken = listed.IsTruncated ? listed.NextContinuationToken : undefined;
-        } while (continuationToken);
-
-        await prisma.listing.delete({
-            where: { id: listingId },
+        await prisma.$transaction(async (tx) => {
+            // Explicitly delete related listing images; listing delete removes the listing itself.
+            await tx.listingImage.deleteMany({
+                where: { listingId: listingId },
+            });
+            await tx.listing.delete({
+                where: { id: listingId },
+            });
         });
 
         revalidatePath("/sell");
