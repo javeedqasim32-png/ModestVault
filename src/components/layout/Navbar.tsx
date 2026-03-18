@@ -16,9 +16,9 @@ export default async function Navbar() {
                         <Image
                             src="/logo.png"
                             alt="Modaire"
-                            width={200}
-                            height={60}
-                            className="h-10 w-auto sm:h-14 lg:h-16 mix-blend-multiply"
+                            width={240}
+                            height={80}
+                            className="h-12 w-auto sm:h-16 lg:h-20 mix-blend-multiply transition-transform duration-300 translate-y-1 hover:scale-[1.02]"
                             priority
                         />
                     </div>
