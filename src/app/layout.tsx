@@ -10,6 +10,18 @@ const playfair = Playfair_Display({ subsets: ["latin"], variable: "--font-playfa
 export const metadata: Metadata = {
   title: "Modaire | Modest Fashion Marketplace",
   description: "Shop the latest modest fashion — curated collections, premium quality, and global community.",
+  openGraph: {
+    title: "Modaire | Modest Fashion Marketplace",
+    description: "Shop the latest modest fashion — curated collections, premium quality, and global community.",
+    url: "https://shopmodaire.com",
+    siteName: "Modaire",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Modaire | Modest Fashion Marketplace",
+    description: "Shop the latest modest fashion — curated collections, premium quality, and global community.",
+  },
 };
 
 export const viewport: Viewport = {
