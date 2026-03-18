@@ -95,7 +95,7 @@ export default async function EarningsPage() {
             <div className="border border-border p-8 space-y-3">
                 <h3 className="font-serif text-lg font-semibold text-foreground">Understanding your payouts</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                    ModestVault partners with <span className="text-foreground font-medium">Stripe Express</span> for secure, automated payments.
+                    Modaire partners with <span className="text-foreground font-medium">Stripe Express</span> for secure, automated payments.
                     Funds typically transition from <em>Pending</em> to <em>Available</em> within 2–7 business days.
                     Once available, they are dispatched directly to your connected bank account.
                 </p>

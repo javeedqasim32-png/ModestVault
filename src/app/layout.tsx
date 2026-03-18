@@ -8,7 +8,7 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const playfair = Playfair_Display({ subsets: ["latin"], variable: "--font-playfair" });
 
 export const metadata: Metadata = {
-  title: "ModestVault | Modest Fashion Marketplace",
+  title: "Modaire | Modest Fashion Marketplace",
   description: "Shop the latest modest fashion — curated collections, premium quality, and global community.",
 };
 

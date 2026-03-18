@@ -141,7 +141,7 @@ export default async function Home() {
           <div className="relative min-h-[220px] border-y border-[#e7ddd6] bg-[linear-gradient(180deg,#efe2d7_0%,#e7d7cb_100%)] sm:min-h-[340px] sm:border-y-0 sm:border-b sm:border-border/80">
             <Image
               src={HOME_EDITORIAL_MEDIA.hero}
-              alt="Modest Vault editorial"
+              alt="Modaire editorial"
               fill
               className="object-cover object-top"
               sizes="(max-width: 1280px) 100vw, 40vw"
@@ -161,7 +161,7 @@ export default async function Home() {
             <Link href="/browse" className="group relative min-h-[560px] overflow-hidden rounded-[2rem] bg-[linear-gradient(180deg,#efe2d7_0%,#e7d7cb_100%)]">
               <Image
                 src={HOME_EDITORIAL_MEDIA.hero}
-                alt="Modest Vault editorial"
+                alt="Modaire editorial"
                 fill
                 className="object-cover object-top transition-transform duration-700 group-hover:scale-105"
                 sizes="(max-width: 1280px) 50vw, 42vw"

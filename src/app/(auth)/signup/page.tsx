@@ -92,7 +92,7 @@ export default function SignupPage() {
                                 Create Account
                             </h1>
                             <p className="text-sm text-muted-foreground">
-                                Join ModestVault to start shopping and selling
+                                Join Modaire to start shopping and selling
                             </p>
                         </div>
 

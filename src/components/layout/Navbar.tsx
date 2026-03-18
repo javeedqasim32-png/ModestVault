@@ -16,7 +16,7 @@ export default async function Navbar() {
                     </div>
                     <div className="min-w-0">
                         <div className="font-serif text-[2rem] leading-none tracking-tight text-foreground sm:text-3xl">
-                            Modest Vault
+                            Modaire
                         </div>
                         <div className="hidden text-[11px] uppercase tracking-[0.32em] text-muted-foreground md:block">
                             Curated modest marketplace

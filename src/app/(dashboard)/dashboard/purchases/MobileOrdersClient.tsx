@@ -24,6 +24,12 @@ type MobileOrderItem = {
 };
 
 const orderTabs = ["Active Orders", "Completed", "Pending", "Disputes / Refunds"] as const;
+const tabLabels: Record<(typeof orderTabs)[number], string> = {
+    "Active Orders": "Active",
+    "Completed": "Completed",
+    "Pending": "Pending",
+    "Disputes / Refunds": "Disputes",
+};
 
 export default function MobileOrdersClient({ orders }: { orders: MobileOrderItem[] }) {
     const [activeTab, setActiveTab] = useState<(typeof orderTabs)[number]>("Active Orders");
@@ -31,39 +37,28 @@ export default function MobileOrdersClient({ orders }: { orders: MobileOrderItem
     const filtered = useMemo(() => orders.filter((order) => order.tab === activeTab), [orders, activeTab]);
 
     return (
-        <div className="min-h-[100dvh] bg-[#f7f3ef] px-4 pb-28 pt-3 sm:hidden flex flex-col">
-            <div className="mb-4 border-y border-border/80 px-1 py-1.5">
-                <div
-                    className="scroll-smooth [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-                    style={{
-                        overflowX: "auto",
-                        overflowY: "hidden",
-                        WebkitOverflowScrolling: "touch",
-                        touchAction: "pan-x",
-                        overscrollBehaviorX: "contain",
-                    }}
-                >
-                    <div className="inline-flex min-w-max items-center gap-3 pr-6">
-                    {orderTabs.map((tab) => (
-                        <button
-                            key={tab}
-                            type="button"
-                            onClick={() => setActiveTab(tab)}
-                            className={`relative shrink-0 whitespace-nowrap px-2 py-2 text-[1.02rem] leading-none ${activeTab === tab ? "font-semibold text-foreground" : "text-foreground/70"}`}
-                        >
-                            {tab}
-                            {activeTab === tab ? <span className="absolute bottom-0 left-2 right-2 h-[3px] rounded-full bg-[#5f4437]" /> : null}
-                        </button>
-                    ))}
-                    </div>
-                </div>
+        <div className="min-h-screen bg-[#f7f3ef] px-4 pb-28 pt-3 sm:hidden">
+            <div className="mb-4 flex items-center justify-between border-y border-border/80 px-1 py-1.5">
+                {orderTabs.map((tab) => (
+                    <button
+                        key={tab}
+                        type="button"
+                        onClick={() => setActiveTab(tab)}
+                        className={`relative px-2 py-2 text-xl leading-none ${activeTab === tab ? "font-semibold text-foreground" : "text-foreground/75"}`}
+                    >
+                        {tabLabels[tab]}
+                        {activeTab === tab ? (
+                            <span className="absolute bottom-0 left-2 right-2 h-[3px] rounded-full bg-[#5f4437]" />
+                        ) : null}
+                    </button>
+                ))}
             </div>
 
             <h2 className="mb-3 font-serif text-3xl leading-none text-foreground">{activeTab}</h2>
 
             {filtered.length === 0 ? (
-                <div className="flex flex-1 items-center justify-center pb-4 pt-2">
-                    <div className="w-full max-w-[42rem] rounded-[1.25rem] border border-dashed border-border bg-card/80 px-5 py-12 text-center">
+                <div className="flex min-h-[50vh] items-center justify-center">
+                    <div className="w-full rounded-[1.25rem] border border-dashed border-border bg-card/80 px-5 py-12 text-center">
                         <ShoppingBag className="mx-auto mb-4 h-10 w-10 text-muted-foreground/40" />
                         <p className="text-base text-muted-foreground">No orders in this tab yet.</p>
                         <Link
