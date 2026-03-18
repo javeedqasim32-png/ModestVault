@@ -2,6 +2,7 @@ import Link from "next/link";
 import { auth, signOut } from "@/auth";
 import { getCartCountForSessionUser } from "@/app/actions/cart";
 import { Heart, Search, ShoppingBag } from "lucide-react";
+import Image from "next/image";
 
 export default async function Navbar() {
     const session = await auth();
@@ -11,16 +12,14 @@ export default async function Navbar() {
         <header className="sticky top-0 z-50 w-full border-b border-border/80 bg-[#f7f3ef]/95 backdrop-blur-xl">
             <div className="mx-auto flex w-full max-w-[1360px] items-center gap-3 px-4 py-4 sm:px-6 lg:px-8">
                 <Link href="/" className="flex min-w-0 items-center gap-3 sm:border-r sm:border-border/80 sm:pr-8">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[linear-gradient(135deg,#b2917b_0%,#6f5143_100%)] text-lg font-serif text-white shadow-[0_10px_30px_rgba(111,81,67,0.18)] sm:h-12 sm:w-12">
-                        M
-                    </div>
-                    <div className="min-w-0">
-                        <div className="font-serif text-[2rem] leading-none tracking-tight text-foreground sm:text-3xl">
-                            Modaire
-                        </div>
-                        <div className="hidden text-[11px] uppercase tracking-[0.32em] text-muted-foreground md:block">
-                            Curated modest marketplace
-                        </div>
+                    <div className="relative h-10 w-32 sm:h-12 sm:w-40 mr-4">
+                        <Image
+                            src="/logo.png"
+                            alt="Modaire"
+                            fill
+                            className="object-contain object-left"
+                            priority
+                        />
                     </div>
                 </Link>
 
