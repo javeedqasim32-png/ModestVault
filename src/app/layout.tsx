@@ -15,12 +15,21 @@ export const metadata: Metadata = {
     description: "Shop the latest modest fashion — curated collections, premium quality, and global community.",
     url: "https://shopmodaire.com",
     siteName: "Modaire",
+    images: [
+      {
+        url: "https://shopmodaire.com/logo.png",
+        width: 1200,
+        height: 630,
+        alt: "Modaire Logo",
+      },
+    ],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: "Modaire | Modest Fashion Marketplace",
     description: "Shop the latest modest fashion — curated collections, premium quality, and global community.",
+    images: ["https://shopmodaire.com/logo.png"],
   },
 };
 
