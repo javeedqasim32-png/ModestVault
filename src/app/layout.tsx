@@ -8,10 +8,10 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const playfair = Playfair_Display({ subsets: ["latin"], variable: "--font-playfair" });
 
 export const metadata: Metadata = {
-  title: "Modaire Modest Fashion marketplace",
+  title: "Modaire Modest Fashion Marketplace",
   description: "Shop the latest modest fashion — curated collections, premium quality, and global community.",
   openGraph: {
-    title: "Modaire Modest Fashion marketplace",
+    title: "Modaire Modest Fashion Marketplace",
     description: "Shop the latest modest fashion — curated collections, premium quality, and global community.",
     url: "https://shopmodaire.com",
     siteName: "Modaire",
