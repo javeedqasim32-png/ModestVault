@@ -12,12 +12,13 @@ export default async function Navbar() {
         <header className="sticky top-0 z-50 w-full border-b border-border/80 bg-[#f7f3ef]/95 backdrop-blur-xl">
             <div className="mx-auto flex w-full max-w-[1360px] items-center gap-3 px-4 py-4 sm:px-6 lg:px-8">
                 <Link href="/" className="flex min-w-0 items-center gap-3 sm:border-r sm:border-border/80 sm:pr-8">
-                    <div className="relative h-10 w-32 sm:h-12 sm:w-40 mr-4">
+                    <div className="flex items-center">
                         <Image
                             src="/logo.png"
                             alt="Modaire"
-                            fill
-                            className="object-contain object-left"
+                            width={200}
+                            height={60}
+                            className="h-10 w-auto sm:h-14 lg:h-16 mix-blend-multiply"
                             priority
                         />
                     </div>
