@@ -8,28 +8,28 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const playfair = Playfair_Display({ subsets: ["latin"], variable: "--font-playfair" });
 
 export const metadata: Metadata = {
-  title: "Modaire | Modest Fashion Marketplace",
+  title: "Modaire Modest Fashion marketplace",
   description: "Shop the latest modest fashion — curated collections, premium quality, and global community.",
   openGraph: {
-    title: "Modaire | Modest Fashion Marketplace",
+    title: "Modaire Modest Fashion marketplace",
     description: "Shop the latest modest fashion — curated collections, premium quality, and global community.",
     url: "https://shopmodaire.com",
     siteName: "Modaire",
     images: [
       {
-        url: "https://shopmodaire.com/logo.png",
+        url: "https://shopmodaire.com/og-image.png",
         width: 1200,
         height: 630,
-        alt: "Modaire Logo",
+        alt: "Modaire",
       },
     ],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Modaire | Modest Fashion Marketplace",
+    title: "Modaire Modest Fashion marketplace",
     description: "Shop the latest modest fashion — curated collections, premium quality, and global community.",
-    images: ["https://shopmodaire.com/logo.png"],
+    images: ["https://shopmodaire.com/og-image.png"],
   },
 };
 
