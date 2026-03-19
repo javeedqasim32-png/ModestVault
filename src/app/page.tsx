@@ -7,44 +7,29 @@ import { prisma } from "@/lib/prisma";
 
 const categories = [
   {
-    name: "Everyday Modest",
+    name: "Everyday",
     accent: "from-[#ead5c7] to-[#f4ece5]",
-    image: resolveEditorialMediaUrl(
-      "editorial/home/everyday-modest.jpg",
-      "/home-placeholders/editorial-placeholder.svg"
-    ),
+    image: "/category-everyday-blend.png",
   },
   {
-    name: "Luxury Pret",
+    name: "Festive Pret",
     accent: "from-[#d8beab] to-[#f0e3d8]",
-    image: resolveEditorialMediaUrl(
-      "editorial/home/luxury-pret.jpg",
-      "/home-placeholders/editorial-placeholder.svg"
-    ),
+    image: "/category-luxury-pret.png",
   },
   {
-    name: "Formal Wear",
+    name: "Formals",
     accent: "from-[#c5b4ab] to-[#efe3dd]",
-    image: resolveEditorialMediaUrl(
-      "editorial/home/formal-wear.jpg",
-      "/home-placeholders/editorial-placeholder.svg"
-    ),
+    image: "/category-formal-wear.png",
   },
   {
-    name: "Abayas",
+    name: "Modest Wear",
     accent: "from-[#e6d9d1] to-[#f6efea]",
-    image: resolveEditorialMediaUrl(
-      "editorial/home/abayas.jpg",
-      "/home-placeholders/editorial-placeholder.svg"
-    ),
+    image: "/category-abayas.png",
   },
   {
-    name: "Wedding",
+    name: "Bridals",
     accent: "from-[#d7b9a8] to-[#f3e6dd]",
-    image: resolveEditorialMediaUrl(
-      "editorial/home/wedding.jpg",
-      "/home-placeholders/editorial-placeholder.svg"
-    ),
+    image: "/category-wedding.png",
   },
 ];
 
@@ -52,10 +37,7 @@ const categories = [
 // Replace these placeholders with your provided branded assets later.
 const HOME_EDITORIAL_MEDIA = {
   category: "/home-placeholders/editorial-placeholder.svg",
-  hero: resolveEditorialMediaUrl(
-    "editorial/home/hero-elevate-style-v2.png",
-    "/home-placeholders/editorial-placeholder.svg"
-  ),
+  hero: "/hero-elegance.jpg",
   trending: "/home-placeholders/editorial-placeholder.svg",
 } as const;
 
@@ -111,7 +93,7 @@ export default async function Home() {
               <Search className="h-4 w-4 text-muted-foreground" />
               <input
                 aria-label="Search"
-                placeholder="Search designers, abayas, pret..."
+                placeholder="Search"
                 className="w-full bg-transparent text-base outline-none placeholder:text-muted-foreground"
               />
             </div>
@@ -120,17 +102,17 @@ export default async function Home() {
           <div className="grid grid-cols-5 gap-3 md:grid-cols-5 lg:flex lg:flex-wrap lg:justify-center lg:gap-8 xl:justify-between xl:gap-6">
             {categories.map((category, index) => (
               <Link key={category.name} href="/browse" className="group text-center lg:w-[152px] xl:w-[170px]">
-                <div className={`mx-auto mb-3 flex h-20 w-20 items-end justify-center overflow-hidden rounded-full bg-gradient-to-b ${category.accent} p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] sm:h-28 sm:w-28 sm:p-3 lg:h-36 lg:w-36 lg:p-4`}>
-                  <div className="relative h-full w-full overflow-hidden rounded-full">
+                {category.image && (
+                  <div className="mx-auto mb-2 relative h-20 w-20 sm:h-28 sm:w-28 lg:h-36 lg:w-36">
                     <Image
-                      src={category.image ?? HOME_EDITORIAL_MEDIA.category}
+                      src={category.image}
                       alt={category.name}
                       fill
-                      className="object-cover transition-transform duration-500 group-hover:scale-105"
-                      sizes="128px"
+                      className="object-contain mix-blend-multiply scale-[1.5] transition-transform duration-500 group-hover:scale-[1.55]"
+                      sizes="144px"
                     />
                   </div>
-                </div>
+                )}
                 <p className="mx-auto max-w-[7ch] text-sm font-medium leading-tight text-foreground sm:max-w-[8ch] sm:text-base lg:max-w-[9ch]">{category.name}</p>
               </Link>
             ))}
@@ -138,7 +120,7 @@ export default async function Home() {
         </section>
 
         <section className="block lg:hidden">
-          <div className="relative min-h-[220px] border-y border-[#e7ddd6] bg-[linear-gradient(180deg,#efe2d7_0%,#e7d7cb_100%)] sm:min-h-[340px] sm:border-y-0 sm:border-b sm:border-border/80">
+          <Link href="/browse" className="relative block min-h-[220px] border-y border-[#e7ddd6] bg-[linear-gradient(180deg,#efe2d7_0%,#e7d7cb_100%)] sm:min-h-[340px] sm:border-y-0 sm:border-b sm:border-border/80">
             <Image
               src={HOME_EDITORIAL_MEDIA.hero}
               alt="Modaire editorial"
@@ -146,14 +128,7 @@ export default async function Home() {
               className="object-cover object-top"
               sizes="(max-width: 1280px) 100vw, 40vw"
             />
-            <div className="absolute inset-0 bg-gradient-to-r from-[#f1e4d9]/92 via-[#f1e4d9]/28 to-transparent" />
-            <div className="absolute left-6 top-1/2 max-w-[13rem] -translate-y-1/2 sm:left-8 sm:max-w-sm sm:rounded-[1.75rem] sm:border sm:border-white/50 sm:bg-white/48 sm:p-6 sm:backdrop-blur-sm">
-              <Link href="/browse" className="mt-5 inline-flex items-center gap-2 text-base text-foreground sm:text-lg">
-                Shop Now
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </div>
-          </div>
+          </Link>
         </section>
 
         <section className="hidden border-b border-border/80 px-10 py-10 lg:block xl:px-12 xl:py-12">
@@ -164,15 +139,8 @@ export default async function Home() {
                 alt="Modaire editorial"
                 fill
                 className="object-cover object-top transition-transform duration-700 group-hover:scale-105"
-                sizes="(max-width: 1280px) 50vw, 42vw"
+                sizes="(max-width: 1280px) 100vw, 80vw"
               />
-              <div className="absolute inset-0 bg-gradient-to-r from-[#f1e4d9]/88 via-transparent to-transparent" />
-              <div className="absolute left-10 top-12 max-w-[18rem]">
-                <p className="mt-6 inline-flex items-center gap-2 text-2xl text-foreground">
-                  Shop Now
-                  <ArrowRight className="h-5 w-5" />
-                </p>
-              </div>
             </Link>
           </div>
         </section>
