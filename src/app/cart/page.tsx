@@ -1,3 +1,4 @@
+import { serializeListing } from "@/lib/serialization";
 import { auth } from "@/auth";
 import { createCheckoutSession } from "@/app/actions/checkout";
 import { removeCartItem } from "@/app/actions/cart";
@@ -30,13 +31,26 @@ export default async function CartPage() {
   }> = [];
   const cartDelegate = (prisma as unknown as {
     cartItem?: {
+      deleteMany: (args: unknown) => Promise<unknown>;
       findMany: (args: unknown) => Promise<typeof cartItems>;
     };
   }).cartItem;
 
   if (cartDelegate) {
     try {
-      cartItems = await cartDelegate.findMany({
+      // Keep cart clean by removing sold/unavailable items (including purchased listings).
+      await cartDelegate.deleteMany({
+        where: {
+          user_id: session.user.id,
+          listing: {
+            status: {
+              not: "AVAILABLE",
+            },
+          },
+        },
+      });
+
+      cartItems = (await cartDelegate.findMany({
         where: { user_id: session.user.id },
         orderBy: { created_at: "desc" },
         include: {
@@ -59,7 +73,10 @@ export default async function CartPage() {
             },
           },
         },
-      });
+      })).map((item: any) => ({
+        ...item,
+        listing: serializeListing(item.listing)
+      }));
     } catch (error) {
       if (!(error instanceof Error && error.message.includes("CartItem"))) {
         throw error;

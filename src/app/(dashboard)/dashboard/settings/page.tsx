@@ -1,13 +1,23 @@
-export default function SettingsPage() {
+import { getUserProfile } from "@/app/actions/auth";
+import { auth } from "@/auth";
+import { redirect } from "next/navigation";
+import { AddressSettingsForm } from "@/components/dashboard/AddressSettingsForm";
+
+export default async function SettingsPage() {
+    const session = await auth();
+    if (!session?.user?.id) {
+        redirect("/login");
+    }
+
+    const res = await getUserProfile(session.user.id);
+    if (res.error || !res.user) {
+        return <div className="p-8 text-destructive">Failed to load profile.</div>;
+    }
+
     return (
-        <div>
-            <h1 className="text-2xl font-bold tracking-tight text-neutral-900 mb-6">Settings</h1>
-            <div className="flex flex-col items-center justify-center py-20 bg-neutral-50 border border-dashed rounded-xl">
-                <h2 className="text-xl font-bold text-neutral-900 mb-2">Account Settings</h2>
-                <p className="text-neutral-500 max-w-sm text-center">
-                    Update your profile, password, and notification preferences here in the future.
-                </p>
-            </div>
+        <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+            <h1 className="text-3xl font-serif font-bold text-foreground mb-8">Settings</h1>
+            <AddressSettingsForm userId={session.user.id} initialData={res.user} />
         </div>
     );
 }

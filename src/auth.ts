@@ -43,6 +43,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                     name: `${user.first_name} ${user.last_name}`,
                     email: user.email,
                     image: user.profile_image,
+                    isAdmin: user.is_admin,
                 };
             },
         }),
@@ -51,12 +52,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         async jwt({ token, user }) {
             if (user) {
                 token.id = user.id;
+                token.isAdmin = (user as { isAdmin?: boolean }).isAdmin ?? false;
+            }
+            if (token.id) {
+                const dbUser = await prisma.user.findUnique({
+                    where: { id: token.id as string },
+                    select: { is_admin: true },
+                });
+                token.isAdmin = dbUser?.is_admin ?? false;
             }
             return token;
         },
         async session({ session, token }) {
             if (session.user && token.id) {
                 session.user.id = token.id as string;
+                (session.user as { isAdmin?: boolean }).isAdmin = token.isAdmin as boolean;
             }
             return session;
         },

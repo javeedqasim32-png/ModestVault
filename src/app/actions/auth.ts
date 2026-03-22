@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { sendVerificationEmail } from "@/lib/email";
+import { hasCarrierPhoneLength, normalizeUsPhoneInput } from "@/lib/phone";
 
 // Helper to generate a 6 digit code
 function generateVerificationCode(): string {
@@ -15,16 +16,34 @@ function generateVerificationCode(): string {
  */
 export async function startSignup(formData: FormData) {
     console.log("🚀 START_SIGNUP ACTION CALLED AT:", new Date().toISOString());
-    const firstName = formData.get("first_name") as string;
-    const lastName = formData.get("last_name") as string;
-    let email = formData.get("email") as string;
-    const password = formData.get("password") as string;
+    const firstName = ((formData.get("first_name") as string) || "").trim();
+    const lastName = ((formData.get("last_name") as string) || "").trim();
+    let email = ((formData.get("email") as string) || "").trim();
+    const password = ((formData.get("password") as string) || "").trim();
+    const rawPhone = ((formData.get("phone") as string) || "").trim();
+    const street1 = formData.get("street1") as string;
+    const street2 = formData.get("street2") as string;
+    const city = formData.get("city") as string;
+    const state = formData.get("state") as string;
+    const zip = formData.get("zip") as string;
+    const country = formData.get("country") as string;
 
-    if (!email || !password || !firstName || !lastName) {
-        return { error: "All fields are required." };
+    const missingFields: string[] = [];
+    if (!firstName) missingFields.push("First name");
+    if (!lastName) missingFields.push("Last name");
+    if (!email) missingFields.push("Email");
+    if (!password) missingFields.push("Password");
+    if (!rawPhone) missingFields.push("Phone number");
+
+    if (missingFields.length > 0) {
+        return { error: `Missing required field${missingFields.length > 1 ? "s" : ""}: ${missingFields.join(", ")}.` };
     }
 
     email = email.toLowerCase().trim();
+    const phone = normalizeUsPhoneInput(rawPhone);
+    if (!hasCarrierPhoneLength(phone)) {
+        return { error: "Phone number must contain between 8 and 15 digits." };
+    }
 
     try {
         // 1. Check if user already exists in main User table
@@ -60,6 +79,13 @@ export async function startSignup(formData: FormData) {
                     first_name: firstName,
                     last_name: lastName,
                     password_hash,
+                    phone,
+                    street1,
+                    street2,
+                    city,
+                    state,
+                    zip,
+                    country,
                     verification_code_hash,
                     code_expiry,
                     attempt_count: 0,
@@ -74,6 +100,13 @@ export async function startSignup(formData: FormData) {
                     last_name: lastName,
                     email,
                     password_hash,
+                    phone,
+                    street1,
+                    street2,
+                    city,
+                    state,
+                    zip,
+                    country,
                     verification_code_hash,
                     code_expiry,
                     last_sent_at: new Date()
@@ -147,6 +180,13 @@ export async function verifyEmail(email: string, code: string) {
                     last_name: pendingUser.last_name,
                     email: pendingUser.email,
                     password_hash: pendingUser.password_hash,
+                    phone: pendingUser.phone,
+                    street1: pendingUser.street1,
+                    street2: pendingUser.street2,
+                    city: pendingUser.city,
+                    state: pendingUser.state,
+                    zip: pendingUser.zip,
+                    country: pendingUser.country,
                     email_verified: true,
                 }
             });
@@ -216,5 +256,53 @@ export async function resendCode(email: string) {
     } catch (error) {
         console.error("Resend error:", error);
         return { error: "Something went wrong while sending a new code." };
+    }
+}
+
+/**
+ * Step 4: Get User Profile
+ */
+export async function getUserProfile(userId: string) {
+    if (!userId) return { error: "User ID is required." };
+    try {
+        const user = await prisma.user.findUnique({
+            where: { id: userId }
+        });
+        return { success: true, user };
+    } catch (error) {
+        return { error: "Failed to fetch profile." };
+    }
+}
+
+/**
+ * Step 5: Update User Profile
+ */
+export async function updateUserProfile(userId: string, data: any) {
+    if (!userId) return { error: "User ID is required." };
+
+    try {
+        const normalizedPhone = normalizeUsPhoneInput(data.phone || "");
+        if (!hasCarrierPhoneLength(normalizedPhone)) {
+            return { error: "Phone number must contain between 8 and 15 digits." };
+        }
+
+        await prisma.user.update({
+            where: { id: userId },
+            data: {
+                first_name: data.first_name,
+                last_name: data.last_name,
+                phone: normalizedPhone,
+                street1: data.street1,
+                street2: data.street2,
+                city: data.city,
+                state: data.state,
+                zip: data.zip,
+                country: data.country
+            }
+        });
+        return { success: true };
+    } catch (error) {
+        console.error("Profile update error:", error);
+        return { error: "Failed to update profile." };
     }
 }

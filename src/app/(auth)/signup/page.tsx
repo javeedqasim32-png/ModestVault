@@ -121,10 +121,51 @@ export default function SignupPage() {
 
                             <div className="space-y-2">
                                 <Label htmlFor="password">Password</Label>
-                                <Input id="password" name="password" type="password" required minLength={6} className="h-12" />
+                                <Input
+                                    id="password"
+                                    name="password"
+                                    type="password"
+                                    required
+                                    minLength={8}
+                                    autoComplete="new-password"
+                                    className="h-12"
+                                />
                             </div>
 
-                            <Button type="submit" isLoading={loading} className="w-full h-12 mt-2">
+                            <div className="space-y-2">
+                                <Label htmlFor="phone">Phone Number</Label>
+                                <Input id="phone" name="phone" type="tel" required placeholder="(123) 456-7890" className="h-12" />
+                            </div>
+
+                            <div className="space-y-4 pt-4 border-t border-border/50">
+                                <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Home Address (Optional)</p>
+                                <div className="space-y-2">
+                                    <Label htmlFor="street1">Street Address</Label>
+                                    <Input id="street1" name="street1" placeholder="123 Main St" className="h-12" />
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="city">City</Label>
+                                        <Input id="city" name="city" placeholder="New York" className="h-12" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="state">State</Label>
+                                        <Input id="state" name="state" placeholder="NY" className="h-12" />
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="zip">Zip Code</Label>
+                                        <Input id="zip" name="zip" placeholder="10001" className="h-12" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="country">Country</Label>
+                                        <Input id="country" name="country" defaultValue="US" className="h-12" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <Button type="submit" isLoading={loading} className="w-full h-12 mt-4">
                                 Create Account
                             </Button>
                         </form>

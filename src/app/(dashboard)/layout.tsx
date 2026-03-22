@@ -15,7 +15,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         { name: "Home", href: "/dashboard", icon: House },
         { name: "Explore", href: "/browse", icon: LayoutDashboard },
         { name: "Orders", href: "/dashboard/purchases", icon: ShoppingBag },
-        { name: "Favorites", href: "/browse", icon: Heart },
+        { name: "Favorites", href: "/favorites", icon: Heart },
         { name: "Sell", href: "/sell", icon: CirclePlus },
         { name: "Sales", href: "/dashboard/sales", icon: TrendingUp },
         { name: "Earnings", href: "/dashboard/earnings", icon: Wallet },

@@ -4,6 +4,8 @@ import { ArrowRight, Heart, Search } from "lucide-react";
 import { getPrimaryListingImage } from "@/lib/listing-images";
 import { resolveEditorialMediaUrl } from "@/lib/editorial-media";
 import { prisma } from "@/lib/prisma";
+import FavoriteButton from "@/components/marketplace/FavoriteButton";
+import { getFavoriteListingIdsForSessionUser } from "@/app/actions/favorites";
 
 const categories = [
   {
@@ -41,9 +43,11 @@ const HOME_EDITORIAL_MEDIA = {
   trending: "/home-placeholders/editorial-placeholder.svg",
 } as const;
 
+import { serializeListing } from "@/lib/serialization";
+
 export default async function Home() {
   const featured = await prisma.listing.findMany({
-    where: { status: "AVAILABLE" },
+    where: { status: "AVAILABLE", moderation_status: "APPROVED" },
     orderBy: { created_at: "desc" },
     take: 5,
   });
@@ -51,7 +55,7 @@ export default async function Home() {
   let trendingListings: Awaited<ReturnType<typeof prisma.listing.findMany>> = [];
   try {
     trendingListings = await prisma.listing.findMany({
-      where: { status: "AVAILABLE" },
+      where: { status: "AVAILABLE", moderation_status: "APPROVED" },
       orderBy: [{ view_count: "desc" }, { created_at: "desc" }],
       take: 5,
       include: {
@@ -65,7 +69,7 @@ export default async function Home() {
   } catch {
     // Backward-safe fallback if runtime Prisma client/database does not yet have view_count.
     trendingListings = await prisma.listing.findMany({
-      where: { status: "AVAILABLE" },
+      where: { status: "AVAILABLE", moderation_status: "APPROVED" },
       orderBy: { created_at: "desc" },
       take: 5,
       include: {
@@ -78,11 +82,13 @@ export default async function Home() {
     });
   }
 
-  const heroListing = featured[0] ?? null;
   const trending = trendingListings.map((listing) => ({
-    ...listing,
+    ...serializeListing(listing),
     coverImage: getPrimaryListingImage(listing, "card"),
   }));
+  const favoriteListingIds = new Set(
+    await getFavoriteListingIdsForSessionUser(trending.map((listing) => listing.id))
+  );
 
   return (
     <div className="bg-[#f4efea] px-0 py-0 sm:px-6 sm:py-6 lg:px-8">
@@ -100,8 +106,12 @@ export default async function Home() {
           </div>
 
           <div className="grid grid-cols-5 gap-3 md:grid-cols-5 lg:flex lg:flex-wrap lg:justify-center lg:gap-8 xl:justify-between xl:gap-6">
-            {categories.map((category, index) => (
-              <Link key={category.name} href="/browse" className="group text-center lg:w-[152px] xl:w-[170px]">
+            {categories.map((category) => (
+              <Link
+                key={category.name}
+                href={`/browse?styles=${encodeURIComponent(category.name)}`}
+                className="group text-center lg:w-[152px] xl:w-[170px]"
+              >
                 {category.image && (
                   <div className="mx-auto mb-2 relative h-20 w-20 sm:h-28 sm:w-28 lg:h-36 lg:w-36">
                     <Image
@@ -160,37 +170,37 @@ export default async function Home() {
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-4 sm:gap-6 lg:grid-cols-3">
-              {trending.map((listing, index) => (
+              {trending.map((listing) => (
                 <Link
                   key={listing.id}
                   href={`/listings/${listing.id}`}
-                  className={`group overflow-hidden rounded-[1.2rem] border border-[#ece3dc] bg-white ${index === 0 ? "col-span-2 lg:col-span-1" : ""}`}
+                  className="group overflow-hidden rounded-[1.2rem] border border-[#ece3dc] bg-white"
                 >
-                  <div className={`grid h-full ${index === 0 ? "sm:grid-cols-[0.95fr_1.05fr] lg:grid-cols-1" : ""}`}>
-                    <div className="relative min-h-[210px] bg-muted sm:min-h-[280px] lg:min-h-[360px]">
+                  <div className="grid h-full">
+                    <div className="relative aspect-[3/4] overflow-hidden bg-transparent">
                       <Image
                         src={listing.coverImage}
                         alt={listing.title}
                         fill
-                        className="object-contain bg-card/60 p-1 transition-transform duration-700 group-hover:scale-105"
-                        sizes="(max-width: 1024px) 100vw, 30vw"
+                        className="object-contain object-center transition-transform duration-700 group-hover:scale-105"
+                        sizes="(max-width: 1024px) 50vw, 30vw"
                       />
                     </div>
-                    <div className="flex flex-col justify-between p-3 sm:p-6">
+                    <div className="flex flex-col justify-between p-3 sm:p-4">
                       <div>
                         <div className="mb-3 flex items-center justify-between text-muted-foreground">
                           <span className="text-[10px] uppercase tracking-[0.24em]">{listing.category}</span>
-                          <Heart className="h-5 w-5" />
+                          <FavoriteButton listingId={listing.id} initialFavorited={favoriteListingIds.has(listing.id)} />
                         </div>
-                        <h3 className="font-serif text-xl leading-tight text-foreground sm:text-3xl lg:text-[2rem]">
+                        <h3 className="font-serif text-lg leading-tight text-foreground sm:text-xl">
                           {listing.title}
                         </h3>
-                        <p className="mt-2 line-clamp-2 text-sm leading-6 text-muted-foreground sm:mt-3 sm:line-clamp-3">
+                        <p className="mt-2 line-clamp-2 text-sm leading-6 text-muted-foreground">
                           {listing.description}
                         </p>
                       </div>
-                      <div className="mt-4 flex items-center justify-between sm:mt-6">
-                        <p className="text-xl font-medium text-foreground sm:text-2xl">${Number(listing.price).toLocaleString()}</p>
+                      <div className="mt-4 flex items-center justify-between">
+                        <p className="text-lg font-medium text-foreground sm:text-xl">${Number(listing.price).toLocaleString()}</p>
                         <span className="hidden items-center gap-2 text-[11px] uppercase tracking-[0.24em] text-foreground sm:inline-flex">
                           View
                           <ArrowRight className="h-4 w-4" />

@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { auth, signOut } from "@/auth";
 import { getCartCountForSessionUser } from "@/app/actions/cart";
+import { getFavoriteCountForSessionUser } from "@/app/actions/favorites";
 import { Heart, Search, ShoppingBag } from "lucide-react";
 import Image from "next/image";
 
 export default async function Navbar() {
     const session = await auth();
     const cartCount = await getCartCountForSessionUser();
+    const favoriteCount = await getFavoriteCountForSessionUser();
 
     return (
         <header className="sticky top-0 z-50 w-full border-b border-border/80 bg-[#f7f3ef]/95 backdrop-blur-xl">
@@ -34,11 +36,13 @@ export default async function Navbar() {
                 </div>
 
                 <div className="ml-auto flex items-center gap-1 sm:gap-2">
-                    <Link href="/browse" className="flex h-11 w-11 items-center justify-center rounded-full text-foreground hover:bg-secondary">
-                        <Search className="h-5 w-5" />
-                    </Link>
-                    <Link href="/browse" className="hidden h-11 w-11 items-center justify-center rounded-full text-foreground hover:bg-secondary sm:flex">
+                    <Link href="/favorites" className="relative flex h-11 w-11 items-center justify-center rounded-full text-foreground hover:bg-secondary">
                         <Heart className="h-5 w-5" />
+                        {favoriteCount > 0 ? (
+                            <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] text-primary-foreground">
+                                {favoriteCount > 99 ? "99+" : favoriteCount}
+                            </span>
+                        ) : null}
                     </Link>
                     <Link href="/cart" className="relative flex h-11 w-11 items-center justify-center rounded-full text-foreground hover:bg-secondary">
                         <ShoppingBag className="h-5 w-5" />
@@ -99,6 +103,14 @@ export default async function Navbar() {
                 <div className="flex items-center gap-6">
                     {session?.user ? (
                         <>
+                            {(session.user as { isAdmin?: boolean }).isAdmin && (
+                                <Link href="/admin/listings" className="font-semibold text-primary hover:text-primary/80">
+                                    Admin Dashboard
+                                </Link>
+                            )}
+                            <Link href="/dashboard/purchases" className="hover:text-foreground">
+                                Purchases
+                            </Link>
                             <Link href="/dashboard/settings" className="hover:text-foreground">
                                 Settings
                             </Link>

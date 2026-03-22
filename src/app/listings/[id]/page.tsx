@@ -112,7 +112,10 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                         <div className="sticky top-40 space-y-8">
                             {/* Badges */}
                             <div className="flex items-center gap-2">
+                                <Badge variant="outline">{listing.style}</Badge>
                                 <Badge variant="outline">{listing.category}</Badge>
+                                {listing.subcategory ? <Badge variant="outline">{listing.subcategory}</Badge> : null}
+                                {listing.type ? <Badge variant="outline">{listing.type}</Badge> : null}
                                 <Badge variant="secondary">{listing.condition || "New"}</Badge>
                             </div>
 

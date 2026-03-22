@@ -25,7 +25,12 @@ export async function getCartCountForSessionUser() {
 
   try {
     return await cartItem.count({
-      where: { user_id: session.user.id },
+      where: {
+        user_id: session.user.id,
+        listing: {
+          status: "AVAILABLE",
+        },
+      },
     });
   } catch (error) {
     if (

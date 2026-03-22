@@ -1,3 +1,4 @@
+import { serializePurchase } from "@/lib/serialization";
 import { auth } from "@/auth";
 import { getPrimaryListingImage } from "@/lib/listing-images";
 import { prisma } from "@/lib/prisma";
@@ -17,9 +18,10 @@ export default async function PurchasesPage() {
         redirect("/login");
     }
 
-    const purchases = await prisma.purchase.findMany({
+    const purchases = ((await (prisma.purchase as any).findMany({
         where: { buyer_id: session.user.id },
         include: {
+            order: true,
             listing: {
                 include: {
                     images: {
@@ -37,25 +39,27 @@ export default async function PurchasesPage() {
             }
         },
         orderBy: { created_at: "desc" }
-    });
+    })) as any[]).map(p => serializePurchase(p));
 
-    const mobileStatusCycle = [
-        { status: "Processing", tab: "Active Orders" },
-        { status: "Completed", tab: "Completed" },
-        { status: "Pending", tab: "Pending" },
-        { status: "Dispute Open", tab: "Disputes / Refunds" },
-    ] as const;
+    const mobileOrders = purchases.map((purchase) => {
+        const orderStatus = purchase.order?.shipping_status || "PROCESSING";
 
-    const mobileOrders = purchases.map((purchase, index) => {
-        const mapping = mobileStatusCycle[index % mobileStatusCycle.length];
+        let tab: "Active Orders" | "Completed" | "Disputes / Refunds" = "Active Orders";
+        if (orderStatus === "DELIVERED") tab = "Completed";
+        if (orderStatus === "CANCELLED" || orderStatus === "RETURNED") tab = "Disputes / Refunds";
 
         return {
             id: purchase.id,
             listing_id: purchase.listing_id,
-            amount: Number(purchase.amount),
-            created_at: purchase.created_at.toISOString(),
-            status: mapping.status,
-            tab: mapping.tab,
+            stripe_session_id: purchase.stripe_session_id,
+            amount: purchase.amount, // purchase.amount is already a number from serialization
+            status: orderStatus.replace("_", " "),
+            created_at: purchase.created_at, // Already stringified
+            tab,
+            tracking_number: purchase.order?.tracking_number,
+            carrier: purchase.order?.carrier,
+            shipping_stage: purchase.order?.shipping_stage || "ADDRESS_MISSING",
+            has_shipping_address: !!purchase.order?.shipping_address,
             listing: {
                 image_url: getPrimaryListingImage(purchase.listing, "card"),
                 title: purchase.listing.title,
@@ -94,21 +98,73 @@ export default async function PurchasesPage() {
                     </div>
                 ) : (
                     <div className="grid gap-4 md:grid-cols-2">
-                        {purchases.map((purchase) => (
-                            <ListingCard
-                                key={purchase.id}
-                                href={`/listings/${purchase.listing_id}`}
-                                imageUrl={getPrimaryListingImage(purchase.listing, "card")}
-                                title={purchase.listing.title}
-                                description={purchase.listing.description}
-                                price={Number(purchase.amount)}
-                                category={purchase.listing.category}
-                                status="COMPLETED"
-                                sellerName={`Sold by ${purchase.listing.user.first_name} ${purchase.listing.user.last_name}`}
-                                dateText={new Date(purchase.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
-                                compact
-                            />
-                        ))}
+                        {purchases.map((purchase) => {
+                            const trackingUrl = purchase.order?.tracking_number
+                                ? (purchase.order.carrier === "USPS"
+                                    ? `https://tools.usps.com/go/TrackConfirmAction?tLabels=${purchase.order.tracking_number}`
+                                    : `https://google.com/search?q=${purchase.order.carrier}+tracking+${purchase.order.tracking_number}`)
+                                : null;
+                            const stage = purchase.order?.shipping_stage || "ADDRESS_MISSING";
+                            const canResumeBuyerShippingFlow =
+                                (stage === "ADDRESS_MISSING" || stage === "ADDRESS_SET" || stage === "OPTION_SELECTED") &&
+                                !purchase.order?.tracking_number &&
+                                !!purchase.stripe_session_id;
+                            const completeShippingHref = `/buy/success?session_id=${purchase.stripe_session_id}&listingId=${purchase.listing_id}`;
+
+                            return (
+                                <div key={purchase.id} className="space-y-2">
+                                    <ListingCard
+                                        href={`/listings/${purchase.listing_id}`}
+                                        imageUrl={getPrimaryListingImage(purchase.listing, "card")}
+                                        title={purchase.listing.title}
+                                        description={purchase.listing.description}
+                                        price={Number(purchase.amount)}
+                                        category={purchase.listing.category}
+                                        status={purchase.order?.shipping_status.replace("_", " ") || "PROCESSING"}
+                                        sellerName={`Sold by ${purchase.listing.user.first_name} ${purchase.listing.user.last_name}`}
+                                        dateText={new Date(purchase.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                                        compact
+                                    />
+
+                                    {trackingUrl ? (
+                                        <a
+                                            href={trackingUrl}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="inline-flex items-center gap-1.5 pl-1 text-sm text-primary hover:underline font-semibold"
+                                        >
+                                            <span>Tracking:</span>
+                                            <span>{purchase.order?.tracking_number}</span>
+                                            <span className="text-muted-foreground">({purchase.order?.carrier || "N/A"})</span>
+                                        </a>
+                                    ) : null}
+
+                                    {canResumeBuyerShippingFlow ? (
+                                        <div className="rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2">
+                                            <p className="text-xs text-amber-800 mb-2">
+                                                {stage === "ADDRESS_MISSING"
+                                                    ? "Action needed: add your shipping address so the seller can generate your label."
+                                                    : stage === "ADDRESS_SET"
+                                                        ? "Action needed: select a shipping option so the seller can generate your label."
+                                                        : "Action needed: finalize your shipping label for this paid order."}
+                                            </p>
+                                            <Link href={completeShippingHref} className="text-sm font-semibold text-primary hover:underline">
+                                                {stage === "ADDRESS_MISSING"
+                                                    ? "Complete shipping details"
+                                                    : stage === "ADDRESS_SET"
+                                                        ? "Select shipping option"
+                                                        : "Finalize shipping label"}
+                                            </Link>
+                                            {(stage === "ADDRESS_SET" || stage === "OPTION_SELECTED") ? (
+                                                <Link href={`${completeShippingHref}&edit=1`} className="ml-3 text-sm font-semibold text-muted-foreground hover:underline">
+                                                    Edit shipping details
+                                                </Link>
+                                            ) : null}
+                                        </div>
+                                    ) : null}
+                                </div>
+                            );
+                        })}
                     </div>
                 )}
             </div>

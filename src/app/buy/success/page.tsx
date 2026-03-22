@@ -2,17 +2,18 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
 import { redirect } from "next/navigation";
-import { CheckCircle2, ShoppingBag, ArrowRight, ShieldCheck, Sparkles, AlertCircle } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
-import { Card } from "@/components/ui/Card";
+import { BuySuccessClient } from "@/components/marketplace/BuySuccessClient";
+import { purchaseLabel } from "@/lib/shippo";
 
 export const dynamic = "force-dynamic";
 
-export default async function BuySuccessPage({ searchParams }: { searchParams: Promise<{ session_id: string; listingId: string }> }) {
-    const { session_id, listingId } = await searchParams;
+export default async function BuySuccessPage({ searchParams }: { searchParams: Promise<{ session_id: string; listingId: string; edit?: string }> }) {
+    const { session_id, listingId, edit } = await searchParams;
     const session = await auth();
+    const forceAddressEdit = edit === "1";
 
     if (!session?.user?.id) {
         redirect("/login");
@@ -24,68 +25,95 @@ export default async function BuySuccessPage({ searchParams }: { searchParams: P
 
     // 1. Verify the checkout session with Stripe
     const checkoutSession = await stripe.checkout.sessions.retrieve(session_id);
+    const metadata = (checkoutSession.metadata || {}) as Record<string, string>;
+    const shippingAddressFromMeta = metadata.shipLine1 ? {
+        name: metadata.shipName || "",
+        line1: metadata.shipLine1 || "",
+        line2: metadata.shipLine2 || "",
+        city: metadata.shipCity || "",
+        state: metadata.shipState || "",
+        postal_code: metadata.shipPostal || "",
+        country: metadata.shipCountry || "US",
+        phone: metadata.shipPhone || "",
+    } : null;
+    const shippingOptionSelectedInCheckout = !!metadata.shippingRateId;
 
     if (checkoutSession.payment_status === "paid") {
-        const existingPurchase = await prisma.purchase.findUnique({
-            where: { stripe_session_id: session_id }
+        let order = await (prisma as any).order.findFirst({
+            where: { purchase: { stripe_session_id: session_id } },
+            include: { purchase: { include: { listing: { include: { user: true } } } } }
         });
 
-        if (!existingPurchase) {
+        if (!order) {
             try {
-                await prisma.$transaction(async (tx: any) => {
-                    const updatedListing = await tx.listing.updateMany({
-                        where: { id: listingId, status: "AVAILABLE" },
-                        data: { status: "SOLD" }
-                    });
+                const listing = await prisma.listing.findUnique({
+                    where: { id: listingId },
+                    include: { user: true }
+                });
 
-                    if (updatedListing.count === 0) {
+                if (!listing) throw new Error("LISTING_NOT_FOUND");
+
+                await prisma.$transaction(async (tx) => {
+                    const currentListing = await tx.listing.findUnique({ where: { id: listingId } });
+                    if (!currentListing || currentListing.status !== "AVAILABLE") {
                         throw new Error("ALREADY_SOLD");
                     }
 
-                    await tx.purchase.create({
+                    await tx.listing.update({
+                        where: { id: listingId },
+                        data: { status: "SOLD" }
+                    });
+
+                    const newPurchase = await tx.purchase.create({
                         data: {
                             buyer_id: session.user?.id || "",
                             listing_id: listingId,
-                            amount: (checkoutSession.amount_total || 0) / 100,
+                            amount: metadata.itemAmountCents
+                                ? Number(metadata.itemAmountCents) / 100
+                                : (checkoutSession.amount_total || 0) / 100,
                             stripe_session_id: session_id,
+                        }
+                    });
+
+                    order = await (tx as any).order.create({
+                        data: {
+                            purchase_id: newPurchase.id,
+                            order_status: "PAID",
+                            shipping_status: "NOT_SHIPPED",
+                            shipping_stage: shippingOptionSelectedInCheckout
+                                ? "OPTION_SELECTED"
+                                : (shippingAddressFromMeta ? "ADDRESS_SET" : "ADDRESS_MISSING"),
+                            shipping_address: shippingAddressFromMeta || undefined,
+                            shipping_option_rate_id: metadata.shippingRateId || undefined,
+                            shipping_option_carrier: metadata.shippingCarrier || undefined,
+                            shipping_option_service: metadata.shippingService || undefined,
+                            shipping_option_amount: metadata.shippingAmountCents
+                                ? (Number(metadata.shippingAmountCents) / 100).toFixed(2)
+                                : undefined,
+                            shipping_option_currency: metadata.shippingCurrency || undefined,
+                            shipping_option_selected_at: shippingOptionSelectedInCheckout ? new Date() : undefined,
+                        },
+                        include: { purchase: { include: { listing: { include: { user: true } } } } }
+                    });
+
+                    // Remove purchased item from buyer cart.
+                    await tx.cartItem.deleteMany({
+                        where: {
+                            user_id: session.user?.id || "",
+                            listing_id: listingId,
                         }
                     });
                 });
             } catch (error: any) {
                 if (error.message === "ALREADY_SOLD") {
                     return (
+                        /* ... same Already Sold UI ... */
                         <div className="container mx-auto px-6 py-24 flex justify-center items-center min-h-[calc(100vh-100px)]">
                             <div className="max-w-xl w-full text-center space-y-10 group">
-                                <div className="w-24 h-24 bg-amber-50 rounded-[2.5rem] flex items-center justify-center mx-auto mb-8 border-4 border-white shadow-xl ring-1 ring-amber-100/50 transform group-hover:rotate-12 transition-transform duration-700">
-                                    <AlertCircle className="w-12 h-12 text-amber-500" />
-                                </div>
-                                <div className="space-y-4">
-                                    <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-none font-black uppercase text-[10px] tracking-widest px-4 py-1.5 rounded-full">
-                                        Inventory Update
-                                    </Badge>
-                                    <h1 className="text-4xl md:text-5xl font-black tracking-tighter text-foreground">
-                                        Rare Piece <span className="text-muted-foreground">Already Claimed</span>
-                                    </h1>
-                                    <p className="text-muted-foreground font-medium text-lg leading-relaxed max-w-md mx-auto italic">
-                                        In the time it took to secure your order, another collector completed theirs for this unique item.
-                                    </p>
-                                </div>
-
-                                <Card className="p-8 border-amber-100 bg-amber-50/30 rounded-[2rem] text-left">
-                                    <h3 className="font-bold text-amber-900 flex items-center gap-2 mb-2">
-                                        <ShieldCheck className="w-5 h-5 text-amber-600" />
-                                        Your funds are safe
-                                    </h3>
-                                    <p className="text-sm text-amber-800 leading-relaxed font-medium">
-                                        Since the item is no longer available, we've automatically triggered a full reversal of your payment. Funds will reappear in your account within 3-5 business days.
-                                    </p>
-                                </Card>
-
-                                <Link href="/browse">
-                                    <Button size="lg" className="px-12 rounded-2xl font-black text-lg shadow-xl shadow-amber-500/10">
-                                        Find Your Next Treasure
-                                    </Button>
-                                </Link>
+                                <AlertCircle className="w-12 h-12 text-amber-500 mx-auto" />
+                                <h1 className="text-4xl font-black">Item No Longer Available</h1>
+                                <p>This item was sold to another buyer while you were checking out. A refund has been initiated.</p>
+                                <Link href="/browse"><Button>Back to Marketplace</Button></Link>
                             </div>
                         </div>
                     );
@@ -93,70 +121,162 @@ export default async function BuySuccessPage({ searchParams }: { searchParams: P
                 throw error;
             }
         }
-    } else {
-        return (
-            <div className="container mx-auto px-6 py-24 text-center min-h-[calc(100vh-100px)] flex flex-col justify-center items-center">
-                <div className="w-20 h-20 bg-destructive/10 rounded-full flex items-center justify-center mb-6">
-                    <AlertCircle className="w-10 h-10 text-destructive" />
+
+        // Idempotent cleanup for repeat visits to success page.
+        await prisma.cartItem.deleteMany({
+            where: {
+                user_id: session.user.id,
+                listing_id: listingId,
+            }
+        });
+
+        let autoLabelError: string | null = null;
+        if (order && order.shipping_stage === "OPTION_SELECTED" && !order.label_url && order.shipping_option_rate_id) {
+            try {
+                const labelData = await purchaseLabel(order.shipping_option_rate_id);
+                order = await (prisma as any).order.update({
+                    where: { id: order.id },
+                    data: {
+                        shipping_stage: "LABEL_PURCHASED",
+                        shipping_status: "PROCESSING",
+                        tracking_number: labelData.tracking_number,
+                        carrier: order.shipping_option_carrier || "Carrier",
+                        shippo_transaction_id: labelData.shippo_transaction_id,
+                        label_url: labelData.label_url
+                    },
+                    include: { purchase: { include: { listing: { include: { user: true } } } } }
+                });
+            } catch (error: any) {
+                const errorMessage = error?.message || "Failed to generate label.";
+                autoLabelError = errorMessage;
+
+                // If Shippo rejected recipient details, force buyer back into address/rate flow.
+                const normalizedError = errorMessage.toLowerCase();
+                if (
+                    normalizedError.includes("recipient address invalid") ||
+                    normalizedError.includes("address not found") ||
+                    normalizedError.includes("address_from.phone") ||
+                    normalizedError.includes("phone field should contain")
+                ) {
+                    order = await (prisma as any).order.update({
+                        where: { id: order.id },
+                        data: {
+                            shipping_stage: "ADDRESS_SET",
+                            shipping_status: "NOT_SHIPPED",
+                            shipping_option_rate_id: null,
+                            shipping_option_carrier: null,
+                            shipping_option_service: null,
+                            shipping_option_amount: null,
+                            shipping_option_currency: null,
+                            shipping_option_selected_at: null
+                        },
+                        include: { purchase: { include: { listing: { include: { user: true } } } } }
+                    });
+                }
+            }
+        }
+
+        // If order already has a label, skip to success
+        if (order && order.shipping_status !== "NOT_SHIPPED" && order.label_url) {
+            return (
+                <div className="container mx-auto px-6 py-24 flex justify-center items-center min-h-[calc(100vh-100px)]">
+                    <div className="max-w-2xl w-full text-center space-y-8">
+                        <h1 className="text-5xl font-black tracking-tighter text-foreground">
+                            Order Confirmed
+                        </h1>
+                        <p className="text-lg text-muted-foreground">
+                            Your payment was successful and your shipping label is ready.
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-xl mx-auto">
+                            <Link href="/">
+                                <Button variant="secondary" className="w-full">Back to Home</Button>
+                            </Link>
+                            <Link href={`/buy/success?session_id=${session_id}&listingId=${listingId}&edit=1`}>
+                                <Button variant="outline" className="w-full">Edit Shipping Details</Button>
+                            </Link>
+                            <Link href="/dashboard/purchases">
+                                <Button className="w-full">Order History</Button>
+                            </Link>
+                        </div>
+                    </div>
                 </div>
-                <h1 className="text-3xl font-black tracking-tighter text-foreground mb-4">Payment Incomplete</h1>
-                <p className="text-muted-foreground font-medium max-w-sm mx-auto mb-10">
-                    We couldn't confirm your payment status. Please verify your details or contact support.
-                </p>
-                <Link href="/browse">
-                    <Button variant="ghost" className="font-bold text-muted-foreground hover:text-foreground">
-                        Return to Marketplace
-                    </Button>
-                </Link>
+            );
+        }
+
+        if (order && order.shipping_stage === "OPTION_SELECTED") {
+            return (
+                <div className="container mx-auto px-6 py-24 flex justify-center items-center min-h-[calc(100vh-100px)]">
+                    <div className="max-w-2xl w-full text-center space-y-8">
+                        <h1 className="text-5xl font-black tracking-tighter text-foreground">
+                            Order Confirmed
+                        </h1>
+                        <p className="text-lg text-muted-foreground">
+                            Payment and shipping choice are confirmed. Your label is being prepared.
+                        </p>
+                        {autoLabelError ? (
+                            <p className="text-sm text-amber-700">
+                                We could not finalize your label yet: {autoLabelError}
+                            </p>
+                        ) : null}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-xl mx-auto">
+                            <Link href="/">
+                                <Button variant="secondary" className="w-full">Back to Home</Button>
+                            </Link>
+                            <Link href="/dashboard/purchases">
+                                <Button className="w-full">Order History</Button>
+                            </Link>
+                            <Link href="/browse">
+                                <Button variant="secondary" className="w-full">Keep Exploring</Button>
+                            </Link>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Prepare initial address from Stripe if available
+        const stripeShipping = (checkoutSession as any).shipping_details;
+        const orderAddress = (order?.shipping_address || null) as any;
+        const initialAddress = orderAddress ? {
+            name: orderAddress.name || stripeShipping?.name || "",
+            line1: orderAddress.line1 || orderAddress.street1 || stripeShipping?.address?.line1 || "",
+            line2: orderAddress.line2 || orderAddress.street2 || stripeShipping?.address?.line2 || "",
+            city: orderAddress.city || stripeShipping?.address?.city || "",
+            state: orderAddress.state || stripeShipping?.address?.state || "",
+            postal_code: orderAddress.postal_code || orderAddress.zip || stripeShipping?.address?.postal_code || "",
+            country: orderAddress.country || stripeShipping?.address?.country || "US",
+            phone: orderAddress.phone || checkoutSession.customer_details?.phone || ""
+        } : (stripeShipping?.address ? {
+            name: stripeShipping.name || "",
+            line1: stripeShipping.address.line1 || "",
+            line2: stripeShipping.address.line2 || "",
+            city: stripeShipping.address.city || "",
+            state: stripeShipping.address.state || "",
+            postal_code: stripeShipping.address.postal_code || "",
+            country: stripeShipping.address.country || "US",
+            phone: checkoutSession.customer_details?.phone || ""
+        } : undefined);
+
+        return (
+            <div className="container mx-auto px-6 py-24 flex justify-center items-center min-h-[calc(100vh-100px)]">
+                <BuySuccessClient
+                    orderId={order!.id}
+                    initialAddress={initialAddress}
+                    forceAddressStep={forceAddressEdit}
+                />
             </div>
         );
     }
 
     return (
         <div className="container mx-auto px-6 py-24 flex justify-center items-center min-h-[calc(100vh-100px)]">
-            <div className="max-w-2xl w-full text-center space-y-12">
-                <div className="relative group">
-                    <div className="w-28 h-28 bg-primary/10 rounded-[3rem] flex items-center justify-center mx-auto mb-8 border-4 border-white shadow-2xl ring-1 ring-primary/20 transform group-hover:scale-110 transition-transform duration-700">
-                        <CheckCircle2 className="w-14 h-14 text-primary" />
-                    </div>
-                    <div className="absolute top-0 right-1/4 animate-bounce delay-100">
-                        <Sparkles className="w-6 h-6 text-primary opacity-40" />
-                    </div>
-                </div>
-
-                <div className="space-y-4">
-                    <Badge variant="success" className="bg-primary/10 text-primary border-none font-black uppercase text-[10px] tracking-widest px-6 py-1.5 rounded-full shadow-sm">
-                        Secured Successfully
-                    </Badge>
-                    <h1 className="text-5xl md:text-7xl font-black tracking-tighter text-foreground">
-                        Welcome Your <span className="text-muted-foreground">New Piece</span>
-                    </h1>
-                    <p className="text-xl text-muted-foreground font-medium max-w-lg mx-auto leading-relaxed">
-                        Order confirmed. The curated selection you chose is now officially yours.
-                    </p>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-md mx-auto">
-                    <Link href="/dashboard/purchases">
-                        <Button variant="primary" size="lg" className="w-full rounded-[2rem] font-black group shadow-2xl shadow-primary/20">
-                            <ShoppingBag className="w-5 h-5 mr-3 opacity-50 group-hover:opacity-100 transition-opacity" />
-                            Order History
-                        </Button>
-                    </Link>
-
-                    <Link href="/browse">
-                        <Button variant="secondary" size="lg" className="w-full rounded-[2rem] font-bold border border-border shadow-sm group">
-                            Keep Exploring
-                            <ArrowRight className="w-5 h-5 ml-3 opacity-30 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
-                        </Button>
-                    </Link>
-                </div>
-
-                <div className="pt-12 border-t border-border/50">
-                    <p className="text-xs font-black text-muted-foreground uppercase tracking-[0.2em] opacity-40">
-                        Confirmation Dispatched to <span className="text-foreground opacity-100"> {session.user.email} </span>
-                    </p>
-                </div>
+            <div className="max-w-xl w-full text-center space-y-6">
+                <AlertCircle className="w-12 h-12 text-amber-500 mx-auto" />
+                <h1 className="text-3xl font-black">Payment Incomplete</h1>
+                <p className="text-muted-foreground">We could not confirm your payment. Please try checkout again.</p>
+                <Link href="/browse">
+                    <Button>Back to Marketplace</Button>
+                </Link>
             </div>
         </div>
     );

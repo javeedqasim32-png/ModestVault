@@ -1,3 +1,4 @@
+import { serializeListing } from "@/lib/serialization";
 import { auth } from "@/auth";
 import { getPrimaryListingImage } from "@/lib/listing-images";
 import { prisma } from "@/lib/prisma";
@@ -32,18 +33,29 @@ export default async function SellPage() {
                     take: 1,
                     select: { imageUrl: true, thumbUrl: true, mediumUrl: true, imageOrder: true },
                 },
+                purchases: {
+                    include: { order: true },
+                    take: 1
+                }
             },
         })
         : [];
 
-    const safeListings = listings.map((listing) => ({
-        id: listing.id,
-        title: listing.title,
-        description: listing.description,
-        price: Number(listing.price),
-        image_url: getPrimaryListingImage(listing, "card"),
-        status: listing.status,
-    }));
+    const safeListings = listings.map((listing) => {
+        const order = listing.purchases?.[0]?.order;
+        const serialized = serializeListing(listing);
+        return {
+            id: serialized.id,
+            title: serialized.title,
+            description: serialized.description,
+            price: serialized.price,
+            status: serialized.status,
+            moderation_status: serialized.moderation_status,
+            rejection_reason: serialized.rejection_reason,
+            image_url: getPrimaryListingImage(listing, "card"),
+            label_url: order?.label_url || null,
+        };
+    });
 
     return <SellPageClient isSellerInitially={user.seller_enabled} listings={safeListings} />;
 }

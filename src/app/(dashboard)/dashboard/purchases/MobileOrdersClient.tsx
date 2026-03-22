@@ -8,10 +8,15 @@ import { Heart, MoreHorizontal, ShoppingBag } from "lucide-react";
 type MobileOrderItem = {
     id: string;
     listing_id: string;
+    stripe_session_id?: string | null;
     amount: string | number;
     created_at: string;
-    status: "Processing" | "Completed" | "Pending" | "Dispute Open";
-    tab: "Active Orders" | "Completed" | "Pending" | "Disputes / Refunds";
+    status: string;
+    tab: "Active Orders" | "Completed" | "Disputes / Refunds";
+    tracking_number?: string | null;
+    carrier?: string | null;
+    shipping_stage?: string;
+    has_shipping_address?: boolean;
     listing: {
         image_url: string;
         title: string;
@@ -23,11 +28,10 @@ type MobileOrderItem = {
     };
 };
 
-const orderTabs = ["Active Orders", "Completed", "Pending", "Disputes / Refunds"] as const;
+const orderTabs = ["Active Orders", "Completed", "Disputes / Refunds"] as const;
 const tabLabels: Record<(typeof orderTabs)[number], string> = {
     "Active Orders": "Active",
     "Completed": "Completed",
-    "Pending": "Pending",
     "Disputes / Refunds": "Disputes",
 };
 
@@ -72,14 +76,18 @@ export default function MobileOrdersClient({ orders }: { orders: MobileOrderItem
             ) : (
                 <div className="divide-y divide-border/60">
                     {filtered.map((order) => {
+                        const stage = order.shipping_stage || "ADDRESS_MISSING";
+                        const canResumeBuyerShippingFlow =
+                            (stage === "ADDRESS_MISSING" || stage === "ADDRESS_SET" || stage === "OPTION_SELECTED") &&
+                            !order.tracking_number &&
+                            !!order.stripe_session_id;
+                        const completeShippingHref = `/buy/success?session_id=${order.stripe_session_id}&listingId=${order.listing_id}`;
                         const statusClass =
-                            order.status === "Processing"
-                                ? "bg-[#eadfd2] text-foreground"
-                                : order.status === "Completed"
-                                    ? "bg-[#dde4d2] text-foreground"
-                                    : order.status === "Pending"
-                                        ? "bg-[#efe3d7] text-foreground"
-                                        : "bg-[#b5915f] text-white";
+                            order.status === "DELIVERED"
+                                ? "bg-green-100 text-green-700"
+                                : order.status === "CANCELLED" || order.status === "RETURNED"
+                                    ? "bg-red-100 text-red-700"
+                                    : "bg-blue-100 text-blue-700";
 
                         return (
                             <article key={order.id} className="py-3">
@@ -105,14 +113,50 @@ export default function MobileOrdersClient({ orders }: { orders: MobileOrderItem
                                             Order date: {new Date(order.created_at).toLocaleDateString(undefined, { month: "long", day: "numeric" })}
                                         </p>
                                         <p className="text-[0.95rem] text-muted-foreground">
-                                            Order number: #{order.id.slice(0, 5).toUpperCase()}
+                                            Order ID: #{order.id.slice(0, 5).toUpperCase()}
                                         </p>
+                                        {(order.tracking_number || order.carrier) && (
+                                            <p className="text-[0.95rem] font-medium text-foreground mt-1">
+                                                {order.carrier ? `${order.carrier} ` : ""}Tracking: {order.tracking_number || "Pending"}
+                                            </p>
+                                        )}
                                     </div>
                                 </div>
 
                                 <div className="mt-3 flex items-center gap-5 pt-2 text-[1.02rem] text-foreground">
-                                    <button type="button" className="text-left">Track Package</button>
-                                    <button type="button" className="text-left">Contact Seller</button>
+                                    {canResumeBuyerShippingFlow ? (
+                                        <div className="flex flex-wrap items-center gap-3">
+                                            <Link
+                                                href={completeShippingHref}
+                                                className="text-left font-medium text-primary hover:underline"
+                                            >
+                                                {stage === "ADDRESS_MISSING"
+                                                    ? "Complete Shipping Details"
+                                                    : stage === "ADDRESS_SET"
+                                                        ? "Select Shipping Option"
+                                                        : "Finalize Shipping Label"}
+                                            </Link>
+                                            {(stage === "ADDRESS_SET" || stage === "OPTION_SELECTED") ? (
+                                                <Link href={`${completeShippingHref}&edit=1`} className="text-left font-medium text-muted-foreground hover:underline">
+                                                    Edit Shipping Details
+                                                </Link>
+                                            ) : null}
+                                        </div>
+                                    ) : order.tracking_number ? (
+                                        <a
+                                            href={order.carrier === "USPS"
+                                                ? `https://tools.usps.com/go/TrackConfirmAction?tLabels=${order.tracking_number}`
+                                                : `https://google.com/search?q=${order.carrier}+tracking+${order.tracking_number}`}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="text-left font-medium hover:text-primary transition-colors"
+                                        >
+                                            Track Package
+                                        </a>
+                                    ) : (
+                                        <button type="button" className="text-left opacity-50 cursor-not-allowed" disabled>Track Package</button>
+                                    )}
+                                    <button type="button" className="text-left font-medium hover:text-primary transition-colors">Contact Seller</button>
                                     <button type="button" aria-label="More actions" className="ml-auto">
                                         <MoreHorizontal className="h-5 w-5 text-foreground/70" />
                                     </button>

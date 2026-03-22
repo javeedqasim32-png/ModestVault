@@ -13,6 +13,12 @@ model User {
   email              String   @unique
   password_hash      String
   phone              String?
+  street1            String?
+  street2            String?
+  city               String?
+  state              String?
+  zip                String?
+  country            String?
   profile_image      String?
   stripe_customer_id String?
   stripe_account_id  String?
@@ -25,27 +31,43 @@ model User {
   listings           Listing[]
   purchases          Purchase[] @relation("BuyerPurchases")
   cartItems          CartItem[]
+  favoriteItems      FavoriteItem[]
+  reviewedListings   Listing[]  @relation("ListingReviewer")
 }
 
 model Listing {
-  id          String   @id @default(uuid())
-  user_id     String
-  user        User     @relation(fields: [user_id], references: [id])
-  title       String
-  description String
-  price       Decimal
-  image_url   String
-  images      ListingImage[]
-  view_count  Int      @default(0)
-  category    String
-  condition   String?
-  brand       String?
-  size        String?
-  status      String   @default("AVAILABLE") // AVAILABLE, SOLD
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
-  purchases   Purchase[]
-  cartItems   CartItem[]
+  id                String    @id @default(uuid())
+  user_id           String
+  user              User      @relation(fields: [user_id], references: [id])
+  title             String
+  description       String
+  price             Decimal
+  image_url         String
+  images            ListingImage[]
+  view_count        Int       @default(0)
+  style             String
+  category          String
+  subcategory       String?
+  type              String?
+  condition         String?
+  brand             String?
+  size              String?
+  status            String    @default("AVAILABLE") // AVAILABLE, SOLD
+  moderation_status String    @default("PENDING")   // PENDING, APPROVED, REJECTED
+  reviewed_at       DateTime?
+  reviewed_by_id    String?
+  reviewedBy        User?     @relation("ListingReviewer", fields: [reviewed_by_id], references: [id])
+  rejection_reason  String?
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
+  purchases         Purchase[]
+  cartItems         CartItem[]
+  favoriteItems     FavoriteItem[]
+
+  @@index([status, moderation_status, created_at])
+  @@index([style, category, subcategory, type])
+  @@index([size])
+  @@index([price])
 }
 
 model PendingUser {
@@ -54,6 +76,13 @@ model PendingUser {
   last_name              String
   email                  String    @unique
   password_hash          String
+  phone                  String?
+  street1                String?
+  street2                String?
+  city                   String?
+  state                  String?
+  zip                    String?
+  country                String?
   verification_code_hash String
   code_expiry            DateTime
   attempt_count          Int       @default(0)
@@ -72,6 +101,31 @@ model Purchase {
   amount            Decimal
   stripe_session_id String?  @unique
   created_at        DateTime @default(now())
+  order             Order?
+}
+
+model Order {
+  id              String    @id @default(uuid())
+  purchase_id     String    @unique
+  purchase        Purchase  @relation(fields: [purchase_id], references: [id])
+  order_status    String    @default("PAID")         // PENDING, PAID, FULFILLED, CANCELLED, REFUNDED
+  shipping_status String    @default("NOT_SHIPPED")  // NOT_SHIPPED, PROCESSING, SHIPPED, DELIVERED, CANCELLED, RETURNED
+  shipping_stage  String    @default("ADDRESS_MISSING") // ADDRESS_MISSING, ADDRESS_SET, OPTION_SELECTED, LABEL_PURCHASED
+  shipping_address Json?
+  shipping_option_rate_id      String?
+  shipping_option_carrier      String?
+  shipping_option_service      String?
+  shipping_option_amount       String?
+  shipping_option_currency     String?
+  shipping_option_selected_at  DateTime?
+  carrier               String?
+  tracking_number       String?
+  shippo_transaction_id String?
+  label_url             String?
+  shipped_at            DateTime?
+  delivered_at          DateTime?
+  created_at            DateTime  @default(now())
+  updated_at            DateTime  @updatedAt
 }
 
 model ListingImage {
@@ -89,6 +143,18 @@ model ListingImage {
 }
 
 model CartItem {
+  id         String   @id @default(uuid())
+  user_id    String
+  listing_id String
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  listing    Listing  @relation(fields: [listing_id], references: [id], onDelete: Cascade)
+  created_at DateTime @default(now())
+
+  @@unique([user_id, listing_id])
+  @@index([user_id, created_at])
+}
+
+model FavoriteItem {
   id         String   @id @default(uuid())
   user_id    String
   listing_id String

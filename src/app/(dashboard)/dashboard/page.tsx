@@ -21,7 +21,10 @@ export default async function ProfileDashboard() {
         ])
         : [0, 0, 0];
 
+    const isAdmin = (session?.user as { isAdmin?: boolean })?.isAdmin;
+
     const cards = [
+        ...(isAdmin ? [{ label: "Admin Panel", value: "Manage marketplace", icon: ShieldCheck, href: "/admin/listings" }] : []),
         { label: "Orders", value: "Track purchases", icon: ShoppingBag, href: "/dashboard/purchases" },
         { label: "Sell", value: isSeller ? "Create listing" : "Become a seller", icon: Tag, href: "/sell" },
         { label: "Sales", value: "Manage sold items", icon: ArrowUpRight, href: "/dashboard/sales" },

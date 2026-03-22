@@ -1,7 +1,9 @@
+import React from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Heart, MoreHorizontal } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
+import FavoriteButton from "./FavoriteButton";
 
 type ListingCardProps = {
     href: string;
@@ -12,11 +14,13 @@ type ListingCardProps = {
     category?: string | null;
     condition?: string | null;
     status?: string | null;
-    sellerName?: string | null;
+    sellerName?: React.ReactNode;
     dateText?: string | null;
     featured?: boolean;
     compact?: boolean;
     showFullImage?: boolean;
+    listingId?: string;
+    isFavorited?: boolean;
 };
 
 export default function ListingCard({
@@ -33,19 +37,25 @@ export default function ListingCard({
     featured = false,
     compact = false,
     showFullImage = false,
+    listingId,
+    isFavorited = false,
 }: ListingCardProps) {
+    const imageFitClass = showFullImage ? "object-contain object-center" : "object-cover object-center";
+    const imageAspectClass = compact ? "aspect-square" : (showFullImage ? "aspect-[3/4]" : "aspect-square");
+    const imageBgClass = showFullImage ? "bg-transparent" : "bg-muted";
+
     return (
         <Link
             href={href}
             className={`group overflow-hidden rounded-[1.6rem] border border-border/80 bg-[linear-gradient(180deg,#faf5f2_0%,#f4eae3_100%)] shadow-[0_14px_36px_rgba(110,82,63,0.07)] ${featured ? "md:col-span-2" : ""}`}
         >
             <div className={`grid h-full ${featured ? "md:grid-cols-[0.95fr_1.05fr]" : ""}`}>
-                <div className={`relative bg-muted ${compact ? "min-h-[128px]" : "min-h-[270px]"}`}>
+                <div className={`relative overflow-hidden ${imageBgClass} ${imageAspectClass}`}>
                     <Image
                         src={imageUrl}
                         alt={title}
                         fill
-                        className={`${showFullImage ? "object-contain bg-card/60 p-1" : "object-cover object-top"} transition-transform duration-700 group-hover:scale-105`}
+                        className={`${imageFitClass} transition-transform duration-700 group-hover:scale-105`}
                         sizes="(max-width: 768px) 100vw, (max-width: 1280px) 50vw, 33vw"
                     />
                 </div>
@@ -70,7 +80,13 @@ export default function ListingCard({
                                     </Badge>
                                 ) : null}
                             </div>
-                            {compact ? <MoreHorizontal className="h-5 w-5 text-foreground/60" /> : <Heart className="h-5 w-5 text-foreground/70" />}
+                            {compact ? (
+                                <MoreHorizontal className="h-5 w-5 text-foreground/60" />
+                            ) : listingId ? (
+                                <FavoriteButton listingId={listingId} initialFavorited={isFavorited} />
+                            ) : (
+                                <Heart className="h-5 w-5 text-foreground/70" />
+                            )}
                         </div>
 
                         <h3 className="font-serif text-2xl leading-tight text-foreground sm:text-[1.9rem]">

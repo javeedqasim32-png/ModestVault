@@ -1,15 +1,15 @@
 "use server";
 
-import { DeleteObjectsCommand, ListObjectsV2Command, PutObjectCommand } from "@aws-sdk/client-s3";
 import { randomUUID } from "crypto";
 import sharp from "sharp";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { buildS3ImageUrl, getS3BucketName, s3 } from "@/lib/s3";
+import { buildS3ImageUrl, getS3BucketName, s3, uploadFile, deleteS3Directory } from "@/lib/s3";
 import { isStripeAccountReady } from "@/lib/stripe-connect";
 import { stripe } from "@/lib/stripe";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { validateListingTaxonomy } from "@/lib/taxonomyValidation";
 
 const MAX_LISTING_IMAGES = 6;
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
@@ -69,15 +69,7 @@ async function uploadImagesForListing({
         let thumbUrl: string | null = null;
         let mediumUrl: string | null = null;
 
-        await s3.send(
-            new PutObjectCommand({
-                Bucket: bucket,
-                Key: key,
-                Body: buffer,
-                ContentType: image.type || "application/octet-stream",
-                CacheControl: "public, max-age=31536000, immutable",
-            })
-        );
+        await uploadFile(buffer, key, image.type || "application/octet-stream", bucket);
 
         try {
             const thumbBuffer = await sharp(buffer)
@@ -86,15 +78,7 @@ async function uploadImagesForListing({
                 .webp({ quality: 78, effort: 4 })
                 .toBuffer();
 
-            await s3.send(
-                new PutObjectCommand({
-                    Bucket: bucket,
-                    Key: thumbKey,
-                    Body: thumbBuffer,
-                    ContentType: "image/webp",
-                    CacheControl: "public, max-age=31536000, immutable",
-                })
-            );
+            await uploadFile(thumbBuffer, thumbKey, "image/webp", bucket);
             thumbUrl = buildS3ImageUrl(thumbKey, bucket);
         } catch (error) {
             console.warn(`Thumb generation/upload failed for listing ${listingId} image ${imageId}:`, error);
@@ -107,15 +91,7 @@ async function uploadImagesForListing({
                 .webp({ quality: 82, effort: 4 })
                 .toBuffer();
 
-            await s3.send(
-                new PutObjectCommand({
-                    Bucket: bucket,
-                    Key: mediumKey,
-                    Body: mediumBuffer,
-                    ContentType: "image/webp",
-                    CacheControl: "public, max-age=31536000, immutable",
-                })
-            );
+            await uploadFile(mediumBuffer, mediumKey, "image/webp", bucket);
             mediumUrl = buildS3ImageUrl(mediumKey, bucket);
         } catch (error) {
             console.warn(`Medium generation/upload failed for listing ${listingId} image ${imageId}:`, error);
@@ -145,14 +121,17 @@ export async function createListing(formData: FormData) {
     const title = formData.get("title") as string;
     const description = formData.get("description") as string;
     const priceStr = formData.get("price") as string;
+    const style = formData.get("style") as string;
     const category = formData.get("category") as string;
+    const subcategoryRaw = formData.get("subcategory") as string;
+    const typeRaw = formData.get("type") as string;
     const condition = formData.get("condition") as string;
     const brand = formData.get("brand") as string;
     const size = formData.get("size") as string;
     const images = extractImagesFromFormData(formData);
 
-    if (!title || !description || !priceStr || !category || images.length === 0) {
-        return { error: "Title, description, price, category, and at least one image are required." };
+    if (!title || !description || !priceStr || !style || !category || images.length === 0) {
+        return { error: "Title, description, price, style, category, and at least one image are required." };
     }
 
     if (images.length > MAX_LISTING_IMAGES) {
@@ -168,6 +147,16 @@ export async function createListing(formData: FormData) {
     const price = parseFloat(priceStr);
     if (isNaN(price) || price <= 0) {
         return { error: "Please enter a valid price." };
+    }
+
+    const taxonomyValidation = validateListingTaxonomy({
+        style,
+        category,
+        subcategory: subcategoryRaw,
+        type: typeRaw,
+    });
+    if (!taxonomyValidation.ok) {
+        return { error: taxonomyValidation.message };
     }
 
     try {
@@ -224,12 +213,16 @@ export async function createListing(formData: FormData) {
                     title,
                     description,
                     price,
-                    category,
+                    style: taxonomyValidation.normalized.style,
+                    category: taxonomyValidation.normalized.category,
+                    subcategory: taxonomyValidation.normalized.subcategory,
+                    type: taxonomyValidation.normalized.type,
                     condition: condition || null,
                     brand: brand || null,
                     size: size || null,
                     image_url: coverImage,
                     status: "AVAILABLE",
+                    moderation_status: "PENDING",
                 }
             });
 
@@ -250,8 +243,8 @@ export async function createListing(formData: FormData) {
         return { error: "An unexpected error occurred while creating the listing." };
     }
 
-    // Redirect upon successful creation to the sell page
-    redirect("/sell");
+    // Return success to the client instead of redirecting because redirect throws an error
+    return { success: true };
 }
 
 /**
@@ -361,35 +354,8 @@ export async function deleteListing(listingId: string) {
     const prefix = `listings/${listingId}/`;
 
     try {
-        let continuationToken: string | undefined;
         try {
-            do {
-                const listed = await s3.send(
-                    new ListObjectsV2Command({
-                        Bucket: bucket,
-                        Prefix: prefix,
-                        ContinuationToken: continuationToken,
-                    })
-                );
-
-                const keys = (listed.Contents ?? [])
-                    .map((obj) => obj.Key)
-                    .filter((key): key is string => Boolean(key));
-
-                if (keys.length > 0) {
-                    await s3.send(
-                        new DeleteObjectsCommand({
-                            Bucket: bucket,
-                            Delete: {
-                                Objects: keys.map((key) => ({ Key: key })),
-                                Quiet: true,
-                            },
-                        })
-                    );
-                }
-
-                continuationToken = listed.IsTruncated ? listed.NextContinuationToken : undefined;
-            } while (continuationToken);
+            await deleteS3Directory(prefix, bucket);
         } catch (s3Error) {
             console.error("Failed to delete images from S3 for listing:", listingId, s3Error);
             // Non-fatal, proceed with database deletion so the user isn't blocked
