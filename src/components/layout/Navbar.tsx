@@ -4,7 +4,6 @@ import { getCartCountForSessionUser } from "@/app/actions/cart";
 import { getFavoriteCountForSessionUser } from "@/app/actions/favorites";
 import { Heart, Search, ShoppingBag } from "lucide-react";
 import Image from "next/image";
-import LogoutButton from "@/components/auth/LogoutButton";
 
 export default async function Navbar() {
     const session = await auth();
@@ -67,7 +66,9 @@ export default async function Navbar() {
                     )}
                     <div className="hidden border-l border-border/80 pl-3 sm:block">
                         {session?.user ? (
-                            <LogoutButton />
+                            <Link href="/logout" className="rounded-full px-4 py-2 text-sm text-muted-foreground hover:bg-secondary hover:text-foreground">
+                                Log out
+                            </Link>
                         ) : (
                             <Link href="/sell" className="rounded-full px-4 py-2 text-sm text-muted-foreground hover:bg-secondary hover:text-foreground">
                                 Sell
