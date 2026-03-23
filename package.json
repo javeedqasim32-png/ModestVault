@@ -7,6 +7,14 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "prisma:validate": "prisma validate",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate:dev": "prisma migrate dev",
+    "prisma:migrate:deploy": "prisma migrate deploy",
+    "prisma:status": "prisma migrate status",
+    "seed:dev": "node src/scripts/create_test_listings.js",
+    "deploy:prod": "bash scripts/deploy-prod.sh",
+    "preflight": "npm run prisma:validate && npm run build",
     "postinstall": "prisma generate"
   },
   "dependencies": {
