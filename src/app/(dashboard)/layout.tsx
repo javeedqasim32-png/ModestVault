@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 import Link from "next/link";
 import { CirclePlus, Heart, House, LayoutDashboard, LogOut, Settings, ShoppingBag, TrendingUp, Wallet } from "lucide-react";
-import { auth, signOut } from "@/auth";
+import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
@@ -53,20 +53,13 @@ export default async function DashboardLayout({ children }: { children: ReactNod
                     </nav>
 
                     <div className="border-t border-border/80 px-4 py-5">
-                        <form
-                            action={async () => {
-                                "use server";
-                                await signOut();
-                            }}
+                        <a
+                            href="/logout"
+                            className="flex w-full items-center gap-4 rounded-2xl px-4 py-4 text-left text-[1.08rem] text-foreground/85 hover:bg-background hover:text-foreground"
                         >
-                            <button
-                                type="submit"
-                                className="flex w-full items-center gap-4 rounded-2xl px-4 py-4 text-left text-[1.08rem] text-foreground/85 hover:bg-background hover:text-foreground"
-                            >
-                                <LogOut className="h-5 w-5 text-primary" />
-                                Log Out
-                            </button>
-                        </form>
+                            <LogOut className="h-5 w-5 text-primary" />
+                            Log Out
+                        </a>
                     </div>
                 </aside>
 
