@@ -14,6 +14,7 @@ function LoginForm() {
     const [loading, setLoading] = useState(false);
 
     const registered = searchParams.get("registered");
+    const loggedOut = searchParams.get("loggedOut");
     const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
 
     async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -40,7 +41,7 @@ function LoginForm() {
                 router.push(callbackUrl);
                 router.refresh();
             }
-        } catch (err) {
+        } catch {
             setError("An unexpected error occurred");
             setLoading(false);
         }
@@ -60,6 +61,12 @@ function LoginForm() {
             {registered && (
                 <div className="bg-green-50 text-green-800 text-sm p-4 border border-green-200 text-center">
                     Account created successfully. Please sign in.
+                </div>
+            )}
+
+            {loggedOut && (
+                <div className="bg-green-50 text-green-800 text-sm p-4 border border-green-200 text-center">
+                    You have been logged out.
                 </div>
             )}
 
