@@ -66,9 +66,9 @@ export default async function Navbar() {
                     )}
                     <div className="hidden border-l border-border/80 pl-3 sm:block">
                         {session?.user ? (
-                            <Link href="/logout" className="rounded-full px-4 py-2 text-sm text-muted-foreground hover:bg-secondary hover:text-foreground">
+                            <a href="/logout" className="rounded-full px-4 py-2 text-sm text-muted-foreground hover:bg-secondary hover:text-foreground">
                                 Log out
-                            </Link>
+                            </a>
                         ) : (
                             <Link href="/sell" className="rounded-full px-4 py-2 text-sm text-muted-foreground hover:bg-secondary hover:text-foreground">
                                 Sell
