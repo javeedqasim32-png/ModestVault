@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
-  const response = NextResponse.redirect(new URL("/login?loggedOut=1", request.url));
+  const redirectBase =
+    process.env.AUTH_URL ||
+    process.env.NEXTAUTH_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    request.url;
+  const response = NextResponse.redirect(new URL("/login?loggedOut=1", redirectBase));
 
   // Clear common Auth.js / NextAuth session cookies for both secure and non-secure setups.
   const cookieNames = [
