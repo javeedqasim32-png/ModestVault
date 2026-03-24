@@ -14,6 +14,10 @@ import { validateListingTaxonomy } from "@/lib/taxonomyValidation";
 const MAX_LISTING_IMAGES = 6;
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
+function logCreateListingReject(reason: string, details?: Record<string, unknown>) {
+    console.error("[createListing] rejected:", reason, details ?? {});
+}
+
 function extractImagesFromFormData(formData: FormData) {
     const files = formData
         .getAll("images")
@@ -115,6 +119,7 @@ async function uploadImagesForListing({
 export async function createListing(formData: FormData) {
     const session = await auth();
     if (!session?.user?.id) {
+        logCreateListingReject("unauthenticated");
         return { error: "You must be logged in to create a listing." };
     }
 
@@ -131,21 +136,37 @@ export async function createListing(formData: FormData) {
     const images = extractImagesFromFormData(formData);
 
     if (!title || !description || !priceStr || !style || !category || images.length === 0) {
+        logCreateListingReject("missing_required_fields", {
+            userId: session.user.id,
+            hasTitle: Boolean(title),
+            hasDescription: Boolean(description),
+            hasPrice: Boolean(priceStr),
+            hasStyle: Boolean(style),
+            hasCategory: Boolean(category),
+            imageCount: images.length,
+        });
         return { error: "Title, description, price, style, category, and at least one image are required." };
     }
 
     if (images.length > MAX_LISTING_IMAGES) {
+        logCreateListingReject("too_many_images", { userId: session.user.id, imageCount: images.length });
         return { error: "You can upload a maximum of 6 images per listing." };
     }
 
     for (const image of images) {
         if (!ALLOWED_IMAGE_TYPES.has(image.type)) {
+            logCreateListingReject("invalid_image_type", {
+                userId: session.user.id,
+                imageType: image.type,
+                imageName: image.name,
+            });
             return { error: "Only JPEG, PNG, WEBP, and GIF images are allowed." };
         }
     }
 
     const price = parseFloat(priceStr);
     if (isNaN(price) || price <= 0) {
+        logCreateListingReject("invalid_price", { userId: session.user.id, rawPrice: priceStr });
         return { error: "Please enter a valid price." };
     }
 
@@ -156,6 +177,14 @@ export async function createListing(formData: FormData) {
         type: typeRaw,
     });
     if (!taxonomyValidation.ok) {
+        logCreateListingReject("invalid_taxonomy", {
+            userId: session.user.id,
+            style,
+            category,
+            subcategory: subcategoryRaw,
+            type: typeRaw,
+            message: taxonomyValidation.message,
+        });
         return { error: taxonomyValidation.message };
     }
 
@@ -166,6 +195,7 @@ export async function createListing(formData: FormData) {
         });
 
         if (!user?.stripe_account_id) {
+            logCreateListingReject("missing_stripe_account", { userId: session.user.id });
             return { error: "Your seller account is not fully activated with Stripe." };
         }
 
@@ -193,6 +223,7 @@ export async function createListing(formData: FormData) {
         // 2. Upload image to S3
         const bucket = getS3BucketName();
         if (!bucket) {
+            logCreateListingReject("missing_s3_bucket", { userId: session.user.id });
             return { error: "S3 bucket is not configured. Set AWS_S3_BUCKET_NAME." };
         }
 
@@ -201,6 +232,7 @@ export async function createListing(formData: FormData) {
 
         const coverImage = listingImages[0]?.imageUrl;
         if (!coverImage) {
+            logCreateListingReject("no_cover_image", { userId: session.user.id, listingId });
             return { error: "No valid image was uploaded." };
         }
 
@@ -239,7 +271,11 @@ export async function createListing(formData: FormData) {
         });
 
     } catch (error) {
-        console.error("Create listing error:", error);
+        console.error("Create listing error:", {
+            userId: session.user.id,
+            message: error instanceof Error ? error.message : String(error),
+            error,
+        });
         return { error: "An unexpected error occurred while creating the listing." };
     }
 

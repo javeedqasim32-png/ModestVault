@@ -256,8 +256,9 @@ export default function SellPageClient({ isSellerInitially, listings }: SellPage
                         setTaxonomyErrors({});
                         router.refresh();
                     }
-                } catch {
-                    setError("An unexpected error occurred.");
+                } catch (err) {
+                    console.error("Create listing submit failed:", err);
+                    setError(err instanceof Error ? err.message : "An unexpected error occurred.");
                 } finally {
                     setLoading(false);
                 }
