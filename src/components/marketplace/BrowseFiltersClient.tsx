@@ -111,6 +111,7 @@ export default function BrowseFiltersClient({
 }) {
     const router = useRouter();
     const panelRef = useRef<HTMLDivElement | null>(null);
+    const toggleButtonRef = useRef<HTMLButtonElement | null>(null);
     const [panelOpen, setPanelOpen] = useState(false);
     const [openDropdown, setOpenDropdown] = useState<DropdownKey>(null);
     const [draft, setDraft] = useState<ListingBrowseFilters>(appliedFilters);
@@ -138,7 +139,11 @@ export default function BrowseFiltersClient({
         if (!panelOpen) return;
 
         const handlePointerDown = (event: MouseEvent) => {
-            if (panelRef.current && !panelRef.current.contains(event.target as Node)) {
+            const target = event.target as Node;
+            if (toggleButtonRef.current?.contains(target)) {
+                return;
+            }
+            if (panelRef.current && !panelRef.current.contains(target)) {
                 setPanelOpen(false);
                 setOpenDropdown(null);
             }
@@ -197,6 +202,7 @@ export default function BrowseFiltersClient({
                     />
                 </div>
                 <button
+                    ref={toggleButtonRef}
                     type="button"
                     onClick={() => {
                         setPanelOpen((prev) => !prev);

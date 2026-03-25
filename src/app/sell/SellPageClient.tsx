@@ -35,6 +35,94 @@ type SellPageClientProps = {
 const tabs = ["LISTINGS", "APPROVED", "PENDING", "REJECTED"] as const;
 const styleOptions = getStyles();
 const categoryOptions = getCategories();
+const MAX_IMAGES = 6;
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_TOTAL_IMAGE_BYTES = 18 * 1024 * 1024;
+const COMPRESSIBLE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MAX_OPTIMIZED_DIMENSION = 2000;
+
+function replaceFileExtension(filename: string, nextExt: string) {
+    const cleanName = filename.replace(/\.[^/.]+$/, "");
+    return `${cleanName}.${nextExt}`;
+}
+
+async function loadImageFromFile(file: File): Promise<HTMLImageElement> {
+    const objectUrl = URL.createObjectURL(file);
+    const image = new window.Image();
+    image.src = objectUrl;
+    try {
+        if (typeof image.decode === "function") {
+            await image.decode();
+        } else {
+            await new Promise<void>((resolve, reject) => {
+                image.onload = () => resolve();
+                image.onerror = () => reject(new Error(`Unable to load image "${file.name}"`));
+            });
+        }
+        return image;
+    } finally {
+        URL.revokeObjectURL(objectUrl);
+    }
+}
+
+async function canvasToWebpBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
+    const blob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob((output) => resolve(output), "image/webp", quality);
+    });
+    if (!blob) {
+        throw new Error("Failed to encode image.");
+    }
+    return blob;
+}
+
+async function optimizeImageFile(file: File): Promise<File> {
+    if (!COMPRESSIBLE_TYPES.has(file.type)) {
+        return file;
+    }
+
+    try {
+        const image = await loadImageFromFile(file);
+        const maxSide = Math.max(image.naturalWidth, image.naturalHeight);
+        const ratio = maxSide > MAX_OPTIMIZED_DIMENSION ? MAX_OPTIMIZED_DIMENSION / maxSide : 1;
+        const width = Math.max(1, Math.round(image.naturalWidth * ratio));
+        const height = Math.max(1, Math.round(image.naturalHeight * ratio));
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext("2d");
+        if (!context) {
+            return file;
+        }
+
+        context.imageSmoothingEnabled = true;
+        context.imageSmoothingQuality = "high";
+        context.drawImage(image, 0, 0, width, height);
+
+        const qualitySteps = [0.88, 0.82, 0.76, 0.7];
+        let bestBlob: Blob | null = null;
+        for (const quality of qualitySteps) {
+            const attempt = await canvasToWebpBlob(canvas, quality);
+            bestBlob = attempt;
+            if (attempt.size <= MAX_IMAGE_BYTES) {
+                break;
+            }
+        }
+
+        if (!bestBlob || bestBlob.size >= file.size) {
+            return file;
+        }
+
+        return new File(
+            [bestBlob],
+            replaceFileExtension(file.name || "upload", "webp"),
+            { type: "image/webp", lastModified: Date.now() }
+        );
+    } catch (error) {
+        console.warn("Image optimization skipped:", error);
+        return file;
+    }
+}
 
 export default function SellPageClient({ isSellerInitially, listings }: SellPageClientProps) {
     const router = useRouter();
@@ -115,7 +203,7 @@ export default function SellPageClient({ isSellerInitially, listings }: SellPage
         }
     }
 
-    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files ?? []);
         setError(""); // Clear previous errors
 
@@ -124,16 +212,27 @@ export default function SellPageClient({ isSellerInitially, listings }: SellPage
             return;
         }
 
-        const oversized = files.find((file) => file.size > 10 * 1024 * 1024);
-        if (oversized) {
-            setError("One or more images are larger than 10MB.");
+        if (selectedFiles.length >= MAX_IMAGES) {
+            setError("You can upload a maximum of 6 images.");
             e.target.value = "";
             return;
         }
 
         const merged = [...selectedFiles];
 
-        for (const file of files) {
+        for (const rawFile of files) {
+            const file = await optimizeImageFile(rawFile);
+            if (!COMPRESSIBLE_TYPES.has(file.type) && file.size > MAX_IMAGE_BYTES) {
+                setError(`"${rawFile.name}" is larger than 10MB. Please choose a smaller file.`);
+                e.target.value = "";
+                return;
+            }
+            if (file.size > MAX_IMAGE_BYTES) {
+                setError(`"${rawFile.name}" is still larger than 10MB after optimization.`);
+                e.target.value = "";
+                return;
+            }
+
             const duplicate = merged.some(
                 (existing) =>
                     existing.name === file.name &&
@@ -143,10 +242,17 @@ export default function SellPageClient({ isSellerInitially, listings }: SellPage
             if (!duplicate) {
                 merged.push(file);
             }
+
+            if (merged.length > MAX_IMAGES) {
+                setError("You can upload a maximum of 6 images.");
+                e.target.value = "";
+                return;
+            }
         }
 
-        if (merged.length > 6) {
-            setError("You can upload a maximum of 6 images.");
+        const totalImageBytes = merged.reduce((total, file) => total + file.size, 0);
+        if (totalImageBytes > MAX_TOTAL_IMAGE_BYTES) {
+            setError("Total image upload size is too large. Please keep all images under 18MB combined.");
             e.target.value = "";
             return;
         }
@@ -300,7 +406,7 @@ export default function SellPageClient({ isSellerInitially, listings }: SellPage
                                         type="button"
                                         variant="outline"
                                         onClick={() => fileInputRef.current?.click()}
-                                        disabled={selectedFiles.length >= 6}
+                                        disabled={selectedFiles.length >= MAX_IMAGES}
                                     >
                                         Add More Photos
                                     </Button>
@@ -311,7 +417,7 @@ export default function SellPageClient({ isSellerInitially, listings }: SellPage
                                 <UploadCloud className="w-10 h-10 text-muted-foreground mb-4" />
                                 <h3 className="text-sm font-medium text-foreground mb-1">Upload photos</h3>
                                 <p className="text-xs text-muted-foreground">
-                                    Add up to 6 images.
+                                    Add up to 6 images. We optimize photos automatically without cropping.
                                 </p>
                                 <Button
                                     type="button"

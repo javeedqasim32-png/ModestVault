@@ -12,6 +12,8 @@ import { revalidatePath } from "next/cache";
 import { validateListingTaxonomy } from "@/lib/taxonomyValidation";
 
 const MAX_LISTING_IMAGES = 6;
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_TOTAL_IMAGE_BYTES = 18 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
 function logCreateListingReject(reason: string, details?: Record<string, unknown>) {
@@ -153,6 +155,16 @@ export async function createListing(formData: FormData) {
         return { error: "You can upload a maximum of 6 images per listing." };
     }
 
+    const totalImageBytes = images.reduce((total, image) => total + image.size, 0);
+    if (totalImageBytes > MAX_TOTAL_IMAGE_BYTES) {
+        logCreateListingReject("total_image_size_too_large", {
+            userId: session.user.id,
+            totalImageBytes,
+            maxBytes: MAX_TOTAL_IMAGE_BYTES,
+        });
+        return { error: "Total image upload size is too large. Please keep all images under 18MB combined." };
+    }
+
     for (const image of images) {
         if (!ALLOWED_IMAGE_TYPES.has(image.type)) {
             logCreateListingReject("invalid_image_type", {
@@ -161,6 +173,15 @@ export async function createListing(formData: FormData) {
                 imageName: image.name,
             });
             return { error: "Only JPEG, PNG, WEBP, and GIF images are allowed." };
+        }
+        if (image.size > MAX_IMAGE_BYTES) {
+            logCreateListingReject("image_size_too_large", {
+                userId: session.user.id,
+                imageName: image.name,
+                imageSize: image.size,
+                maxBytes: MAX_IMAGE_BYTES,
+            });
+            return { error: "One or more images are larger than 10MB." };
         }
     }
 
@@ -304,9 +325,16 @@ export async function replaceListingImages(listingId: string, formData: FormData
     if (images.length > MAX_LISTING_IMAGES) {
         return { error: "You can upload a maximum of 6 images per listing." };
     }
+    const totalImageBytes = images.reduce((total, image) => total + image.size, 0);
+    if (totalImageBytes > MAX_TOTAL_IMAGE_BYTES) {
+        return { error: "Total image upload size is too large. Please keep all images under 18MB combined." };
+    }
     for (const image of images) {
         if (!ALLOWED_IMAGE_TYPES.has(image.type)) {
             return { error: "Only JPEG, PNG, WEBP, and GIF images are allowed." };
+        }
+        if (image.size > MAX_IMAGE_BYTES) {
+            return { error: "One or more images are larger than 10MB." };
         }
     }
 
