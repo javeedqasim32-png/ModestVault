@@ -112,15 +112,32 @@ export default function BrowseFiltersClient({
     const router = useRouter();
     const panelRef = useRef<HTMLDivElement | null>(null);
     const toggleButtonRef = useRef<HTMLButtonElement | null>(null);
+    const normalizedAppliedFilters: ListingBrowseFilters = {
+        search: appliedFilters?.search ?? "",
+        styles: Array.isArray(appliedFilters?.styles) ? appliedFilters.styles : [],
+        categories: Array.isArray(appliedFilters?.categories) ? appliedFilters.categories : [],
+        subcategories: Array.isArray(appliedFilters?.subcategories) ? appliedFilters.subcategories : [],
+        types: Array.isArray(appliedFilters?.types) ? appliedFilters.types : [],
+        sizes: Array.isArray(appliedFilters?.sizes) ? appliedFilters.sizes : [],
+        minPrice: typeof appliedFilters?.minPrice === "number" ? appliedFilters.minPrice : undefined,
+        maxPrice: typeof appliedFilters?.maxPrice === "number" ? appliedFilters.maxPrice : undefined,
+    };
+    const normalizedAvailableOptions: ListingFilterOptionSets = {
+        styles: Array.isArray(availableOptions?.styles) ? availableOptions.styles : [],
+        categories: Array.isArray(availableOptions?.categories) ? availableOptions.categories : [],
+        subcategories: Array.isArray(availableOptions?.subcategories) ? availableOptions.subcategories : [],
+        types: Array.isArray(availableOptions?.types) ? availableOptions.types : [],
+        sizes: Array.isArray(availableOptions?.sizes) ? availableOptions.sizes : [],
+    };
     const [panelOpen, setPanelOpen] = useState(false);
     const [openDropdown, setOpenDropdown] = useState<DropdownKey>(null);
-    const [draft, setDraft] = useState<ListingBrowseFilters>(appliedFilters);
-    const [sliderMin, setSliderMin] = useState<number>(appliedFilters.minPrice ?? PRICE_MIN);
-    const [sliderMax, setSliderMax] = useState<number>(appliedFilters.maxPrice ?? PRICE_MAX);
+    const [draft, setDraft] = useState<ListingBrowseFilters>(normalizedAppliedFilters);
+    const [sliderMin, setSliderMin] = useState<number>(normalizedAppliedFilters.minPrice ?? PRICE_MIN);
+    const [sliderMax, setSliderMax] = useState<number>(normalizedAppliedFilters.maxPrice ?? PRICE_MAX);
 
-    const hasApplied = hasActiveBrowseFilters(appliedFilters);
-    const inventorySubcategories = useMemo(() => new Set(availableOptions.subcategories), [availableOptions.subcategories]);
-    const inventoryTypes = useMemo(() => new Set(availableOptions.types), [availableOptions.types]);
+    const hasApplied = hasActiveBrowseFilters(normalizedAppliedFilters);
+    const inventorySubcategories = useMemo(() => new Set(normalizedAvailableOptions.subcategories), [normalizedAvailableOptions.subcategories]);
+    const inventoryTypes = useMemo(() => new Set(normalizedAvailableOptions.types), [normalizedAvailableOptions.types]);
 
     const subcategoryOptions = useMemo(() => {
         if (draft.categories.length === 0) return [];
@@ -182,11 +199,11 @@ export default function BrowseFiltersClient({
     };
 
     const filterCountSummary = [
-        { label: "Styles", value: appliedFilters.styles.length },
-        { label: "Categories", value: appliedFilters.categories.length },
-        { label: "Subcategories", value: appliedFilters.subcategories.length },
-        { label: "Types", value: appliedFilters.types.length },
-        { label: "Sizes", value: appliedFilters.sizes.length },
+        { label: "Styles", value: normalizedAppliedFilters.styles.length },
+        { label: "Categories", value: normalizedAppliedFilters.categories.length },
+        { label: "Subcategories", value: normalizedAppliedFilters.subcategories.length },
+        { label: "Types", value: normalizedAppliedFilters.types.length },
+        { label: "Sizes", value: normalizedAppliedFilters.sizes.length },
     ].filter((item) => item.value > 0);
 
     return (
@@ -225,15 +242,15 @@ export default function BrowseFiltersClient({
                                 : "Search/price filters applied."}
                         </p>
                         <div className="flex flex-wrap gap-2">
-                            {appliedFilters.search ? <Badge variant="outline">Search: {appliedFilters.search}</Badge> : null}
-                            {appliedFilters.styles.map((item) => <Badge key={`style-${item}`} variant="secondary">{item}</Badge>)}
-                            {appliedFilters.categories.map((item) => <Badge key={`cat-${item}`} variant="secondary">{item}</Badge>)}
-                            {appliedFilters.subcategories.map((item) => <Badge key={`sub-${item}`} variant="secondary">{item}</Badge>)}
-                            {appliedFilters.types.map((item) => <Badge key={`type-${item}`} variant="secondary">{item}</Badge>)}
-                            {appliedFilters.sizes.map((item) => <Badge key={`size-${item}`} variant="secondary">{item}</Badge>)}
-                            {typeof appliedFilters.minPrice === "number" || typeof appliedFilters.maxPrice === "number" ? (
+                            {normalizedAppliedFilters.search ? <Badge variant="outline">Search: {normalizedAppliedFilters.search}</Badge> : null}
+                            {normalizedAppliedFilters.styles.map((item) => <Badge key={`style-${item}`} variant="secondary">{item}</Badge>)}
+                            {normalizedAppliedFilters.categories.map((item) => <Badge key={`cat-${item}`} variant="secondary">{item}</Badge>)}
+                            {normalizedAppliedFilters.subcategories.map((item) => <Badge key={`sub-${item}`} variant="secondary">{item}</Badge>)}
+                            {normalizedAppliedFilters.types.map((item) => <Badge key={`type-${item}`} variant="secondary">{item}</Badge>)}
+                            {normalizedAppliedFilters.sizes.map((item) => <Badge key={`size-${item}`} variant="secondary">{item}</Badge>)}
+                            {typeof normalizedAppliedFilters.minPrice === "number" || typeof normalizedAppliedFilters.maxPrice === "number" ? (
                                 <Badge variant="outline">
-                                    Price: ${appliedFilters.minPrice ?? PRICE_MIN} - ${appliedFilters.maxPrice ?? PRICE_MAX}
+                                    Price: ${normalizedAppliedFilters.minPrice ?? PRICE_MIN} - ${normalizedAppliedFilters.maxPrice ?? PRICE_MAX}
                                 </Badge>
                             ) : null}
                         </div>
@@ -265,7 +282,7 @@ export default function BrowseFiltersClient({
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                         <MultiSelectDropdown
                             label="Style"
-                            values={availableOptions.styles}
+                            values={normalizedAvailableOptions.styles}
                             selected={draft.styles}
                             open={openDropdown === "style"}
                             onToggle={() => setOpenDropdown((prev) => (prev === "style" ? null : "style"))}
@@ -273,7 +290,7 @@ export default function BrowseFiltersClient({
                         />
                         <MultiSelectDropdown
                             label="Category"
-                            values={availableOptions.categories}
+                            values={normalizedAvailableOptions.categories}
                             selected={draft.categories}
                             open={openDropdown === "category"}
                             onToggle={() => setOpenDropdown((prev) => (prev === "category" ? null : "category"))}
@@ -329,7 +346,7 @@ export default function BrowseFiltersClient({
                         ) : null}
                         <MultiSelectDropdown
                             label="Size"
-                            values={availableOptions.sizes}
+                            values={normalizedAvailableOptions.sizes}
                             selected={draft.sizes}
                             open={openDropdown === "size"}
                             onToggle={() => setOpenDropdown((prev) => (prev === "size" ? null : "size"))}
