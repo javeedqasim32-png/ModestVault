@@ -14,10 +14,15 @@ export default async function SettingsPage() {
         return <div className="p-8 text-destructive">Failed to load profile.</div>;
     }
 
+    const initials = `${res.user.first_name?.[0] ?? ""}${res.user.last_name?.[0] ?? ""}`.toUpperCase() || "M";
+
     return (
-        <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-            <h1 className="text-3xl font-serif font-bold text-foreground mb-8">Settings</h1>
-            <AddressSettingsForm userId={session.user.id} initialData={res.user} />
+        <div className="profile-scroll">
+            <div className="profile-inner py-6 sm:py-8">
+                <div className="profile-avatar">{initials}</div>
+                <h1 className="profile-section-title mt-4 text-center !px-0">Profile Settings</h1>
+                <AddressSettingsForm userId={session.user.id} initialData={res.user} />
+            </div>
         </div>
     );
 }

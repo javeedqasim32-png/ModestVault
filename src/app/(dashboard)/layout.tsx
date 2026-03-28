@@ -23,8 +23,8 @@ export default async function DashboardLayout({ children }: { children: ReactNod
     ];
 
     return (
-        <div className="flex-1 w-full px-0 py-0 sm:px-6 sm:py-6 lg:px-8">
-            <div className="mx-auto flex min-h-[calc(100vh-11rem)] w-full max-w-[1360px] overflow-hidden bg-card sm:rounded-[2rem] sm:border sm:border-border/80 sm:shadow-[0_35px_80px_rgba(114,86,67,0.10)]">
+        <div className="flex-1 w-full bg-[#f4efea] px-0 py-0 sm:px-6 sm:py-6 lg:px-8">
+            <div className="mx-auto flex min-h-[calc(100vh-11rem)] w-full max-w-[1360px] overflow-hidden bg-[#f4efea] sm:rounded-[2rem] sm:border sm:border-border/80 sm:shadow-[0_35px_80px_rgba(114,86,67,0.10)]">
                 <aside className="hidden w-[310px] shrink-0 border-r border-border/80 bg-[linear-gradient(180deg,#f8f3f0_0%,#f1e7e1_100%)] lg:flex lg:flex-col">
                     <div className="border-b border-border/80 px-8 py-10">
                         <div className="mb-8 flex items-center gap-3">
@@ -63,7 +63,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
                     </div>
                 </aside>
 
-                <main className="flex-1 bg-card">
+                <main className="flex-1 bg-[#f4efea]">
                     <div className="min-h-[600px] p-0 sm:p-5 md:p-8">
                         {children}
                     </div>

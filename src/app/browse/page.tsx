@@ -40,11 +40,16 @@ export default async function BrowsePage({
     const params = await searchParams;
     const parsedFilters = parseBrowseFilters(params);
     const filters = normalizePriceRange(parsedFilters);
+    
+    const sort = Array.isArray(params.sort) ? params.sort[0] : params.sort;
+    const orderBy = sort === "views" 
+        ? [{ view_count: "desc" }, { created_at: "desc" }] as any
+        : { created_at: "desc" };
 
     const [filteredListings, availableListings] = await Promise.all([
         prisma.listing.findMany({
             where: buildListingBrowseWhere(filters),
-            orderBy: { created_at: "desc" },
+            orderBy,
             include: {
                 images: {
                     orderBy: { imageOrder: "asc" },
@@ -83,7 +88,7 @@ export default async function BrowsePage({
 
     return (
         <>
-            <div className="min-h-screen bg-[#f7f3ef] px-4 pb-28 pt-3 sm:hidden">
+            <div className="min-h-screen bg-[#f4efea] px-4 pb-28 pt-3 sm:hidden">
                 <BrowseFiltersClient appliedFilters={filters} availableOptions={availableOptions} />
 
                 {listingsWithCover.length === 0 ? (
@@ -117,8 +122,8 @@ export default async function BrowsePage({
                 )}
             </div>
 
-            <div className="hidden px-4 py-6 sm:block sm:px-6 lg:px-8">
-                <div className="mx-auto flex w-full max-w-[1360px] flex-col overflow-hidden rounded-[2rem] border border-border/80 bg-card shadow-[0_35px_80px_rgba(114,86,67,0.10)]">
+            <div className="hidden bg-[#f4efea] px-4 py-6 sm:block sm:px-6 lg:px-8">
+                <div className="mx-auto flex w-full max-w-[1360px] flex-col overflow-hidden rounded-[2rem] border border-border/80 bg-[#f4efea] shadow-[0_35px_80px_rgba(114,86,67,0.10)]">
                     <section className="border-b border-border/80 bg-[linear-gradient(180deg,#fbf7f4_0%,#f2ebe5_100%)] px-6 py-8 lg:px-10">
                         <p className="text-[11px] uppercase tracking-[0.28em] text-muted-foreground">Marketplace</p>
                         <h1 className="mt-3 font-serif text-4xl text-foreground sm:text-5xl">Explore Curated Listings</h1>

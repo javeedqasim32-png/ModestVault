@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { ArrowUpRight, ShieldCheck, ShoppingBag, Sparkles, Tag, Wallet } from "lucide-react";
+import { ChevronRight, CircleHelp, FileText, PencilLine, ShieldCheck, ShoppingBag, Tag, Trash2, TrendingUp, UserRound, Wallet } from "lucide-react";
 import Link from "next/link";
 
 export default async function ProfileDashboard() {
@@ -13,109 +13,117 @@ export default async function ProfileDashboard() {
     }) : null;
 
     const isSeller = dbUser?.seller_enabled || false;
-    const [purchasesCount, activeListingsCount, salesCount] = userId
-        ? await Promise.all([
-            prisma.purchase.count({ where: { buyer_id: userId } }),
-            prisma.listing.count({ where: { user_id: userId, status: "AVAILABLE" } }),
-            prisma.purchase.count({ where: { listing: { user_id: userId } } }),
-        ])
-        : [0, 0, 0];
-
     const isAdmin = (session?.user as { isAdmin?: boolean })?.isAdmin;
+    const favoriteDelegate = (prisma as unknown as {
+        favoriteItem?: {
+            count: (args: unknown) => Promise<number>;
+        };
+    }).favoriteItem;
+    const favoriteCount = userId && favoriteDelegate
+        ? await favoriteDelegate.count({ where: { user_id: userId } }).catch(() => 0)
+        : 0;
 
     const cards = [
-        ...(isAdmin ? [{ label: "Admin Panel", value: "Manage marketplace", icon: ShieldCheck, href: "/admin/listings" }] : []),
+        ...(isAdmin ? [{ label: "Admin", value: "Manage marketplace", icon: ShieldCheck, href: "/admin/listings" }] : []),
         { label: "Orders", value: "Track purchases", icon: ShoppingBag, href: "/dashboard/purchases" },
         { label: "Sell", value: isSeller ? "Create listing" : "Become a seller", icon: Tag, href: "/sell" },
-        { label: "Sales", value: "Manage sold items", icon: ArrowUpRight, href: "/dashboard/sales" },
+        { label: "Sales", value: "Sold items", icon: TrendingUp, href: "/dashboard/sales" },
         { label: "Earnings", value: "Payout overview", icon: Wallet, href: "/dashboard/earnings" },
     ];
 
     return (
-        <div className="space-y-8">
-            <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-                <div className="overflow-hidden rounded-[1.75rem] border border-border/80 bg-[linear-gradient(135deg,#f3e7de_0%,#eeded3_55%,#e7d2c4_100%)] p-8 md:p-10">
-                    <div className="inline-flex items-center gap-2 rounded-full border border-border/80 bg-card/70 px-4 py-2 text-[11px] uppercase tracking-[0.28em] text-muted-foreground">
-                        <Sparkles className="h-3.5 w-3.5 text-primary" />
-                        Personal hub
+        <div className="flex-1 overflow-y-auto bg-[#f4efea] pb-[96px] lg:pb-6" style={{ fontFamily: "var(--font-sans), sans-serif" }}>
+            <div className="mx-auto w-full max-w-[860px] overflow-hidden border-y border-[#ddd3cb] bg-[#f4efea]">
+                <section className="border-b border-[#ddd3cb] px-6 py-6 text-center sm:px-8 sm:py-8">
+                    <div className="mx-auto flex h-[96px] w-[96px] items-center justify-center rounded-full border-[4px] border-[#e1d6cd] bg-[linear-gradient(135deg,#d5c1b1_0%,#c8ad9c_100%)] text-[36px] text-[#7a6050]" style={{ fontFamily: "var(--font-serif), serif" }}>
+                        {(session?.user?.name?.split(" ").map((part) => part[0]).join("").slice(0, 2) || "TU").toUpperCase()}
                     </div>
-                    <h1 className="mt-5 font-serif text-4xl leading-tight text-foreground md:text-5xl">
-                        Welcome back, {session?.user?.name?.split(" ")[0] ?? "there"}.
-                    </h1>
-                    <p className="mt-4 max-w-xl text-base leading-7 text-muted-foreground">
-                        View your orders, track active listings, and manage your sales performance in one place. Use this page to quickly jump into selling, payouts, and account activity.
-                    </p>
+                    <h1 className="mt-4 text-[38px] leading-[1] text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif" }}>{session?.user?.name ?? "Test User"}</h1>
+                    <p className="mt-2 text-[14px] text-[#8a7667]">{session?.user?.email}</p>
+                    <Link
+                        href="/dashboard/settings"
+                        className="mt-6 inline-flex h-12 items-center gap-2 rounded-full border border-[#d7cac0] bg-[#f4efea] px-7 text-[14px] font-normal text-[#2f2925] transition hover:bg-[#ede7df]"
+                    >
+                        <PencilLine className="h-4 w-4" />
+                        Edit Profile
+                    </Link>
+                </section>
 
-                    <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <section className="border-b border-[#e8dfd8] px-6 py-7 sm:px-8">
+                    <div className="grid grid-cols-2 gap-4">
                         {cards.map((card) => {
                             const Icon = card.icon;
                             return (
                                 <Link
                                     key={card.label}
                                     href={card.href}
-                                    className="rounded-[1.35rem] border border-border/80 bg-card/80 p-5 hover:bg-background"
+                                    className="rounded-[30px] border border-[#e3d9d1] bg-[#f7f2ed] px-6 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)] transition hover:bg-[#f2ebe4]"
                                 >
-                                    <Icon className="h-5 w-5 text-primary" />
-                                    <p className="mt-4 text-[11px] uppercase tracking-[0.28em] text-muted-foreground">{card.label}</p>
-                                    <p className="mt-2 text-lg text-foreground">{card.value}</p>
+                                    <div className="mb-2 flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-[#8f6e59]">
+                                        <Icon className="h-[15px] w-[15px] stroke-[1.7]" />
+                                        {card.label}
+                                    </div>
+                                    <p className="text-[14px] leading-[1.25] text-[#2f2925]">{card.value}</p>
                                 </Link>
                             );
                         })}
                     </div>
-                </div>
+                </section>
 
-                <div className="rounded-[1.75rem] border border-border/80 bg-[linear-gradient(180deg,#faf5f1_0%,#f1e7e0_100%)] p-8">
-                    <p className="text-[11px] uppercase tracking-[0.28em] text-muted-foreground">Account snapshot</p>
-                    <div className="mt-6 space-y-5">
-                        <div className="rounded-[1.25rem] border border-border/80 bg-card p-5">
-                            <p className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Name</p>
-                            <p className="mt-2 text-xl text-foreground">{session?.user?.name}</p>
+                <section className="px-6 py-7 sm:px-8">
+                    <h2 className="text-[26px] leading-none text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif", fontWeight: 600 }}>My Lists</h2>
+                    <div className="mt-3 px-2">
+                        <Link href="/favorites" className="flex items-center justify-between border-b border-[#d9cfc7] px-4 py-7 transition hover:bg-[#ede7df]/40">
+                            <span className="text-[16px] text-[#2f2925]">Favorites</span>
+                            <span className="flex items-center gap-2 text-[16px] text-[#8a7667]">
+                                {favoriteCount} items
+                                <ChevronRight className="h-4 w-4" />
+                            </span>
+                        </Link>
+                        <div className="flex items-center justify-between border-b border-[#d9cfc7] px-4 py-7">
+                            <span className="text-[16px] text-[#2f2925]">Eid Collection</span>
+                            <span className="flex items-center gap-2 text-[16px] text-[#8a7667]">
+                                0 items
+                                <ChevronRight className="h-4 w-4" />
+                                <Trash2 className="h-4 w-4" />
+                            </span>
                         </div>
-                        <div className="rounded-[1.25rem] border border-border/80 bg-card p-5">
-                            <p className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Email</p>
-                            <p className="mt-2 flex items-center gap-2 text-base text-foreground">
-                                {session?.user?.email}
-                                <ShieldCheck className="h-4 w-4 text-green-600" />
-                            </p>
-                        </div>
-                        <div className={`rounded-[1.25rem] border p-5 ${isSeller ? "border-[#bfd6c1] bg-[#edf7ee]" : "border-border/80 bg-card"}`}>
-                            <p className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">Seller status</p>
-                            <p className="mt-2 text-xl text-foreground">{isSeller ? "Active seller" : "Not enabled yet"}</p>
-                            <Link href="/sell" className="mt-4 inline-flex items-center gap-2 text-sm text-primary">
-                                {isSeller ? "Create a new listing" : "Finish seller onboarding"}
-                                <ArrowUpRight className="h-4 w-4" />
-                            </Link>
-                        </div>
-                        <a
-                            href="/logout"
-                            className="inline-flex h-11 w-full items-center justify-center rounded-full border border-border/80 bg-card px-4 text-sm text-foreground hover:bg-background lg:hidden"
-                        >
-                                Log out
+                    </div>
+                </section>
+
+                <section className="px-6 pb-8 sm:px-8 sm:pb-10">
+                    <h2 className="text-[26px] leading-none text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif", fontWeight: 600 }}>Settings</h2>
+                    <div className="mt-4 space-y-4">
+                        <Link href="/dashboard/settings" className="flex items-center justify-between rounded-[22px] border border-[#d9cfc7] bg-[#f4efea] px-5 py-5 transition hover:bg-[#ede7df]">
+                            <span className="flex items-center gap-3.5 text-[15px] text-[#2f2925]">
+                                <UserRound className="h-5 w-5 text-[#8f6e59]" />
+                                Edit Profile & Account
+                            </span>
+                            <ChevronRight className="h-5 w-5 text-[#8f6e59]" />
+                        </Link>
+
+                        <Link href="/policies" scroll className="flex items-center justify-between rounded-[22px] border border-[#d9cfc7] bg-[#f4efea] px-5 py-5 transition hover:bg-[#ede7df]">
+                            <span className="flex items-center gap-3.5 text-[15px] text-[#2f2925]">
+                                <FileText className="h-5 w-5 text-[#8f6e59]" />
+                                Policy
+                            </span>
+                            <ChevronRight className="h-5 w-5 text-[#8f6e59]" />
+                        </Link>
+
+                        <Link href="/dashboard/settings" className="flex items-center justify-between rounded-[22px] border border-[#d9cfc7] bg-[#f4efea] px-5 py-5 transition hover:bg-[#ede7df]">
+                            <span className="flex items-center gap-3.5 text-[15px] text-[#2f2925]">
+                                <CircleHelp className="h-5 w-5 text-[#8f6e59]" />
+                                Support & FAQ
+                            </span>
+                            <ChevronRight className="h-5 w-5 text-[#8f6e59]" />
+                        </Link>
+
+                        <a href="/logout" className="mt-3 inline-flex w-full items-center justify-center rounded-[22px] border border-[#d9cfc7] bg-[#f4efea] px-5 py-5 text-[15px] text-[#2f2925] transition hover:bg-[#ede7df]">
+                            Log out
                         </a>
                     </div>
-                </div>
-            </section>
-
-            <section className="grid gap-6 lg:grid-cols-1">
-                <div className="rounded-[1.75rem] border border-border/80 bg-card p-8">
-                    <div className="flex items-center justify-between">
-                        <h2 className="font-serif text-3xl text-foreground">Marketplace Activity</h2>
-                    </div>
-                    <div className="mt-8 grid gap-4 md:grid-cols-3">
-                        {[
-                            ["Purchases", String(purchasesCount), "/dashboard/purchases"],
-                            ["Active listings", String(activeListingsCount), "/sell"],
-                            ["Sales", String(salesCount), "/dashboard/sales"],
-                        ].map(([label, value, href]) => (
-                            <Link key={label} href={href} className="rounded-[1.35rem] border border-border/80 bg-[linear-gradient(180deg,#fbf7f4_0%,#f4ece5_100%)] p-6 hover:bg-background">
-                                <p className="text-[11px] uppercase tracking-[0.28em] text-muted-foreground">{label}</p>
-                                <p className="mt-3 font-serif text-5xl text-foreground">{value}</p>
-                            </Link>
-                        ))}
-                    </div>
-                </div>
-
-            </section>
+                </section>
+            </div>
         </div>
     );
 }

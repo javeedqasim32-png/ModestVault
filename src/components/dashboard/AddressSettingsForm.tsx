@@ -48,31 +48,31 @@ export function AddressSettingsForm({ initialData, userId }: { initialData: any,
 
     return (
         <div className="space-y-6">
-            <Card className="p-8 border-border/60 shadow-sm bg-card">
-                <div className="flex items-center gap-3 mb-8">
-                    <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
+            <Card className="profile-panel p-4 sm:p-6">
+                <div className="mb-6 flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-[12px] border border-[var(--bd)] bg-[var(--cr)] text-[var(--br-m)]">
                         <MapPin className="w-5 h-5" />
                     </div>
                     <div>
-                        <h2 className="text-xl font-bold font-serif">Shipping Origin</h2>
-                        <p className="text-sm text-muted-foreground">This address will be used as the "From" address for your shipping labels.</p>
+                        <h2 className="font-serif text-[17px] font-semibold text-[var(--tx)]">Shipping Origin</h2>
+                        <p className="text-[13px] text-[var(--tx-m)]">This address will be used as the "From" address for your shipping labels.</p>
                     </div>
                 </div>
 
-                <form onSubmit={onSubmit} className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <form onSubmit={onSubmit} className="space-y-5">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <div className="space-y-2">
-                            <Label htmlFor="first_name">First Name</Label>
+                            <Label htmlFor="first_name" className="text-[12px] font-medium tracking-[0.02em] text-[var(--tx-m)]">First Name</Label>
                             <Input name="first_name" defaultValue={initialData?.first_name} required />
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="last_name">Last Name</Label>
+                            <Label htmlFor="last_name" className="text-[12px] font-medium tracking-[0.02em] text-[var(--tx-m)]">Last Name</Label>
                             <Input name="last_name" defaultValue={initialData?.last_name} required />
                         </div>
                     </div>
 
                     <div className="space-y-2">
-                        <Label htmlFor="phone">Phone Number</Label>
+                        <Label htmlFor="phone" className="text-[12px] font-medium tracking-[0.02em] text-[var(--tx-m)]">Phone Number</Label>
                         <Input
                             name="phone"
                             type="tel"
@@ -85,32 +85,32 @@ export function AddressSettingsForm({ initialData, userId }: { initialData: any,
                         />
                     </div>
 
-                    <div className="space-y-4 pt-4 border-t border-border/50">
+                    <div className="space-y-3 border-t border-[var(--bd2)] pt-4">
                         <div className="space-y-2">
-                            <Label htmlFor="street1">Street Address</Label>
+                            <Label htmlFor="street1" className="text-[12px] font-medium tracking-[0.02em] text-[var(--tx-m)]">Street Address</Label>
                             <Input name="street1" defaultValue={initialData?.street1} required placeholder="123 Luxury Lane" />
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="street2">Apartment, suite, etc. (Optional)</Label>
+                            <Label htmlFor="street2" className="text-[12px] font-medium tracking-[0.02em] text-[var(--tx-m)]">Apartment, suite, etc. (Optional)</Label>
                             <Input name="street2" defaultValue={initialData?.street2} placeholder="Apt 4B" />
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                             <div className="space-y-2">
-                                <Label htmlFor="city">City</Label>
+                                <Label htmlFor="city" className="text-[12px] font-medium tracking-[0.02em] text-[var(--tx-m)]">City</Label>
                                 <Input name="city" defaultValue={initialData?.city} required placeholder="Beverly Hills" />
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="state">State / Province</Label>
+                                <Label htmlFor="state" className="text-[12px] font-medium tracking-[0.02em] text-[var(--tx-m)]">State / Province</Label>
                                 <Input name="state" defaultValue={initialData?.state} required placeholder="CA" />
                             </div>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                             <div className="space-y-2">
-                                <Label htmlFor="zip">ZIP / Postal Code</Label>
+                                <Label htmlFor="zip" className="text-[12px] font-medium tracking-[0.02em] text-[var(--tx-m)]">ZIP / Postal Code</Label>
                                 <Input name="zip" defaultValue={initialData?.zip} required placeholder="90210" />
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="country">Country</Label>
+                                <Label htmlFor="country" className="text-[12px] font-medium tracking-[0.02em] text-[var(--tx-m)]">Country</Label>
                                 <Input name="country" defaultValue={initialData?.country || "US"} required />
                             </div>
                         </div>
@@ -130,8 +130,8 @@ export function AddressSettingsForm({ initialData, userId }: { initialData: any,
                         </div>
                     )}
 
-                    <div className="pt-4">
-                        <Button disabled={isSubmitting} type="submit" className="w-full md:w-auto px-12 py-6 rounded-xl font-bold shadow-lg">
+                    <div className="pt-2">
+                        <Button disabled={isSubmitting} type="submit" className="w-full rounded-[12px] border border-[var(--bd)] bg-[var(--wh)] px-5 py-3 text-[14px] font-normal text-[var(--tx)] shadow-none hover:bg-[var(--cr-d)] md:w-auto">
                             {isSubmitting ? (
                                 <span className="flex items-center gap-2">
                                     <Loader2 className="w-5 h-5 animate-spin" />

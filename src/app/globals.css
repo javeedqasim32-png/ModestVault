@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Inter", var(--font-inter);
-  --font-serif: "Playfair Display", var(--font-playfair);
+  --font-sans: var(--font-jost-local), "Inter", var(--font-inter);
+  --font-serif: var(--font-cormorant-local), "Playfair Display", var(--font-playfair);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -91,6 +91,12 @@ html {
   font-family: var(--font-serif);
 }
 
+.font-cormorant-force {
+  font-family: var(--font-cormorant-local), var(--font-serif), serif !important;
+  font-weight: 400 !important;
+  letter-spacing: 0 !important;
+}
+
 a,
 button,
 input {
@@ -104,4 +110,200 @@ input {
   textarea {
     font-size: 16px;
   }
+}
+
+/* PROFILE */
+@layer base {
+  :root {
+    --br: #a07c61;
+    --br-d: #4a3328;
+    --br-m: #8c6a56;
+    --tx: #2f2925;
+    --tx-m: #8a7667;
+    --tx-l: #b0a89e;
+    --bd: #ddd3cb;
+    --bd2: rgba(207, 194, 183, 0.55);
+    --wh: #fbf8f5;
+    --cr: #f4efea;
+    --cr-d: #ede7df;
+    --r12: 12px;
+    --r14: 14px;
+    --r16: 16px;
+    --r24: 24px;
+    --r99: 999px;
+    --sh: 0 4px 14px rgba(79, 59, 43, 0.06);
+    --sh-lg: 0 10px 30px rgba(79, 59, 43, 0.1);
+    --page-max: 680px;
+    --page-px: 16px;
+  }
+}
+
+.profile-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 86px;
+  background: var(--cr);
+}
+
+@media (min-width: 1024px) {
+  .profile-scroll {
+    padding-bottom: 24px;
+  }
+}
+
+.profile-inner {
+  padding: 0 var(--page-px);
+}
+
+@media (min-width: 1024px) {
+  .profile-inner {
+    max-width: var(--page-max);
+    margin: 0 auto;
+    width: 100%;
+  }
+}
+
+.profile-avatar {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #d4c0b0, #c0a090);
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Cormorant Garamond", var(--font-serif), serif;
+  font-size: 28px;
+  font-weight: 600;
+  color: #7a6050;
+  border: 3px solid var(--bd);
+}
+
+.profile-section-title {
+  font-family: "Cormorant Garamond", var(--font-serif), serif;
+  font-size: 17px;
+  font-weight: 600;
+  margin-bottom: 10px;
+  padding: 0 16px;
+  color: var(--tx);
+}
+
+.profile-panel {
+  background: var(--wh);
+  border: 1px solid var(--bd);
+  border-radius: var(--r14);
+  box-shadow: var(--sh);
+}
+
+.hub-link-card {
+  background: var(--wh);
+  border: 1px solid var(--bd);
+  border-radius: var(--r14);
+  padding: 13px;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.hub-link-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--sh-lg);
+}
+
+.hub-link-kicker {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--br-m);
+  font-weight: 500;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.hub-link-kicker svg {
+  width: 12px;
+  height: 12px;
+  stroke: var(--br-m);
+  fill: none;
+  stroke-width: 1.8;
+}
+
+.hub-link-title {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--tx);
+}
+
+.list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--bd2);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.list-row:hover {
+  background: var(--cr-d);
+}
+
+.list-row-right {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--tx-m);
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--wh);
+  border-radius: var(--r12);
+  padding: 12px 14px;
+  margin-bottom: 7px;
+  cursor: pointer;
+  transition: background 0.15s;
+  border: 1px solid var(--bd);
+}
+
+.settings-row:hover {
+  background: var(--cr-d);
+}
+
+.settings-row-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.settings-row-left svg {
+  width: 16px;
+  height: 16px;
+  stroke: var(--br-m);
+  fill: none;
+  stroke-width: 1.5;
+}
+
+.btn-logout {
+  width: 100%;
+  background: var(--wh);
+  color: var(--tx);
+  border: 1px solid var(--bd);
+  border-radius: var(--r12);
+  padding: 12px;
+  font-family: "Jost", var(--font-sans), sans-serif;
+  font-size: 14px;
+  font-weight: 300;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-logout:hover {
+  background: var(--cr-d);
 }

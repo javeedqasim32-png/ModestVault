@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createListing, deleteListing } from "../actions/listings";
 import { onboardSellerAction } from "../actions/stripe";
-import { Tag, UploadCloud, ChevronRight, CheckCircle2, CreditCard, Heart, PackagePlus, X, Printer } from "lucide-react";
+import { Tag, UploadCloud, ChevronRight, Heart, PackagePlus, X, Printer, TrendingUp, Users, ShieldCheck, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
@@ -632,55 +632,114 @@ export default function SellPageClient({ isSellerInitially, listings }: SellPage
     );
 
     if (!isSeller) {
+        const sellerBenefits = [
+            {
+                title: "Keep 90% of your sale",
+                desc: "Only a 10% platform fee, designed for modest fashion sellers.",
+                icon: TrendingUp,
+                iconBg: "#d6edd9",
+                iconColor: "#2f9a43",
+            },
+            {
+                title: "Dedicated buyer audience",
+                desc: "Shoppers actively looking for modest fashion with stronger conversion.",
+                icon: Users,
+                iconBg: "#cfe2f6",
+                iconColor: "#246fcd",
+            },
+            {
+                title: "Buyer protection built-in",
+                desc: "Secure payments, dispute support, and trust signals boost sales.",
+                icon: Heart,
+                iconBg: "#f3d3e2",
+                iconColor: "#ce2f3b",
+            },
+            {
+                title: "Fast, direct payouts",
+                desc: "Powered by Stripe Connect with direct transfer to your bank.",
+                icon: CreditCard,
+                iconBg: "#e8d5f1",
+                iconColor: "#7a2dc2",
+            },
+        ] as const;
+
         return (
-            <div className="px-4 py-6 sm:px-6 lg:px-8">
-                <div className="mx-auto flex min-h-[calc(100vh-10rem)] w-full max-w-5xl justify-center rounded-[2rem] border border-border/80 bg-card p-5 shadow-[0_24px_60px_rgba(114,86,67,0.08)] sm:p-8">
-                    <div className="w-full space-y-8 text-left">
-                        <div className="rounded-[1.75rem] bg-[linear-gradient(135deg,#f3e7de_0%,#ecdccf_55%,#e2cab9_100%)] p-6 sm:p-8">
-                            <p className="text-[11px] uppercase tracking-[0.28em] text-muted-foreground">Seller onboarding</p>
-                            <h1 className="mt-3 font-serif text-4xl md:text-6xl font-bold text-foreground">
-                                Become a Seller
-                            </h1>
-                            <p className="mt-4 max-w-lg text-base leading-relaxed text-muted-foreground">
-                                Join our community of fashion sellers. Turn your wardrobe into a boutique with secure payouts.
-                            </p>
+            <div className="bg-[#f4efea] px-0 py-0 sm:px-6 sm:py-6 lg:px-8">
+                <div className="mx-auto flex min-h-[calc(100vh-11rem)] w-full max-w-[1360px] flex-col overflow-hidden bg-[#f4efea] sm:rounded-[2rem] sm:border sm:border-border/80 sm:shadow-[0_35px_80px_rgba(114,86,67,0.10)]">
+                    <section
+                        className="relative overflow-hidden border-b border-border/80 px-5 pb-6 pt-4 text-center sm:px-10 sm:pb-10 sm:pt-9 lg:px-14"
+                        style={{ backgroundImage: "linear-gradient(120deg,#3e2619 0%,#6d4327 45%,#a4774f 100%)" }}
+                    >
+                        <div className="pointer-events-none absolute -left-14 bottom-4 h-36 w-36 rounded-full bg-white/7" />
+                        <div className="pointer-events-none absolute -right-10 -top-8 h-44 w-44 rounded-full bg-white/9" />
+                        <div className="mx-auto mb-3 inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/35 bg-white/10 text-3xl sm:mb-5 sm:h-16 sm:w-16 sm:text-4xl">
+                            🏪
                         </div>
-
-                        <div className="grid grid-cols-1 gap-4 md:grid-cols-3 text-left">
-                            {[
-                                { title: "Global Reach", desc: "Connect with buyers looking for modest fashion worldwide.", icon: Tag },
-                                { title: "Secure Payouts", desc: "Fast, encrypted transfers via Stripe directly to your bank.", icon: CreditCard },
-                                { title: "Full Control", desc: "Manage buying and selling from one dashboard.", icon: CheckCircle2 },
-                            ].map((item) => (
-                                <div key={item.title} className="rounded-[1.5rem] border border-border/80 bg-[linear-gradient(180deg,#fbf7f4_0%,#f3e9e2_100%)] p-5">
-                                    <item.icon className="w-6 h-6 text-foreground mb-4" />
-                                    <h3 className="font-medium text-foreground mb-2">{item.title}</h3>
-                                    <p className="text-sm text-muted-foreground leading-relaxed">{item.desc}</p>
-                                </div>
-                            ))}
-                        </div>
-
-                        {error && (
-                            <div className="bg-red-50 text-red-700 text-sm p-4 border border-red-200 text-center">
-                                {error}
-                            </div>
-                        )}
-
-                        <div className="space-y-4">
+                        <h1 className="font-serif text-[1.95rem] leading-[1.08] text-white sm:text-[2.85rem]">
+                            Start Selling on Modaire
+                        </h1>
+                        <p className="mx-auto mt-2 max-w-2xl text-[0.94rem] leading-[1.55] text-[#f1ddd0] sm:mt-4 sm:text-[1.1rem] sm:leading-[1.8]">
+                            Reach thousands of modest fashion buyers.
+                        </p>
+                        <div className="mx-auto mt-4 w-full max-w-md sm:mt-7">
                             <Button
                                 onClick={handleStripeOnboarding}
                                 isLoading={loading}
                                 size="lg"
-                                className="w-full sm:w-auto px-12"
+                                className="h-11 w-full rounded-full bg-[#aa8464] px-6 text-[0.9rem] font-semibold tracking-[0.03em] text-white hover:bg-[#946f52] sm:h-14 sm:px-8 sm:text-[1.04rem]"
                             >
-                                Connect with Stripe
-                                <ChevronRight className="ml-2 w-5 h-5" />
+                                Continue to Stripe Setup
+                                <ChevronRight className="ml-2 h-5 w-5" />
                             </Button>
-                            <p className="text-[11px] text-muted-foreground uppercase tracking-widest">
-                                Secure Onboarding Powered by Stripe
+                        </div>
+                    </section>
+
+                    <section className="px-5 py-5 sm:px-10 sm:py-10 lg:px-14">
+                        <p className="text-[10px] font-medium uppercase tracking-[0.24em] text-[#8d7565]">Why Sell on Modaire</p>
+
+                        {error ? (
+                            <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                                {error}
+                            </div>
+                        ) : null}
+
+                        <div className="mt-3 space-y-4 sm:mt-5 sm:space-y-6">
+                            {sellerBenefits.map((item) => {
+                                const Icon = item.icon;
+                                return (
+                                    <div key={item.title} className="flex items-center gap-4 sm:gap-5">
+                                        <div
+                                            className="flex h-[56px] w-[56px] shrink-0 items-center justify-center overflow-hidden border border-black/5 sm:h-[76px] sm:w-[76px]"
+                                            style={{
+                                                backgroundColor: item.iconBg,
+                                                borderRadius: "12px",
+                                                clipPath: "inset(0 round 12px)",
+                                            }}
+                                        >
+                                            <Icon className="h-6 w-6 sm:h-9 sm:w-9" style={{ color: item.iconColor, strokeWidth: 2.3 }} />
+                                        </div>
+                                        <div className="flex min-h-[56px] flex-col justify-center sm:min-h-[76px]">
+                                            <h3 className="text-[0.95rem] font-semibold leading-[1.18] text-foreground sm:text-[1.25rem]">{item.title}</h3>
+                                            <p className="mt-0 max-w-3xl text-[0.66rem] leading-[1.55] text-[#8d7565] sm:text-[0.94rem]">
+                                                {item.desc}
+                                            </p>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        <div className="mt-5 rounded-[1.4rem] border border-[#b7d9d0] bg-[#d8e9e7] px-4 py-3 text-[#2f7f5d] sm:mt-10 sm:rounded-[2rem] sm:px-8 sm:py-6">
+                            <p className="flex items-start gap-2 text-[0.84rem] leading-[1.42] sm:gap-4 sm:text-[0.98rem] sm:leading-[1.35]">
+                                <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 sm:mt-1 sm:h-9 sm:w-9" />
+                                <span>
+                                    <strong className="font-semibold text-[#256f4f]">Your buyer account is still active.</strong>{" "}
+                                    Adding seller access lets you list items while continuing to shop normally.
+                                </span>
                             </p>
                         </div>
-                    </div>
+
+                    </section>
                 </div>
             </div>
         );
@@ -688,7 +747,7 @@ export default function SellPageClient({ isSellerInitially, listings }: SellPage
 
     return (
         <>
-            <div className={`${showCreateForm ? "hidden" : "block"} min-h-screen bg-[#f7f3ef] px-4 pb-28 pt-3 sm:hidden`}>
+            <div className={`${showCreateForm ? "hidden" : "block"} min-h-screen bg-[#f4efea] px-4 pb-28 pt-3 sm:hidden`}>
                 <div className="mb-4 flex items-center justify-between border-y border-border/80 px-1 py-1.5">
                     {tabs.map((tab) => (
                         <button
@@ -745,8 +804,6 @@ export default function SellPageClient({ isSellerInitially, listings }: SellPage
                             const modStatus = listing.moderation_status || "PENDING";
                             const isApproved = modStatus === "APPROVED";
                             const isRejected = modStatus === "REJECTED";
-                            const isPending = modStatus === "PENDING";
-
                             const statusClass = isApproved
                                 ? "bg-green-100 text-green-700"
                                 : isRejected
@@ -817,11 +874,11 @@ export default function SellPageClient({ isSellerInitially, listings }: SellPage
                 </div>
             </div>
 
-            <div className={`${showCreateForm ? "block" : "hidden"} px-4 py-6 sm:hidden`}>
+            <div className={`${showCreateForm ? "block" : "hidden"} bg-[#f4efea] px-4 py-6 sm:hidden`}>
                 {renderCreateForm(true)}
             </div>
 
-            <div className="hidden px-4 py-6 sm:block sm:px-6 lg:px-8">
+            <div className="hidden bg-[#f4efea] px-4 py-6 sm:block sm:px-6 lg:px-8">
                 <div className="mx-auto max-w-6xl space-y-8">
                     {renderCreateForm(false)}
 

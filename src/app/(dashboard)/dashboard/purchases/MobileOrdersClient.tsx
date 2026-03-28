@@ -41,7 +41,7 @@ export default function MobileOrdersClient({ orders }: { orders: MobileOrderItem
     const filtered = useMemo(() => orders.filter((order) => order.tab === activeTab), [orders, activeTab]);
 
     return (
-        <div className="min-h-screen bg-[#f7f3ef] px-4 pb-28 pt-3 sm:hidden">
+        <div className="min-h-screen bg-[#f4efea] px-4 pb-28 pt-3 sm:hidden">
             <div className="mb-4 flex items-center justify-between border-y border-border/80 px-1 py-1.5">
                 {orderTabs.map((tab) => (
                     <button
