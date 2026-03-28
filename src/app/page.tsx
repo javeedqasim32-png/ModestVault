@@ -121,7 +121,7 @@ export default async function Home() {
 
   const topSellerStats = await prisma.listing.groupBy({
     by: ["user_id"],
-    where: { status: "SOLD", moderation_status: "APPROVED" },
+    where: { moderation_status: "APPROVED" },
     _count: { _all: true },
     orderBy: { _count: { user_id: "desc" } },
     take: 5,
