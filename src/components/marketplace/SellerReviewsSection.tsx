@@ -73,7 +73,7 @@ export default function SellerReviewsSection({
     setError(null);
     startTransition(async () => {
       const result = await upsertSellerReview({ sellerId, rating, text });
-      if ("error" in result) {
+      if ("error" in result && result.error) {
         setError(result.error);
         return;
       }
