@@ -33,6 +33,8 @@ model User {
   cartItems          CartItem[]
   favoriteItems      FavoriteItem[]
   reviewedListings   Listing[]  @relation("ListingReviewer")
+  reviewsReceived    SellerReview[] @relation("SellerReviewsReceived")
+  reviewsWritten     SellerReview[] @relation("SellerReviewsWritten")
 }
 
 model Listing {
@@ -164,4 +166,20 @@ model FavoriteItem {
 
   @@unique([user_id, listing_id])
   @@index([user_id, created_at])
+}
+
+model SellerReview {
+  id          String   @id @default(uuid())
+  seller_id   String
+  seller      User     @relation("SellerReviewsReceived", fields: [seller_id], references: [id], onDelete: Cascade)
+  reviewer_id String
+  reviewer    User     @relation("SellerReviewsWritten", fields: [reviewer_id], references: [id], onDelete: Cascade)
+  rating      Int
+  text        String
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@unique([seller_id, reviewer_id])
+  @@index([seller_id, created_at])
+  @@index([reviewer_id, created_at])
 }

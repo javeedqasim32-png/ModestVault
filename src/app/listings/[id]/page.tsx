@@ -32,6 +32,21 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                     first_name: true,
                     last_name: true,
                     profile_image: true,
+                    reviewsReceived: {
+                        orderBy: { created_at: "desc" },
+                        select: {
+                            id: true,
+                            rating: true,
+                            text: true,
+                            created_at: true,
+                            reviewer: {
+                                select: {
+                                    first_name: true,
+                                    last_name: true,
+                                },
+                            },
+                        },
+                    },
                 }
             }
         }
@@ -56,6 +71,11 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
     const primaryImage = getPrimaryListingImage(listing, "detail");
     const sellerFullName = `${listing.user.first_name} ${listing.user.last_name}`.trim();
     const sellerInitial = (listing.user.first_name?.[0] || "M").toUpperCase();
+    const sellerReviewCount = listing.user.reviewsReceived.length;
+    const sellerRatingAverage = sellerReviewCount
+        ? Number((listing.user.reviewsReceived.reduce((sum, review) => sum + review.rating, 0) / sellerReviewCount).toFixed(1))
+        : 0;
+    const sellerReviews = listing.user.reviewsReceived.slice(0, 5);
     const metaPills = [
         { label: "Size", value: listing.size || "M" },
         { label: "Condition", value: listing.condition || "Like new" },
@@ -123,25 +143,30 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                         ${Number(listing.price).toLocaleString()}
                     </p>
 
-                    <div className="mt-4 rounded-[12px] border border-[#ddd3cb] bg-[#e8ddd1] px-[13px] py-[10px]">
+                    <Link href={`/sellers/${listing.user_id}`} className="mt-4 block rounded-[12px] border border-[#ddd3cb] bg-[#e8ddd1] px-[13px] py-[10px]">
                         <div className="flex items-center gap-3">
                             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-[1.5px] border-[#ddd3cb] bg-[#d2baa3] text-[16px] text-[#7a6050]" style={{ fontFamily: "var(--font-serif), serif" }}>
                                 {sellerInitial}
                             </div>
                             <div className="min-w-0 flex-1">
                                 <p className="truncate text-[14px] font-medium text-[#2f2925]">{sellerFullName}</p>
-                                <div className="mt-1 flex items-center gap-1 text-[#c6ab6e]">
-                                    <Star className="h-3.5 w-3.5 fill-current" />
-                                    <Star className="h-3.5 w-3.5 fill-current" />
-                                    <Star className="h-3.5 w-3.5 fill-current" />
-                                    <Star className="h-3.5 w-3.5 fill-current" />
-                                    <Star className="h-3.5 w-3.5 text-[#cfc7be]" />
-                                    <span className="ml-1 text-[11px] text-[#8a7667]">4.8 · 16 reviews</span>
-                                </div>
+                                {sellerReviewCount > 0 ? (
+                                    <div className="mt-1 flex items-center gap-1 text-[#c6ab6e]">
+                                        {[1, 2, 3, 4, 5].map((star) => (
+                                            <Star
+                                                key={`seller-rating-${star}`}
+                                                className={`h-3.5 w-3.5 ${star <= Math.round(sellerRatingAverage) ? "fill-current" : "text-[#cfc7be]"}`}
+                                            />
+                                        ))}
+                                        <span className="ml-1 text-[11px] text-[#8a7667]">
+                                            {sellerRatingAverage} · {sellerReviewCount} review{sellerReviewCount === 1 ? "" : "s"}
+                                        </span>
+                                    </div>
+                                ) : null}
                             </div>
                             <ChevronRight className="h-5 w-5 text-[#8a7667]" />
                         </div>
-                    </div>
+                    </Link>
 
                     <div className="mt-5 flex flex-wrap items-start gap-[10px] pb-[14px]">
                         {metaPills.map((pill) => (
@@ -162,30 +187,54 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                         </p>
                     </div>
 
-                    <div className="mt-6">
-                        <h2 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[#8a7667]">Reviews</h2>
-                        <div className="mt-3 rounded-[12px] border border-[#ddd3cb] bg-[#fbf8f5] p-4">
+                    {sellerReviews.length > 0 ? (
+                        <div className="mt-6">
                             <div className="flex items-center justify-between gap-3">
-                                <div className="flex items-center gap-3">
-                                    <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[#ddd3cb] bg-[#efe7de] text-[18px] font-semibold text-[#8a7667]">A</div>
-                                    <div>
-                                        <p className="text-[15px] font-semibold text-[#2f2925]">Anonymous Buyer</p>
-                                        <div className="mt-0.5 flex items-center gap-0.5 text-[#2f2925]">
-                                            <Star className="h-4 w-4 fill-current" />
-                                            <Star className="h-4 w-4 fill-current" />
-                                            <Star className="h-4 w-4 fill-current" />
-                                            <Star className="h-4 w-4 fill-current" />
-                                            <Star className="h-4 w-4 fill-current" />
-                                        </div>
-                                    </div>
-                                </div>
-                                <span className="text-[12px] text-[#8a7667]">Recent</span>
+                                <h2 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[#8a7667]">Reviews</h2>
+                                {sellerReviewCount > sellerReviews.length ? (
+                                    <Link
+                                        href={`/sellers/${listing.user_id}#reviews`}
+                                        className="text-[12px] font-medium text-[#8a7667] hover:text-[#2f2925]"
+                                    >
+                                        View all {sellerReviewCount}
+                                    </Link>
+                                ) : null}
                             </div>
-                            <p className="mt-3 text-[13px] leading-[1.55] text-[#8a7667]">
-                                Beautiful piece and fast delivery.
-                            </p>
+                            <div className="mt-3 space-y-3">
+                                {sellerReviews.map((review) => {
+                                    const reviewerName = `${review.reviewer.first_name} ${review.reviewer.last_name?.[0] ? `${review.reviewer.last_name[0].toUpperCase()}.` : ""}`.trim();
+                                    const reviewerInitial = (review.reviewer.first_name?.[0] || "A").toUpperCase();
+                                    const dateLabel = review.created_at.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+                                    return (
+                                        <div key={review.id} className="rounded-[12px] border border-[#ddd3cb] bg-[#fbf8f5] p-4">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[#ddd3cb] bg-[#efe7de] text-[18px] font-semibold text-[#8a7667]">
+                                                        {reviewerInitial}
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[15px] font-semibold text-[#2f2925]">{reviewerName}</p>
+                                                        <div className="mt-0.5 flex items-center gap-0.5 text-[#2f2925]">
+                                                            {[1, 2, 3, 4, 5].map((star) => (
+                                                                <Star
+                                                                    key={`${review.id}-star-${star}`}
+                                                                    className={`h-4 w-4 ${star <= review.rating ? "fill-current" : "text-[#cfc7be]"}`}
+                                                                />
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <span className="text-[12px] text-[#8a7667]">{dateLabel}</span>
+                                            </div>
+                                            <p className="mt-3 text-[13px] leading-[1.55] text-[#8a7667]">
+                                                {review.text}
+                                            </p>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
-                    </div>
+                    ) : null}
                 </div>
 
                 <div className="fixed inset-x-0 bottom-[78px] z-50 border-t border-[#ddd3cb] bg-[#fbf8f5]/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-[#fbf8f5]/80 md:bottom-0">
