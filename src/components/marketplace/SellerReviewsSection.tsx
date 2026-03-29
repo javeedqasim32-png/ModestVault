@@ -78,7 +78,13 @@ export default function SellerReviewsSection({
         return;
       }
 
-      const next = [result.review, ...reviews.filter((item) => item.id !== result.review.id)];
+      if (!("ok" in result) || !result.ok || !result.review) {
+        setError("Unable to submit review. Please try again.");
+        return;
+      }
+
+      const submittedReview = result.review;
+      const next = [submittedReview, ...reviews.filter((item) => item.id !== submittedReview.id)];
       setReviews(next);
       closeComposer();
     });
