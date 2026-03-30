@@ -3,10 +3,12 @@ import { notFound } from "next/navigation";
 import Image from "next/image";
 import { auth } from "@/auth";
 import { addToCartAndRedirect } from "@/app/actions/cart";
+import { getFavoriteListingIdsForSessionUser } from "@/app/actions/favorites";
 import { getOrderedListingGallery, getPrimaryListingImage } from "@/lib/listing-images";
-import { Heart, MessageCircle, ShoppingBag, Star, ChevronRight, ChevronLeft } from "lucide-react";
+import { MessageCircle, ShoppingBag, Star, ChevronRight, ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import RecentlyViewedTracker from "@/components/marketplace/RecentlyViewedTracker";
+import FavoriteButton from "@/components/marketplace/FavoriteButton";
 
 export const dynamic = "force-dynamic";
 
@@ -69,6 +71,7 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
     const isAvailable = listing.status === "AVAILABLE";
     const orderedImages = getOrderedListingGallery(listing);
     const primaryImage = getPrimaryListingImage(listing, "detail");
+    const favoriteListingIds = new Set(await getFavoriteListingIdsForSessionUser([listing.id]));
     const sellerFullName = `${listing.user.first_name} ${listing.user.last_name}`.trim();
     const sellerInitial = (listing.user.first_name?.[0] || "M").toUpperCase();
     const sellerReviewCount = listing.user.reviewsReceived.length;
@@ -237,22 +240,23 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                     ) : null}
                 </div>
 
-                <div className="fixed inset-x-0 bottom-[78px] z-50 border-t border-[#ddd3cb] bg-[#fbf8f5]/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-[#fbf8f5]/80 md:bottom-0">
+                <div className="fixed inset-x-0 bottom-[86px] z-[70] border-t border-[#ddd3cb] bg-[#fbf8f5]/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-[#fbf8f5]/80 md:bottom-0">
                     <div className="mx-auto flex w-full max-w-[820px] gap-2">
-                        <button
-                            type="button"
+                        <FavoriteButton
+                            listingId={listing.id}
+                            initialFavorited={favoriteListingIds.has(listing.id)}
                             className="inline-flex min-h-[42px] flex-1 items-center justify-center gap-2 rounded-full border border-[#ddd3cb] bg-[#fbf8f5] px-4 text-[13px] text-[#2f2925]"
-                        >
-                            <Heart className="h-4 w-4" />
-                            Save
-                        </button>
-                        <button
-                            type="button"
+                            iconClassName="h-4 w-4"
+                            label="Save"
+                            labelClassName="text-[13px]"
+                        />
+                        <Link
+                            href={`/messages/start?sellerId=${listing.user_id}&listingId=${listing.id}`}
                             className="inline-flex min-h-[42px] flex-1 items-center justify-center gap-2 rounded-full border border-[#ddd3cb] bg-[#fbf8f5] px-4 text-[13px] text-[#2f2925]"
                         >
                             <MessageCircle className="h-4 w-4" />
                             Message
-                        </button>
+                        </Link>
                         {isAvailable && !isOwner ? (
                             <form
                                 action={async () => {

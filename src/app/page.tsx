@@ -6,6 +6,7 @@ import { resolveEditorialMediaUrl } from "@/lib/editorial-media";
 import { prisma } from "@/lib/prisma";
 import FavoriteButton from "@/components/marketplace/FavoriteButton";
 import { getFavoriteListingIdsForSessionUser } from "@/app/actions/favorites";
+import HomeBackRefresh from "@/components/marketplace/HomeBackRefresh";
 import localFont from "next/font/local";
 import { cookies } from "next/headers";
 import { auth } from "@/auth";
@@ -66,6 +67,17 @@ const cormorantHeading = localFont({
   ],
   display: "swap",
 });
+
+function toSizeCode(size?: string | null) {
+  const normalized = size?.trim().toLowerCase();
+  if (!normalized) return "";
+  if (normalized === "small") return "S";
+  if (normalized === "medium") return "M";
+  if (normalized === "large") return "L";
+  if (normalized === "xlarge" || normalized === "x-large" || normalized === "extra large") return "XL";
+  if (normalized === "xxlarge" || normalized === "xx-large" || normalized === "extra extra large") return "XXL";
+  return size.trim().toUpperCase();
+}
 
 export default async function Home() {
   const session = await auth();
@@ -174,7 +186,7 @@ export default async function Home() {
   const recentlyViewed = recentViewedIds
     .map((id) => recentlyViewedById.get(id))
     .filter((listing): listing is NonNullable<typeof listing> => Boolean(listing))
-    .slice(0, 3)
+    .slice(0, 5)
     .map((listing) => ({
       ...serializeListing(listing),
       coverImage: getPrimaryListingImage(listing, "card"),
@@ -209,6 +221,7 @@ export default async function Home() {
 
   return (
     <div className="bg-[#EFE7DE] px-0 py-0 sm:px-6 sm:py-6 lg:px-8">
+      <HomeBackRefresh />
       <div className="mx-auto flex w-full max-w-[1360px] flex-col overflow-hidden bg-[#EFE7DE] sm:rounded-[2rem] sm:border sm:border-border/80 sm:shadow-[0_35px_80px_rgba(114,86,67,0.10)]">
         <section className="bg-transparent px-4 pb-6 pt-3 sm:border-b sm:border-border/80 sm:px-6 sm:py-6 lg:px-10">
           <div className="mb-6 flex flex-wrap items-center gap-3 lg:hidden">
@@ -316,9 +329,16 @@ export default async function Home() {
                     <h3 className="mb-[2px] line-clamp-2 text-[12px] font-normal leading-[1.3] text-[#2f2925]" title={listing.title}>
                       {listing.title}
                     </h3>
-                    <p className="mt-[1px] truncate text-[13px] font-semibold text-[#2f2925]">
-                      ${Number(listing.price).toLocaleString()}
-                    </p>
+                    <div className="mt-[1px] flex items-end justify-between gap-2">
+                      <p className="truncate text-[13px] font-semibold text-[#2f2925]">
+                        ${Number(listing.price).toLocaleString()}
+                      </p>
+                      {listing.size ? (
+                        <span className="shrink-0 text-[12px] font-normal uppercase tracking-[0.04em] text-[#8a7667]">
+                          {toSizeCode(listing.size)}
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
                 </Link>
               ))}
@@ -362,9 +382,16 @@ export default async function Home() {
                     <h3 className="mb-[2px] line-clamp-2 text-[12px] font-normal leading-[1.3] text-[#2f2925]" title={listing.title}>
                       {listing.title}
                     </h3>
-                    <p className="mt-[1px] truncate text-[13px] font-semibold text-[#2f2925]">
-                      ${Number(listing.price).toLocaleString()}
-                    </p>
+                    <div className="mt-[1px] flex items-end justify-between gap-2">
+                      <p className="truncate text-[13px] font-semibold text-[#2f2925]">
+                        ${Number(listing.price).toLocaleString()}
+                      </p>
+                      {listing.size ? (
+                        <span className="shrink-0 text-[12px] font-normal uppercase tracking-[0.04em] text-[#8a7667]">
+                          {toSizeCode(listing.size)}
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
                 </Link>
               ))}
@@ -381,8 +408,9 @@ export default async function Home() {
 
               <div className="scrollbar-hide -mx-1 flex gap-[10px] overflow-x-auto pb-2 px-1">
                 {featuredSellers.map((seller) => (
-                  <div
+                  <Link
                     key={seller.id}
+                    href={`/sellers/${seller.id}`}
                     className="min-w-[146px] rounded-[22px] border border-[#d9cdc3] bg-[#f6f1ec] px-4 py-5 text-center sm:min-w-[170px]"
                   >
                     <div className="mx-auto mb-4 flex h-[84px] w-[84px] items-center justify-center rounded-full border-[5px] border-[#d9cdc3] bg-[#cdb79f] text-[34px] text-[#7b5f4f]">
@@ -394,7 +422,7 @@ export default async function Home() {
                     <p className="mt-2 text-[12px] text-[#8a7667]">
                       {seller.soldCount} {seller.soldCount === 1 ? "listing" : "listings"}
                     </p>
-                  </div>
+                  </Link>
                 ))}
               </div>
 
@@ -431,7 +459,7 @@ export default async function Home() {
               </div>
 
               {recentlyViewed.length > 0 ? (
-                <div className="flex gap-[10px] pb-4">
+                <div className="scrollbar-hide -mx-1 flex gap-[10px] overflow-x-auto px-1 pb-4">
                   {recentlyViewed.map((listing) => (
                     <Link key={listing.id} href={`/listings/${listing.id}`} className="w-[102px] shrink-0">
                       <div className="relative mb-2 aspect-[3/4] overflow-hidden rounded-[16px] border border-[#ddd3cb] bg-[#faf8f6]">

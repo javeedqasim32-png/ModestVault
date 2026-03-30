@@ -2,13 +2,15 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { getCartCountForSessionUser } from "@/app/actions/cart";
 import { getFavoriteCountForSessionUser } from "@/app/actions/favorites";
-import { Heart, Search, ShoppingBag } from "lucide-react";
+import { getUnreadMessageCountForSessionUser } from "@/app/actions/messages";
+import { Heart, MessageCircle, Search, ShoppingBag } from "lucide-react";
 import Image from "next/image";
 
 export default async function Navbar() {
     const session = await auth();
     const cartCount = await getCartCountForSessionUser();
     const favoriteCount = await getFavoriteCountForSessionUser();
+    const unreadMessageCount = await getUnreadMessageCountForSessionUser();
 
     return (
         <header className="sticky top-0 z-50 w-full border-b border-border/80 bg-[#f7f3ef]/95 backdrop-blur-xl">
@@ -41,6 +43,14 @@ export default async function Navbar() {
                         {favoriteCount > 0 ? (
                             <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] text-primary-foreground">
                                 {favoriteCount > 99 ? "99+" : favoriteCount}
+                            </span>
+                        ) : null}
+                    </Link>
+                    <Link href="/messages" className="relative flex h-11 w-11 items-center justify-center rounded-full text-foreground hover:bg-secondary">
+                        <MessageCircle className="h-5 w-5" />
+                        {unreadMessageCount > 0 ? (
+                            <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] text-primary-foreground">
+                                {unreadMessageCount > 99 ? "99+" : unreadMessageCount}
                             </span>
                         ) : null}
                     </Link>

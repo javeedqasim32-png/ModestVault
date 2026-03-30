@@ -1,10 +1,10 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Package } from "lucide-react";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { serializeListing } from "@/lib/serialization";
 import { getPrimaryListingImage } from "@/lib/listing-images";
-import ListingCard from "@/components/marketplace/ListingCard";
 import BrowseFiltersClient from "@/components/marketplace/BrowseFiltersClient";
 import FavoriteButton from "@/components/marketplace/FavoriteButton";
 import { getFavoriteListingIdsForSessionUser } from "@/app/actions/favorites";
@@ -16,6 +16,17 @@ import {
 } from "@/lib/listingFilters";
 
 export const dynamic = "force-dynamic";
+
+function toSizeCode(size?: string | null) {
+    const normalized = size?.trim().toLowerCase();
+    if (!normalized) return "";
+    if (normalized === "small") return "S";
+    if (normalized === "medium") return "M";
+    if (normalized === "large") return "L";
+    if (normalized === "xlarge" || normalized === "x-large" || normalized === "extra large") return "XL";
+    if (normalized === "xxlarge" || normalized === "xx-large" || normalized === "extra extra large") return "XXL";
+    return size.trim().toUpperCase();
+}
 
 function normalizePriceRange(filters: ListingBrowseFilters) {
     if (
@@ -42,9 +53,10 @@ export default async function BrowsePage({
     const filters = normalizePriceRange(parsedFilters);
     
     const sort = Array.isArray(params.sort) ? params.sort[0] : params.sort;
-    const orderBy = sort === "views" 
-        ? [{ view_count: "desc" }, { created_at: "desc" }] as any
-        : { created_at: "desc" };
+    const orderBy: Prisma.ListingOrderByWithRelationInput | Prisma.ListingOrderByWithRelationInput[] =
+        sort === "views"
+            ? [{ view_count: "desc" }, { created_at: "desc" }]
+            : { created_at: "desc" };
 
     const [filteredListings, availableListings] = await Promise.all([
         prisma.listing.findMany({
@@ -98,24 +110,46 @@ export default async function BrowsePage({
                         <p className="mt-2 text-sm text-muted-foreground">Try changing your filters or search.</p>
                     </div>
                 ) : (
-                    <div className="mt-6 grid grid-cols-2 gap-3">
+                    <div className="mt-6 grid grid-cols-2 gap-[10px] pb-4">
                         {listingsWithCover.map((listing) => (
-                            <Link key={listing.id} href={`/listings/${listing.id}`} className="block">
-                                <div className="relative overflow-hidden rounded-[0.9rem] border border-border/70 bg-transparent">
-                                    <div className="relative aspect-[3/4]">
-                                        <Image src={listing.coverImage} alt={listing.title} fill className="object-contain object-center" sizes="50vw" />
-                                    </div>
-                                    <div className="absolute right-2 top-2">
-                                        <FavoriteButton
-                                            listingId={listing.id}
-                                            initialFavorited={favoriteListingIds.has(listing.id)}
-                                            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-card/90 shadow-sm"
-                                        />
+                            <Link
+                                key={listing.id}
+                                href={`/listings/${listing.id}`}
+                                className="group relative flex min-w-0 flex-col overflow-hidden rounded-[16px] border border-[#ece3dc] bg-white transition-transform duration-150 hover:-translate-y-0.5"
+                            >
+                                <div className="relative aspect-[3/4] w-full min-w-0 overflow-hidden bg-[#faf8f6]">
+                                    <Image
+                                        src={listing.coverImage}
+                                        alt={listing.title}
+                                        fill
+                                        className="object-cover object-center transition-transform duration-500 group-hover:scale-105"
+                                        sizes="50vw"
+                                    />
+                                    <div className="absolute right-[6px] top-[6px] z-10 flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-full bg-white/90">
+                                        <div className="scale-[0.65]">
+                                            <FavoriteButton listingId={listing.id} initialFavorited={favoriteListingIds.has(listing.id)} />
+                                        </div>
                                     </div>
                                 </div>
-                                <p className="mt-2 line-clamp-1 text-[1rem] leading-tight text-foreground">{listing.title}</p>
-                                <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{listing.description}</p>
-                                <p className="mt-1 text-[1.4rem] leading-none text-foreground">${Number(listing.price).toLocaleString()}</p>
+
+                                <div className="flex min-w-0 flex-col px-[10px] pb-[10px] pt-[8px]">
+                                    <div className="mb-[2px] truncate text-[9px] uppercase tracking-[0.1em] text-[#8a7667]">
+                                        {listing.category}
+                                    </div>
+                                    <h3 className="mb-[2px] line-clamp-2 text-[12px] font-normal leading-[1.3] text-[#2f2925]" title={listing.title}>
+                                        {listing.title}
+                                    </h3>
+                                    <div className="mt-[1px] flex items-end justify-between gap-2">
+                                        <p className="truncate text-[13px] font-semibold text-[#2f2925]">
+                                            ${Number(listing.price).toLocaleString()}
+                                        </p>
+                                        {listing.size ? (
+                                            <span className="shrink-0 text-[12px] font-normal uppercase tracking-[0.04em] text-[#8a7667]">
+                                                {toSizeCode(listing.size)}
+                                            </span>
+                                        ) : null}
+                                    </div>
+                                </div>
                             </Link>
                         ))}
                     </div>
@@ -144,22 +178,47 @@ export default async function BrowsePage({
                                 </p>
                             </div>
                         ) : (
-                            <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                                {listingsWithCover.map((listing, index) => (
-                                    <ListingCard
+                            <div className="mt-8 grid grid-cols-2 gap-[10px] pb-4 sm:grid-cols-3 lg:grid-cols-4">
+                                {listingsWithCover.map((listing) => (
+                                    <Link
                                         key={listing.id}
                                         href={`/listings/${listing.id}`}
-                                        imageUrl={listing.coverImage}
-                                        title={listing.title}
-                                        description={listing.description}
-                                        price={Number(listing.price)}
-                                        category={listing.category}
-                                        condition={listing.condition}
-                                        featured={index % 5 === 0}
-                                        showFullImage
-                                        listingId={listing.id}
-                                        isFavorited={favoriteListingIds.has(listing.id)}
-                                    />
+                                        className="group relative flex min-w-0 flex-col overflow-hidden rounded-[16px] border border-[#ece3dc] bg-white transition-transform duration-150 hover:-translate-y-0.5"
+                                    >
+                                        <div className="relative aspect-[3/4] w-full min-w-0 overflow-hidden bg-[#faf8f6]">
+                                            <Image
+                                                src={listing.coverImage}
+                                                alt={listing.title}
+                                                fill
+                                                className="object-cover object-center transition-transform duration-500 group-hover:scale-105"
+                                                sizes="(max-width: 1024px) 33vw, 25vw"
+                                            />
+                                            <div className="absolute right-[6px] top-[6px] z-10 flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-full bg-white/90">
+                                                <div className="scale-[0.65]">
+                                                    <FavoriteButton listingId={listing.id} initialFavorited={favoriteListingIds.has(listing.id)} />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex min-w-0 flex-col px-[10px] pb-[10px] pt-[8px]">
+                                            <div className="mb-[2px] truncate text-[9px] uppercase tracking-[0.1em] text-[#8a7667]">
+                                                {listing.category}
+                                            </div>
+                                            <h3 className="mb-[2px] line-clamp-2 text-[12px] font-normal leading-[1.3] text-[#2f2925]" title={listing.title}>
+                                                {listing.title}
+                                            </h3>
+                                            <div className="mt-[1px] flex items-end justify-between gap-2">
+                                                <p className="truncate text-[13px] font-semibold text-[#2f2925]">
+                                                    ${Number(listing.price).toLocaleString()}
+                                                </p>
+                                                {listing.size ? (
+                                                    <span className="shrink-0 text-[12px] font-normal uppercase tracking-[0.04em] text-[#8a7667]">
+                                                        {toSizeCode(listing.size)}
+                                                    </span>
+                                                ) : null}
+                                            </div>
+                                        </div>
+                                    </Link>
                                 ))}
                             </div>
                         )}

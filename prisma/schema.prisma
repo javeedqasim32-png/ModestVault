@@ -35,6 +35,9 @@ model User {
   reviewedListings   Listing[]  @relation("ListingReviewer")
   reviewsReceived    SellerReview[] @relation("SellerReviewsReceived")
   reviewsWritten     SellerReview[] @relation("SellerReviewsWritten")
+  buyerConversations Conversation[] @relation("ConversationBuyer")
+  sellerConversations Conversation[] @relation("ConversationSeller")
+  sentConversationMessages ConversationMessage[] @relation("ConversationMessageSender")
 }
 
 model Listing {
@@ -65,6 +68,7 @@ model Listing {
   purchases         Purchase[]
   cartItems         CartItem[]
   favoriteItems     FavoriteItem[]
+  conversations     Conversation[]
 
   @@index([status, moderation_status, created_at])
   @@index([style, category, subcategory, type])
@@ -182,4 +186,36 @@ model SellerReview {
   @@unique([seller_id, reviewer_id])
   @@index([seller_id, created_at])
   @@index([reviewer_id, created_at])
+}
+
+model Conversation {
+  id         String   @id @default(uuid())
+  buyer_id   String
+  seller_id  String
+  listing_id String?
+  buyer      User     @relation("ConversationBuyer", fields: [buyer_id], references: [id], onDelete: Cascade)
+  seller     User     @relation("ConversationSeller", fields: [seller_id], references: [id], onDelete: Cascade)
+  listing    Listing? @relation(fields: [listing_id], references: [id], onDelete: SetNull)
+  messages   ConversationMessage[]
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@unique([buyer_id, seller_id])
+  @@index([buyer_id, updated_at])
+  @@index([seller_id, updated_at])
+}
+
+model ConversationMessage {
+  id              String   @id @default(uuid())
+  conversation_id String
+  sender_id       String
+  body            String
+  read_at         DateTime?
+  created_at      DateTime @default(now())
+  conversation    Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+  sender          User     @relation("ConversationMessageSender", fields: [sender_id], references: [id], onDelete: Cascade)
+
+  @@index([conversation_id, created_at])
+  @@index([sender_id, created_at])
+  @@index([conversation_id, read_at])
 }

@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
 import { getSubcategories, getTypes } from "@/lib/taxonomy";
 import {
     hasActiveBrowseFilters,
@@ -65,7 +64,7 @@ function MultiSelectDropdown({
     onChange: (next: string[]) => void;
 }) {
     return (
-        <div className="relative">
+        <div className="relative" data-dropdown-root="true">
             <button
                 type="button"
                 onClick={onToggle}
@@ -151,6 +150,8 @@ export default function BrowseFiltersClient({
         const fromTaxonomy = allowedSubcategories.flatMap((subcategory) => getTypes(subcategory));
         return sorted([...new Set(fromTaxonomy)].filter((value) => inventoryTypes.has(value)));
     }, [draft.subcategories, inventoryTypes]);
+    const minPercent = ((sliderMin - PRICE_MIN) / (PRICE_MAX - PRICE_MIN)) * 100;
+    const maxPercent = ((sliderMax - PRICE_MIN) / (PRICE_MAX - PRICE_MIN)) * 100;
 
     useEffect(() => {
         if (!panelOpen) return;
@@ -198,13 +199,12 @@ export default function BrowseFiltersClient({
         setOpenDropdown(null);
     };
 
-    const filterCountSummary = [
-        { label: "Styles", value: normalizedAppliedFilters.styles.length },
-        { label: "Categories", value: normalizedAppliedFilters.categories.length },
-        { label: "Subcategories", value: normalizedAppliedFilters.subcategories.length },
-        { label: "Types", value: normalizedAppliedFilters.types.length },
-        { label: "Sizes", value: normalizedAppliedFilters.sizes.length },
-    ].filter((item) => item.value > 0);
+    const handlePanelClickCapture = (event: React.MouseEvent<HTMLDivElement>) => {
+        const target = event.target as HTMLElement;
+        if (!target.closest("[data-dropdown-root='true']")) {
+            setOpenDropdown(null);
+        }
+    };
 
     return (
         <div className="space-y-4">
@@ -225,46 +225,22 @@ export default function BrowseFiltersClient({
                         setPanelOpen((prev) => !prev);
                         if (panelOpen) setOpenDropdown(null);
                     }}
-                    className="inline-flex items-center gap-2 rounded-full border border-border/80 bg-[#f1ebe5] px-4 py-3 text-base text-foreground"
+                    className={`relative inline-flex items-center gap-2 rounded-full border px-4 py-3 text-base ${hasApplied
+                        ? "border-[#8f6b52] bg-[#a07c61] text-white"
+                        : "border-border/80 bg-[#f1ebe5] text-foreground"
+                        }`}
                 >
                     <SlidersHorizontal className="h-5 w-5" />
                     Filters
                 </button>
             </div>
 
-            <div className="rounded-2xl border border-border/80 bg-card/60 px-4 py-4">
-                {hasApplied ? (
-                    <div className="space-y-3">
-                        <h2 className="font-serif text-2xl text-foreground">Filters applied</h2>
-                        <p className="text-sm text-muted-foreground">
-                            {filterCountSummary.length > 0
-                                ? filterCountSummary.map((item) => `${item.label}: ${item.value}`).join(" • ")
-                                : "Search/price filters applied."}
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                            {normalizedAppliedFilters.search ? <Badge variant="outline">Search: {normalizedAppliedFilters.search}</Badge> : null}
-                            {normalizedAppliedFilters.styles.map((item) => <Badge key={`style-${item}`} variant="secondary">{item}</Badge>)}
-                            {normalizedAppliedFilters.categories.map((item) => <Badge key={`cat-${item}`} variant="secondary">{item}</Badge>)}
-                            {normalizedAppliedFilters.subcategories.map((item) => <Badge key={`sub-${item}`} variant="secondary">{item}</Badge>)}
-                            {normalizedAppliedFilters.types.map((item) => <Badge key={`type-${item}`} variant="secondary">{item}</Badge>)}
-                            {normalizedAppliedFilters.sizes.map((item) => <Badge key={`size-${item}`} variant="secondary">{item}</Badge>)}
-                            {typeof normalizedAppliedFilters.minPrice === "number" || typeof normalizedAppliedFilters.maxPrice === "number" ? (
-                                <Badge variant="outline">
-                                    Price: ${normalizedAppliedFilters.minPrice ?? PRICE_MIN} - ${normalizedAppliedFilters.maxPrice ?? PRICE_MAX}
-                                </Badge>
-                            ) : null}
-                        </div>
-                    </div>
-                ) : (
-                    <div>
-                        <h2 className="font-serif text-2xl text-foreground">Filtered results will appear here</h2>
-                        <p className="text-sm text-muted-foreground">Search or apply filters.</p>
-                    </div>
-                )}
-            </div>
-
             {panelOpen ? (
-                <div ref={panelRef} className="rounded-2xl border border-border/80 bg-card p-4 sm:p-5">
+                <div
+                    ref={panelRef}
+                    onClickCapture={handlePanelClickCapture}
+                    className="rounded-2xl border border-border/80 bg-card p-4 sm:p-5"
+                >
                     <div className="mb-4 flex items-center justify-between">
                         <h3 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">Refine Results</h3>
                         <button
@@ -354,41 +330,51 @@ export default function BrowseFiltersClient({
                         />
                     </div>
 
-                    <div className="mt-5 rounded-xl border border-border/70 bg-background p-4">
-                        <div className="mb-3 flex items-center justify-between">
-                            <p className="text-sm text-foreground">Price range</p>
-                            <p className="text-xs text-muted-foreground">
-                                ${sliderMin} - ${sliderMax}
-                            </p>
+                    <div className="mt-5">
+                        <div className="mb-3 flex items-center justify-between px-1">
+                            <p className="text-sm font-normal text-foreground">Price range</p>
                         </div>
-                        <div className="space-y-3">
-                            <input
-                                type="range"
-                                min={PRICE_MIN}
-                                max={PRICE_MAX}
-                                step={PRICE_STEP}
-                                value={sliderMin}
-                                onChange={(event) => {
-                                    const next = Number(event.target.value);
-                                    setSliderMin(Math.min(next, sliderMax));
-                                }}
-                                className="w-full"
-                            />
-                            <input
-                                type="range"
-                                min={PRICE_MIN}
-                                max={PRICE_MAX}
-                                step={PRICE_STEP}
-                                value={sliderMax}
-                                onChange={(event) => {
-                                    const next = Number(event.target.value);
-                                    setSliderMax(Math.max(next, sliderMin));
-                                }}
-                                className="w-full"
-                            />
-                            <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                <span>${PRICE_MIN}</span>
-                                <span>${PRICE_MAX}</span>
+                        <div className="rounded-[22px] border border-[#d8cdc4] bg-[#f8f3ef] p-3.5">
+                            <div className="mb-4 flex items-center justify-between">
+                                <span className="inline-flex min-h-[34px] items-center rounded-full border border-[#d8cdc4] bg-[#f8f3ef] px-3.5 text-sm font-normal text-muted-foreground">
+                                    Min ${sliderMin}
+                                </span>
+                                <span className="inline-flex min-h-[34px] items-center rounded-full border border-[#d8cdc4] bg-[#f8f3ef] px-3.5 text-sm font-normal text-muted-foreground">
+                                    Max ${sliderMax}
+                                </span>
+                            </div>
+
+                            <div className="relative h-9">
+                                <div
+                                    className="absolute left-0 right-0 top-1/2 h-[6px] -translate-y-1/2 rounded-full"
+                                    style={{
+                                        background: `linear-gradient(to right, #ded3cb 0%, #ded3cb ${minPercent}%, #a07c61 ${minPercent}%, #a07c61 ${maxPercent}%, #ded3cb ${maxPercent}%, #ded3cb 100%)`,
+                                    }}
+                                />
+                                <input
+                                    type="range"
+                                    min={PRICE_MIN}
+                                    max={PRICE_MAX}
+                                    step={PRICE_STEP}
+                                    value={sliderMin}
+                                    onChange={(event) => {
+                                        const next = Number(event.target.value);
+                                        setSliderMin(Math.min(next, sliderMax));
+                                    }}
+                                    className="price-slider price-slider-min absolute left-0 top-0 h-9 w-full"
+                                />
+                                <input
+                                    type="range"
+                                    min={PRICE_MIN}
+                                    max={PRICE_MAX}
+                                    step={PRICE_STEP}
+                                    value={sliderMax}
+                                    onChange={(event) => {
+                                        const next = Number(event.target.value);
+                                        setSliderMax(Math.max(next, sliderMin));
+                                    }}
+                                    className="price-slider absolute left-0 top-0 h-9 w-full"
+                                />
                             </div>
                         </div>
                     </div>
@@ -403,6 +389,50 @@ export default function BrowseFiltersClient({
                     </div>
                 </div>
             ) : null}
+            <style jsx>{`
+                .price-slider {
+                    -webkit-appearance: none;
+                    appearance: none;
+                    background: transparent;
+                    pointer-events: none;
+                }
+                .price-slider::-webkit-slider-runnable-track {
+                    height: 0;
+                    background: transparent;
+                    border: 0;
+                }
+                .price-slider::-moz-range-track {
+                    height: 0;
+                    background: transparent;
+                    border: 0;
+                }
+                .price-slider::-webkit-slider-thumb {
+                    -webkit-appearance: none;
+                    appearance: none;
+                    width: 22px;
+                    height: 22px;
+                    border-radius: 9999px;
+                    background: #a07c61;
+                    border: 3px solid #fff;
+                    box-shadow: 0 2px 8px rgba(47, 41, 37, 0.2);
+                    pointer-events: all;
+                    cursor: pointer;
+                    margin-top: -11px;
+                }
+                .price-slider::-moz-range-thumb {
+                    width: 22px;
+                    height: 22px;
+                    border-radius: 9999px;
+                    background: #a07c61;
+                    border: 3px solid #fff;
+                    box-shadow: 0 2px 8px rgba(47, 41, 37, 0.2);
+                    pointer-events: all;
+                    cursor: pointer;
+                }
+                .price-slider-min {
+                    z-index: 2;
+                }
+            `}</style>
         </div>
     );
 }

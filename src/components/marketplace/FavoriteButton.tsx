@@ -8,10 +8,16 @@ export default function FavoriteButton({
   listingId,
   initialFavorited = false,
   className = "",
+  iconClassName = "",
+  label,
+  labelClassName = "",
 }: {
   listingId: string;
   initialFavorited?: boolean;
   className?: string;
+  iconClassName?: string;
+  label?: string;
+  labelClassName?: string;
 }) {
   const [isFavorited, setIsFavorited] = useState(initialFavorited);
   const [isPending, startTransition] = useTransition();
@@ -40,10 +46,11 @@ export default function FavoriteButton({
       className={className}
     >
       <Heart
-        className={`h-5 w-5 transition-colors ${
+        className={`${iconClassName || "h-5 w-5"} transition-colors ${
           isFavorited ? "fill-foreground text-foreground" : "text-foreground/70"
         }`}
       />
+      {label ? <span className={labelClassName}>{label}</span> : null}
     </button>
   );
 }

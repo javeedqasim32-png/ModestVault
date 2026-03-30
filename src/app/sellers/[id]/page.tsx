@@ -128,13 +128,13 @@ export default async function SellerProfilePage({ params }: { params: Promise<{ 
             </div>
 
             <div className="mt-4 flex w-full justify-center gap-2">
-              <button
-                type="button"
+              <Link
+                href={`/messages/start?sellerId=${seller.id}`}
                 className="inline-flex min-h-[42px] min-w-[150px] items-center justify-center gap-2 rounded-full border border-[#4a3328] bg-[#4a3328] px-6 text-[13px] font-medium text-white"
               >
                 <MessageCircle className="h-4 w-4" />
                 Message
-              </button>
+              </Link>
               <button
                 type="button"
                 className="inline-flex min-h-[42px] min-w-[130px] items-center justify-center rounded-full border border-[#ddd3cb] bg-[#fbf8f5] px-6 text-[13px] font-medium text-[#2f2925]"
