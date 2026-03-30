@@ -25,7 +25,7 @@ function toSizeCode(size?: string | null) {
     if (normalized === "large") return "L";
     if (normalized === "xlarge" || normalized === "x-large" || normalized === "extra large") return "XL";
     if (normalized === "xxlarge" || normalized === "xx-large" || normalized === "extra extra large") return "XXL";
-    return size.trim().toUpperCase();
+    return normalized.toUpperCase();
 }
 
 function normalizePriceRange(filters: ListingBrowseFilters) {

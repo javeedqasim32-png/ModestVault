@@ -1,4 +1,3 @@
-import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 
@@ -7,8 +6,7 @@ async function main() {
     if (!connectionString) {
         throw new Error("DATABASE_URL is not set");
     }
-    const pool = new Pool({ connectionString });
-    const adapter = new PrismaPg(pool);
+    const adapter = new PrismaPg({ connectionString } as any);
     const prisma = new PrismaClient({ adapter });
 
     const user = await prisma.user.findFirst();
@@ -53,7 +51,6 @@ async function main() {
 
     console.log("Test listings created successfully!");
     await prisma.$disconnect();
-    await pool.end();
 }
 
 main().catch(err => {
