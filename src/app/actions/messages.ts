@@ -12,6 +12,7 @@ function getConversationDelegate() {
   return (prisma as unknown as {
     conversation?: {
       findUnique: (args: unknown) => Promise<any>;
+      findFirst: (args: unknown) => Promise<any>;
       findMany: (args: unknown) => Promise<any[]>;
       create: (args: unknown) => Promise<any>;
       update: (args: unknown) => Promise<any>;
@@ -45,12 +46,12 @@ export async function startConversationWithSeller(input: { sellerId: string; lis
   const conversationDelegate = getConversationDelegate();
   if (!conversationDelegate) return { error: "Messaging is not available in this environment yet." } as const;
 
-  let conversation = await conversationDelegate.findUnique({
+  let conversation = await conversationDelegate.findFirst({
     where: {
-      buyer_id_seller_id: {
-        buyer_id: userId,
-        seller_id: sellerId,
-      },
+      OR: [
+        { buyer_id: userId, seller_id: sellerId },
+        { buyer_id: sellerId, seller_id: userId },
+      ],
     },
     select: { id: true, listing_id: true },
   });

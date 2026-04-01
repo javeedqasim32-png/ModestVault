@@ -39,6 +39,9 @@ export default async function MessagesInboxPage() {
 
   const conversations = await conversationDelegate.findMany({
     where: {
+      messages: {
+        some: {},
+      },
       OR: [{ buyer_id: userId }, { seller_id: userId }],
     },
     orderBy: { updated_at: "desc" },
@@ -54,6 +57,15 @@ export default async function MessagesInboxPage() {
     },
   });
 
+  const uniqueByOtherUser = new Map<string, (typeof conversations)[number]>();
+  for (const conversation of conversations) {
+    const otherUserId = conversation.buyer_id === userId ? conversation.seller_id : conversation.buyer_id;
+    if (!uniqueByOtherUser.has(otherUserId)) {
+      uniqueByOtherUser.set(otherUserId, conversation);
+    }
+  }
+  const visibleConversations = Array.from(uniqueByOtherUser.values());
+
   return (
     <div className="min-h-screen bg-[#EFE7DE] pb-24">
       <div className="mx-auto w-full max-w-[820px] px-4 py-5">
@@ -61,13 +73,13 @@ export default async function MessagesInboxPage() {
           Messages
         </h1>
 
-        {conversations.length === 0 ? (
+        {visibleConversations.length === 0 ? (
           <div className="mt-4 rounded-[14px] border border-[#ddd3cb] bg-[#f7f2ed] px-5 py-8 text-[14px] text-[#8a7667]">
             No messages yet.
           </div>
         ) : (
           <div className="mt-4 space-y-2">
-            {conversations.map((conversation) => {
+            {visibleConversations.map((conversation) => {
               const otherUser = conversation.buyer_id === userId ? conversation.seller : conversation.buyer;
               const name = `${otherUser.first_name} ${otherUser.last_name?.[0] ? `${otherUser.last_name[0].toUpperCase()}.` : ""}`.trim();
               const latest = conversation.messages[0];
