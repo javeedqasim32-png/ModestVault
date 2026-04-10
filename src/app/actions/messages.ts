@@ -100,6 +100,9 @@ export async function sendConversationMessage(input: { conversationId: string; b
   });
 
   if (!conversation) return { error: "Conversation not found." } as const;
+  if (conversation.buyer_id === conversation.seller_id) {
+    return { error: "You cannot message yourself." } as const;
+  }
   if (conversation.buyer_id !== userId && conversation.seller_id !== userId) {
     return { error: "You do not have access to this conversation." } as const;
   }

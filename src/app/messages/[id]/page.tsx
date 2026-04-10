@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { markConversationRead, sendConversationMessage } from "@/app/actions/messages";
+import ConversationViewportFix from "@/components/messages/ConversationViewportFix";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,7 @@ export default async function ConversationPage({ params }: { params: Promise<{ i
 
   const conversationDelegate = (prisma as unknown as {
     conversation?: {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       findUnique: (args: unknown) => Promise<any>;
     };
   }).conversation;
@@ -67,7 +69,8 @@ export default async function ConversationPage({ params }: { params: Promise<{ i
   const otherName = `${otherUser.first_name} ${otherUser.last_name?.[0] ? `${otherUser.last_name[0].toUpperCase()}.` : ""}`.trim();
 
   return (
-    <div className="min-h-screen bg-[#EFE7DE] pb-28">
+    <div className="min-h-[100dvh] bg-[#EFE7DE] pb-28">
+      <ConversationViewportFix messageCount={conversation.messages.length} />
       <div className="mx-auto w-full max-w-[820px] px-4 py-4">
         <Link href="/messages" className="text-[12px] text-[#8a7667] hover:text-[#2f2925]">
           Back to messages
@@ -106,6 +109,7 @@ export default async function ConversationPage({ params }: { params: Promise<{ i
               );
             })
           )}
+          <div id="conversation-latest-anchor" className="h-px w-full" aria-hidden />
         </div>
       </div>
 

@@ -304,6 +304,84 @@ export async function createListing(formData: FormData) {
     return { success: true };
 }
 
+export async function updateListing(listingId: string, formData: FormData) {
+    const session = await auth();
+    if (!session?.user?.id) {
+        return { error: "You must be logged in to update a listing." };
+    }
+
+    if (!listingId) {
+        return { error: "Listing ID is required." };
+    }
+
+    const listing = await prisma.listing.findUnique({
+        where: { id: listingId },
+        select: { id: true, user_id: true },
+    });
+
+    if (!listing || listing.user_id !== session.user.id) {
+        return { error: "Listing not found or you do not have permission to edit it." };
+    }
+
+    const title = String(formData.get("title") || "").trim();
+    const description = String(formData.get("description") || "").trim();
+    const priceStr = String(formData.get("price") || "").trim();
+    const style = String(formData.get("style") || "").trim();
+    const category = String(formData.get("category") || "").trim();
+    const subcategoryRaw = String(formData.get("subcategory") || "").trim();
+    const typeRaw = String(formData.get("type") || "").trim();
+    const condition = String(formData.get("condition") || "").trim();
+    const brand = String(formData.get("brand") || "").trim();
+    const size = String(formData.get("size") || "").trim();
+
+    if (!title || !description || !priceStr || !style || !category) {
+        return { error: "Title, description, price, style, and category are required." };
+    }
+
+    const price = parseFloat(priceStr);
+    if (isNaN(price) || price <= 0) {
+        return { error: "Please enter a valid price." };
+    }
+
+    const taxonomyValidation = validateListingTaxonomy({
+        style,
+        category,
+        subcategory: subcategoryRaw,
+        type: typeRaw,
+    });
+    if (!taxonomyValidation.ok) {
+        return { error: taxonomyValidation.message };
+    }
+
+    try {
+        await prisma.listing.update({
+            where: { id: listingId },
+            data: {
+                title,
+                description,
+                price,
+                style: taxonomyValidation.normalized.style,
+                category: taxonomyValidation.normalized.category,
+                subcategory: taxonomyValidation.normalized.subcategory,
+                type: taxonomyValidation.normalized.type,
+                condition: condition || null,
+                brand: brand || null,
+                size: size || null,
+                moderation_status: "PENDING",
+            },
+        });
+
+        revalidatePath("/sell");
+        revalidatePath("/browse");
+        revalidatePath(`/listings/${listingId}`);
+        revalidatePath(`/sellers/${session.user.id}`);
+        return { success: true };
+    } catch (error) {
+        console.error("Update listing error:", error);
+        return { error: "An unexpected error occurred while updating the listing." };
+    }
+}
+
 /**
  * Replaces a listing's images while keeping strict listing ownership.
  * Images are ordered by upload sequence and the first image becomes cover.

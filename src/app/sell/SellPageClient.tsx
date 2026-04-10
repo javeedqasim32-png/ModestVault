@@ -2,14 +2,13 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import localFont from "next/font/local";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createListing, deleteListing } from "../actions/listings";
+import { createListing, deleteListing, replaceListingImages, updateListing } from "../actions/listings";
 import { onboardSellerAction } from "../actions/stripe";
 import { Tag, UploadCloud, ChevronRight, Heart, PackagePlus, X, Printer, TrendingUp, Users, ShieldCheck, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
-import { Badge } from "@/components/ui/Badge";
-import { Card } from "@/components/ui/Card";
 import { useRouter } from "next/navigation";
 import { getCategories, getStyles, getSubcategories, getTypes } from "@/lib/taxonomy";
 import { validateListingTaxonomy, type ListingTaxonomyErrors } from "@/lib/taxonomyValidation";
@@ -21,6 +20,12 @@ type ListingItem = {
     price: number | string;
     image_url: string;
     style?: string;
+    category?: string;
+    subcategory?: string | null;
+    type?: string | null;
+    condition?: string | null;
+    brand?: string | null;
+    size?: string | null;
     status: string;
     moderation_status?: string;
     rejection_reason?: string | null;
@@ -30,9 +35,26 @@ type ListingItem = {
 type SellPageClientProps = {
     isSellerInitially: boolean;
     listings: ListingItem[];
+    openCreateInitially?: boolean;
+    openManageInitially?: boolean;
+    analytics: {
+        totalListings: number;
+        deliveredRevenue: number;
+        activeListings: number;
+        averagePrice: number;
+        soldListings: number;
+        pendingListings: number;
+    };
 };
 
-const tabs = ["LISTINGS", "APPROVED", "PENDING", "REJECTED"] as const;
+type SellTab = "LISTINGS" | "SOLD" | "ACTIVE" | "PENDING" | "ANALYTICS";
+const mobileTabs: { key: SellTab; label: string }[] = [
+    { key: "LISTINGS", label: "Listings" },
+    { key: "SOLD", label: "Sold" },
+    { key: "ACTIVE", label: "Active" },
+    { key: "PENDING", label: "Pending" },
+    { key: "ANALYTICS", label: "Analytics" },
+];
 const styleOptions = getStyles();
 const categoryOptions = getCategories();
 const MAX_IMAGES = 6;
@@ -40,6 +62,13 @@ const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_TOTAL_IMAGE_BYTES = 18 * 1024 * 1024;
 const COMPRESSIBLE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_OPTIMIZED_DIMENSION = 2000;
+const cormorantHeading = localFont({
+    src: [
+        { path: "../../fonts/CormorantGaramond-Regular.ttf", weight: "400", style: "normal" },
+        { path: "../../fonts/CormorantGaramond-SemiBold.ttf", weight: "600", style: "normal" },
+    ],
+    display: "swap",
+});
 
 function replaceFileExtension(filename: string, nextExt: string) {
     const cleanName = filename.replace(/\.[^/.]+$/, "");
@@ -124,22 +153,34 @@ async function optimizeImageFile(file: File): Promise<File> {
     }
 }
 
-export default function SellPageClient({ isSellerInitially, listings }: SellPageClientProps) {
+export default function SellPageClient({
+    isSellerInitially,
+    listings,
+    openCreateInitially = false,
+    openManageInitially = false,
+    analytics,
+}: SellPageClientProps) {
     const router = useRouter();
     const [isSeller] = useState(isSellerInitially);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
     const [previewUrls, setPreviewUrls] = useState<string[]>([]);
-    const [mobileTab, setMobileTab] = useState<(typeof tabs)[number]>("LISTINGS");
-    const [showCreateForm, setShowCreateForm] = useState(false);
+    const [mobileTab, setMobileTab] = useState<SellTab>("LISTINGS");
+    const [showCreateForm, setShowCreateForm] = useState(openCreateInitially);
+    const [editingListing, setEditingListing] = useState<ListingItem | null>(null);
     const [deletingListingId, setDeletingListingId] = useState<string | null>(null);
+    const [savingEdit, setSavingEdit] = useState(false);
+    const [editFiles, setEditFiles] = useState<File[]>([]);
+    const [editPreviewUrls, setEditPreviewUrls] = useState<string[]>([]);
     const [style, setStyle] = useState("");
     const [category, setCategory] = useState("");
     const [subcategory, setSubcategory] = useState("");
     const [listingType, setListingType] = useState("");
     const [taxonomyErrors, setTaxonomyErrors] = useState<ListingTaxonomyErrors>({});
     const fileInputRef = useRef<HTMLInputElement | null>(null);
+    const mobileMyListingsRef = useRef<HTMLHeadingElement | null>(null);
+    const desktopMyListingsRef = useRef<HTMLHeadingElement | null>(null);
     const subcategoryOptions = useMemo(() => getSubcategories(category), [category]);
     const typeOptions = useMemo(() => getTypes(subcategory), [subcategory]);
     const taxonomyValidation = useMemo(
@@ -155,10 +196,18 @@ export default function SellPageClient({ isSellerInitially, listings }: SellPage
 
     const filteredListings = useMemo(() => {
         if (mobileTab === "LISTINGS") return listings;
-        if (mobileTab === "APPROVED") return listings.filter((listing) => listing.moderation_status === "APPROVED");
+        if (mobileTab === "SOLD") return listings.filter((listing) => listing.status === "SOLD");
+        if (mobileTab === "ACTIVE") return listings.filter((listing) => listing.moderation_status === "APPROVED" && listing.status !== "SOLD");
         if (mobileTab === "PENDING") return listings.filter((listing) => listing.moderation_status === "PENDING");
-        return listings.filter((listing) => listing.moderation_status === "REJECTED");
+        return [];
     }, [listings, mobileTab]);
+
+    const listingStats = useMemo(() => {
+        const activeCount = listings.filter((listing) => listing.moderation_status === "APPROVED" && listing.status !== "SOLD").length;
+        const soldCount = listings.filter((listing) => listing.status === "SOLD").length;
+        const listedValue = listings.reduce((sum, listing) => sum + Number(listing.price || 0), 0);
+        return { activeCount, soldCount, listedValue };
+    }, [listings]);
 
     useEffect(() => {
         if (!subcategory) {
@@ -273,6 +322,70 @@ export default function SellPageClient({ isSellerInitially, listings }: SellPage
         };
     }, [selectedFiles]);
 
+    useEffect(() => {
+        const urls = editFiles.map((file) => URL.createObjectURL(file));
+        setEditPreviewUrls(urls);
+        return () => {
+            urls.forEach((url) => URL.revokeObjectURL(url));
+        };
+    }, [editFiles]);
+
+    useEffect(() => {
+        if (!openManageInitially) return;
+        setShowCreateForm(false);
+        const raf = requestAnimationFrame(() => {
+            const target =
+                window.matchMedia("(min-width: 640px)").matches
+                    ? desktopMyListingsRef.current
+                    : mobileMyListingsRef.current;
+            target?.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+        return () => cancelAnimationFrame(raf);
+    }, [openManageInitially]);
+
+    const handleEditImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files ?? []);
+        if (files.length === 0) {
+            e.target.value = "";
+            return;
+        }
+
+        const merged = [...editFiles];
+        for (const rawFile of files) {
+            const file = await optimizeImageFile(rawFile);
+            if (!COMPRESSIBLE_TYPES.has(file.type) && file.size > MAX_IMAGE_BYTES) {
+                setError(`"${rawFile.name}" is larger than 10MB. Please choose a smaller file.`);
+                e.target.value = "";
+                return;
+            }
+            if (file.size > MAX_IMAGE_BYTES) {
+                setError(`"${rawFile.name}" is still larger than 10MB after optimization.`);
+                e.target.value = "";
+                return;
+            }
+            merged.push(file);
+            if (merged.length > MAX_IMAGES) {
+                setError("You can upload a maximum of 6 images.");
+                e.target.value = "";
+                return;
+            }
+        }
+
+        const totalImageBytes = merged.reduce((total, file) => total + file.size, 0);
+        if (totalImageBytes > MAX_TOTAL_IMAGE_BYTES) {
+            setError("Total image upload size is too large. Please keep all images under 18MB combined.");
+            e.target.value = "";
+            return;
+        }
+
+        setEditFiles(merged);
+        e.target.value = "";
+    };
+
+    const removeEditImage = (indexToRemove: number) => {
+        setEditFiles((prev) => prev.filter((_, index) => index !== indexToRemove));
+    };
+
     const handleDeleteListing = async (listingId: string) => {
         const confirmed = window.confirm("Delete this listing? This will remove it from your listings and delete its images.");
         if (!confirmed) return;
@@ -291,6 +404,17 @@ export default function SellPageClient({ isSellerInitially, listings }: SellPage
         } finally {
             setDeletingListingId(null);
         }
+    };
+
+    const startEditListing = (listing: ListingItem) => {
+        setEditingListing(listing);
+        setEditFiles([]);
+        setError("");
+    };
+
+    const closeEditListing = () => {
+        setEditingListing(null);
+        setEditFiles([]);
     };
 
     const renderCreateForm = (showMobileBack: boolean) => (
@@ -747,46 +871,266 @@ export default function SellPageClient({ isSellerInitially, listings }: SellPage
 
     return (
         <>
-            <div className={`${showCreateForm ? "hidden" : "block"} min-h-screen bg-[#f4efea] px-4 pb-28 pt-3 sm:hidden`}>
-                <div className="mb-4 flex items-center justify-between border-y border-border/80 px-1 py-1.5">
-                    {tabs.map((tab) => (
-                        <button
-                            key={tab}
-                            type="button"
-                            onClick={() => setMobileTab(tab)}
-                            className={`relative px-2 py-2 text-xl leading-none ${mobileTab === tab ? "font-semibold text-foreground" : "text-foreground/75"}`}
+            {editingListing ? (
+                <div className="fixed inset-0 z-[80] bg-black/45 p-4">
+                    <div className="mx-auto mt-6 max-h-[86vh] w-full max-w-2xl overflow-y-auto rounded-[1.5rem] border border-border bg-card p-5 sm:p-6">
+                        <div className="mb-4 flex items-center justify-between">
+                            <h3 className="font-serif text-3xl text-foreground">Edit Listing</h3>
+                            <button
+                                type="button"
+                                onClick={closeEditListing}
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border text-foreground"
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+                        </div>
+
+                        <form
+                            onSubmit={async (event) => {
+                                event.preventDefault();
+                                setSavingEdit(true);
+                                setError("");
+                                try {
+                                    const formData = new FormData(event.currentTarget);
+                                    const result = await updateListing(editingListing.id, formData);
+                                    if (result?.error) {
+                                        setError(result.error);
+                                        return;
+                                    }
+
+                                    if (editFiles.length > 0) {
+                                        const imageData = new FormData();
+                                        editFiles.forEach((file) => imageData.append("images", file));
+                                        const imageResult = await replaceListingImages(editingListing.id, imageData);
+                                        if (imageResult?.error) {
+                                            setError(imageResult.error);
+                                            return;
+                                        }
+                                    }
+
+                                    closeEditListing();
+                                    router.refresh();
+                                } finally {
+                                    setSavingEdit(false);
+                                }
+                            }}
+                            className="space-y-4"
                         >
-                            {tab === "LISTINGS" ? "Listings" : tab[0] + tab.slice(1).toLowerCase()}
-                            {mobileTab === tab ? (
-                                <span className="absolute bottom-0 left-2 right-2 h-[3px] rounded-full bg-[#5f4437]" />
-                            ) : null}
-                        </button>
-                    ))}
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <div className="space-y-1">
+                                    <Label htmlFor="edit-title">Title</Label>
+                                    <Input id="edit-title" name="title" required defaultValue={editingListing.title} />
+                                </div>
+                                <div className="space-y-1">
+                                    <Label htmlFor="edit-price">Price ($)</Label>
+                                    <Input id="edit-price" name="price" type="number" step="0.01" min="0.5" required defaultValue={Number(editingListing.price)} />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <div className="space-y-1">
+                                    <Label htmlFor="edit-style">Style</Label>
+                                    <Input id="edit-style" name="style" required defaultValue={editingListing.style || ""} />
+                                </div>
+                                <div className="space-y-1">
+                                    <Label htmlFor="edit-category">Category</Label>
+                                    <Input id="edit-category" name="category" required defaultValue={editingListing.category || ""} />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <div className="space-y-1">
+                                    <Label htmlFor="edit-subcategory">Subcategory</Label>
+                                    <Input id="edit-subcategory" name="subcategory" defaultValue={editingListing.subcategory || ""} />
+                                </div>
+                                <div className="space-y-1">
+                                    <Label htmlFor="edit-type">Type</Label>
+                                    <Input id="edit-type" name="type" defaultValue={editingListing.type || ""} />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <div className="space-y-1">
+                                    <Label htmlFor="edit-condition">Condition</Label>
+                                    <Input id="edit-condition" name="condition" defaultValue={editingListing.condition || ""} />
+                                </div>
+                                <div className="space-y-1">
+                                    <Label htmlFor="edit-size">Size</Label>
+                                    <Input id="edit-size" name="size" defaultValue={editingListing.size || ""} />
+                                </div>
+                            </div>
+
+                            <div className="space-y-1">
+                                <Label htmlFor="edit-brand">Brand</Label>
+                                <Input id="edit-brand" name="brand" defaultValue={editingListing.brand || ""} />
+                            </div>
+
+                            <div className="space-y-1">
+                                <Label htmlFor="edit-description">Description</Label>
+                                <textarea
+                                    id="edit-description"
+                                    name="description"
+                                    required
+                                    rows={4}
+                                    defaultValue={editingListing.description}
+                                    className="w-full rounded-[0.75rem] border border-border bg-background p-3 text-sm text-foreground"
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="edit-images">Replace Photos (optional)</Label>
+                                <input
+                                    id="edit-images"
+                                    type="file"
+                                    accept="image/*"
+                                    multiple
+                                    onChange={handleEditImageChange}
+                                    className="block w-full rounded-[0.75rem] border border-border bg-background p-2 text-sm"
+                                />
+                                {editPreviewUrls.length > 0 ? (
+                                    <div className="grid grid-cols-3 gap-2">
+                                        {editPreviewUrls.map((url, index) => (
+                                            <div key={`${url}-${index}`} className="relative overflow-hidden rounded-lg border border-border">
+                                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                <img src={url} alt={`New image ${index + 1}`} className="aspect-square w-full object-cover" />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removeEditImage(index)}
+                                                    className="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-white"
+                                                >
+                                                    <X className="h-3.5 w-3.5" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : null}
+                            </div>
+
+                            {error ? <p className="text-sm text-red-600">{error}</p> : null}
+
+                            <div className="flex items-center justify-end gap-2 pt-2">
+                                <Button type="button" variant="outline" onClick={closeEditListing}>
+                                    Cancel
+                                </Button>
+                                <Button type="submit" isLoading={savingEdit}>
+                                    Save Changes
+                                </Button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            ) : null}
+
+            <div
+                className={`${showCreateForm ? "hidden" : "block"} bg-[#f4efea] pt-4 sm:hidden ${
+                    mobileTab === "ANALYTICS" ? "min-h-screen pb-0" : "min-h-screen pb-28"
+                }`}
+            >
+                <div className="px-4">
+                    <button
+                        type="button"
+                        onClick={() => setShowCreateForm(true)}
+                        className="mb-3 flex w-full items-center justify-between gap-3 rounded-[1.65rem] border border-[#ddd3cb] bg-[#fbf8f5] px-5 py-4 text-left"
+                    >
+                        <div>
+                            <p className={`${cormorantHeading.className} text-[23px] font-semibold leading-[1.05] text-foreground`}>List New Item</p>
+                            <p className="mt-1.5 text-[0.92rem] leading-[1.25] text-[#8a7667]">
+                                {listingStats.activeCount} active · {listingStats.soldCount} sold · ${listingStats.listedValue.toLocaleString()} listed value
+                            </p>
+                        </div>
+                        <ChevronRight className="h-5 w-5 text-[#8a7667]" />
+                    </button>
                 </div>
 
-                <button
-                    type="button"
-                    onClick={() => setShowCreateForm(true)}
-                    className="mb-6 flex w-full items-center gap-4 rounded-[1.25rem] border border-border/80 bg-card/90 p-4 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]"
-                >
-                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#ecdfd3] text-foreground">
-                        <PackagePlus className="h-8 w-8" />
+                <div className="overflow-x-auto border-b border-[#ddd3cb] bg-[#f7f2ed] pl-6 pr-4">
+                    <div className="inline-flex min-w-max items-center gap-7 pt-2.5">
+                        {mobileTabs.map((tab) => (
+                            <button
+                                key={tab.key}
+                                type="button"
+                                onClick={() => setMobileTab(tab.key)}
+                                className={`relative whitespace-nowrap pb-2 text-[0.93rem] ${
+                                    mobileTab === tab.key ? "font-semibold text-[#2f2925]" : "font-normal text-[#8a7667]"
+                                }`}
+                            >
+                                {tab.label}
+                                {mobileTab === tab.key ? (
+                                    <span
+                                        className="pointer-events-none absolute left-[8px] right-[8px] h-[2px] rounded-full bg-[#4a3328]"
+                                        style={{ bottom: 0 }}
+                                    />
+                                ) : null}
+                            </button>
+                        ))}
                     </div>
-                    <div className="flex-1">
-                        <p className="font-serif text-2xl leading-none text-foreground">List New Item</p>
-                        <p className="mt-1 text-[1.05rem] text-muted-foreground">Tap here to add a new item for sale</p>
-                    </div>
-                    <ChevronRight className="h-5 w-5 text-foreground/70" />
-                </button>
+                </div>
 
-                <h2 className="mb-3 font-serif text-3xl leading-none text-foreground">My Listings</h2>
+                {mobileTab !== "ANALYTICS" ? (
+                    <div className="px-4 pt-4">
+                        <h2
+                            ref={mobileMyListingsRef}
+                            className={`${cormorantHeading.className} mb-4 text-[23px] font-medium leading-[1.05] text-foreground`}
+                        >
+                            My Listings
+                        </h2>
+                    </div>
+                ) : null}
                 {error ? (
-                    <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    <div className="mx-4 mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                         {error}
                     </div>
                 ) : null}
 
-                <div className="space-y-3">
+                {mobileTab === "ANALYTICS" ? (
+                    <div className="px-4 pb-4 pt-4">
+                        <h3 className={`${cormorantHeading.className} mb-4 text-[23px] font-medium leading-[1.05] text-foreground`}>
+                            Analytics
+                        </h3>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="rounded-[1.6rem] border border-[#e3dbd3] bg-[#f8f3ee] px-4 py-[12px]">
+                                <p className="text-[11px] uppercase tracking-[0.16em] text-[#8a7667]">Total Listings</p>
+                                <p className={`${cormorantHeading.className} mt-1.5 text-[2rem] leading-none text-[#2f2925]`}>{analytics.totalListings}</p>
+                                <p className="mt-1 text-[0.88rem] text-[#8a7667]">All time</p>
+                            </div>
+                            <div className="rounded-[1.6rem] border border-[#e3dbd3] bg-[#f8f3ee] px-4 py-[12px]">
+                                <p className="text-[11px] uppercase tracking-[0.16em] text-[#8a7667]">Revenue</p>
+                                <p className={`${cormorantHeading.className} mt-1.5 text-[2rem] leading-none text-[#2f2925]`}>
+                                    ${analytics.deliveredRevenue.toFixed(2)}
+                                </p>
+                                <p className="mt-1 text-[0.88rem] text-[#8a7667]">From sold</p>
+                            </div>
+                            <div className="rounded-[1.6rem] border border-[#e3dbd3] bg-[#f8f3ee] px-4 py-[12px]">
+                                <p className="text-[11px] uppercase tracking-[0.16em] text-[#8a7667]">Active</p>
+                                <p className={`${cormorantHeading.className} mt-1.5 text-[2rem] leading-none text-[#2f2925]`}>{analytics.activeListings}</p>
+                                <p className="mt-1 text-[0.88rem] text-[#8a7667]">Live now</p>
+                            </div>
+                            <div className="rounded-[1.6rem] border border-[#e3dbd3] bg-[#f8f3ee] px-4 py-[12px]">
+                                <p className="text-[11px] uppercase tracking-[0.16em] text-[#8a7667]">Avg Price</p>
+                                <p className={`${cormorantHeading.className} mt-1.5 text-[2rem] leading-none text-[#2f2925]`}>
+                                    ${analytics.averagePrice.toFixed(2)}
+                                </p>
+                                <p className="mt-1 text-[0.88rem] text-[#8a7667]">All listings</p>
+                            </div>
+                        </div>
+
+                        <div className="mt-3 rounded-[1.6rem] border border-[#e3dbd3] bg-[#f8f3ee] px-4 py-[12px]">
+                            <p className="text-[11px] uppercase tracking-[0.16em] text-[#8a7667]">Status Breakdown</p>
+                            <div className="mt-2.5 flex flex-wrap gap-1.5">
+                                <span className="inline-flex rounded-full border border-[#ddd3cb] bg-[#fbf8f5] px-[10px] py-[3px] text-[0.83rem] text-[#5f4a3c]">
+                                    Active: {analytics.activeListings}
+                                </span>
+                                <span className="inline-flex rounded-full border border-[#ddd3cb] bg-[#fbf8f5] px-[10px] py-[3px] text-[0.83rem] text-[#5f4a3c]">
+                                    Sold: {analytics.soldListings}
+                                </span>
+                                <span className="inline-flex rounded-full border border-[#ddd3cb] bg-[#fbf8f5] px-[10px] py-[3px] text-[0.83rem] text-[#5f4a3c]">
+                                    Pending: {analytics.pendingListings}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                ) : (
+                <div className="space-y-3 px-4">
                     {filteredListings.length === 0 ? (
                         <div className="rounded-[1.25rem] border border-dashed border-border bg-card/80 px-5 py-12 text-center">
                             <p className="text-base text-muted-foreground">No listings in this tab yet.</p>
@@ -805,73 +1149,85 @@ export default function SellPageClient({ isSellerInitially, listings }: SellPage
                             const isApproved = modStatus === "APPROVED";
                             const isRejected = modStatus === "REJECTED";
                             const statusClass = isApproved
-                                ? "bg-green-100 text-green-700"
+                                ? "bg-[#efe6dd] text-[#6f5647]"
                                 : isRejected
                                     ? "bg-red-100 text-red-700"
                                     : "bg-yellow-100 text-yellow-700";
-
-                            const label = isApproved ? (listing.status === "SOLD" ? "SOLD" : "APPROVED") : modStatus;
+                            const label = isApproved ? (listing.status === "SOLD" ? "Sold" : "Active") : modStatus;
 
                             return (
-                                <Link
-                                    key={listing.id}
-                                    href={`/listings/${listing.id}`}
-                                    className="grid grid-cols-[112px_1fr] gap-3 rounded-[1.2rem] border border-border/80 bg-card p-2"
-                                >
-                                    <div className="relative overflow-hidden rounded-[0.8rem]">
-                                        <div className="relative aspect-[3/4]">
-                                            <Image src={listing.image_url} alt={listing.title} fill className="object-contain bg-card/60 p-1" sizes="120px" />
-                                        </div>
-                                        <div className="absolute right-2 top-2 rounded-full bg-white/85 p-1">
-                                            <Heart className="h-4 w-4 text-foreground" />
-                                        </div>
-                                    </div>
-                                    <div className="min-w-0 p-1">
-                                        <div className="mb-2 flex items-start justify-between gap-2">
-                                            <span className={`rounded-md px-2 py-1 text-xs font-semibold ${statusClass}`}>
-                                                {label}
-                                            </span>
-                                            <button
-                                                type="button"
-                                                onClick={(event) => {
-                                                    event.preventDefault();
-                                                    event.stopPropagation();
-                                                    void handleDeleteListing(listing.id);
-                                                }}
-                                                disabled={deletingListingId === listing.id}
-                                                className="inline-flex items-center rounded-md border border-border/70 px-2 py-1 text-xs text-foreground/80 disabled:opacity-50"
-                                            >
-                                                {deletingListingId === listing.id ? "Deleting..." : "Delete"}
-                                            </button>
-                                        </div>
-                                        <p className="line-clamp-1 text-4xl leading-none text-foreground">{listing.title}</p>
-                                        <p className="mt-1 line-clamp-2 text-base leading-5 text-foreground/80">{listing.description}</p>
-                                        <p className="mt-2 text-3xl leading-none text-foreground">${Number(listing.price).toLocaleString()}</p>
-                                        {isRejected && listing.rejection_reason && (
-                                            <p className="mt-2 text-sm text-red-600 font-medium">Reason: {listing.rejection_reason}</p>
-                                        )}
-                                        {listing.label_url && (
-                                            <div className="mt-3">
+                                <article key={listing.id} className="rounded-[1.45rem] border border-[#ddd3cb] bg-[#fbf8f5] p-3.5">
+                                    <div className="grid grid-cols-[96px_1fr] gap-3">
+                                        <Link href={`/listings/${listing.id}`} className="col-span-1">
+                                            <div className="relative overflow-hidden rounded-[1.05rem] border border-[#e3d8cf] bg-[#f2ebe4]">
+                                                <div className="relative aspect-[2/3]">
+                                                    <Image src={listing.image_url} alt={listing.title} fill className="object-cover" sizes="110px" />
+                                                </div>
+                                            </div>
+                                        </Link>
+                                        <div className="min-w-0">
+                                            <Link href={`/listings/${listing.id}`} className="block">
+                                                <h3 className="line-clamp-2 text-[1.04rem] leading-[1.2] font-semibold text-[#2f2925]">{listing.title}</h3>
+                                                <p className="mt-1 truncate text-[0.8rem] text-[#8a7667]">
+                                                    {listing.category || "Fashion"}
+                                                    {listing.type ? ` · ${listing.type}` : ""}
+                                                    {listing.size ? ` · Size ${listing.size}` : ""}
+                                                    {listing.brand ? ` · ${listing.brand}` : ""}
+                                                </p>
+                                                <p className="mt-1.5 text-[0.98rem] leading-none font-semibold text-[#2f2925]">
+                                                    ${Number(listing.price).toLocaleString()}
+                                                </p>
+                                            </Link>
+                                            <div className="mt-2">
+                                                <span className={`inline-flex rounded-full px-2.5 py-[3px] text-[0.8rem] font-medium ${statusClass}`}>
+                                                    {label}
+                                                </span>
+                                            </div>
+                                            <div className="mt-2.5 flex items-center gap-2.5">
                                                 <button
                                                     type="button"
-                                                    className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-1.5 text-xs font-semibold text-primary hover:bg-primary/20"
-                                                    onClick={(event) => {
-                                                        event.preventDefault();
-                                                        event.stopPropagation();
-                                                        window.open(listing.label_url as string, "_blank", "noopener,noreferrer");
-                                                    }}
+                                                    onClick={() => startEditListing(listing)}
+                                                    className="inline-flex h-8 items-center rounded-full border border-[#d7cdc4] bg-white px-3.5 text-[0.84rem] font-medium text-[#5f4a3c]"
                                                 >
-                                                    <PackagePlus className="h-4 w-4" />
-                                                    Print Shipping Label
+                                                    Edit
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        void handleDeleteListing(listing.id);
+                                                    }}
+                                                    disabled={deletingListingId === listing.id}
+                                                    className="inline-flex h-8 items-center rounded-full border border-[#d7cdc4] bg-white px-3.5 text-[0.84rem] font-medium text-[#5f4a3c] disabled:opacity-50"
+                                                >
+                                                    {deletingListingId === listing.id ? "Deleting..." : "Delete"}
                                                 </button>
                                             </div>
-                                        )}
+                                        </div>
                                     </div>
-                                </Link>
+
+                                    {isRejected && listing.rejection_reason && (
+                                        <p className="mt-2 text-sm text-red-600 font-medium">Reason: {listing.rejection_reason}</p>
+                                    )}
+                                    {listing.label_url && (
+                                        <div className="mt-2">
+                                            <button
+                                                type="button"
+                                                className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-1.5 text-xs font-semibold text-primary hover:bg-primary/20"
+                                                onClick={() => {
+                                                    window.open(listing.label_url as string, "_blank", "noopener,noreferrer");
+                                                }}
+                                            >
+                                                <PackagePlus className="h-4 w-4" />
+                                                Print Shipping Label
+                                            </button>
+                                        </div>
+                                    )}
+                                </article>
                             );
                         })
                     )}
                 </div>
+                )}
             </div>
 
             <div className={`${showCreateForm ? "block" : "hidden"} bg-[#f4efea] px-4 py-6 sm:hidden`}>
@@ -884,13 +1240,18 @@ export default function SellPageClient({ isSellerInitially, listings }: SellPage
 
                     <div className="space-y-6">
                         <div className="flex items-center justify-between">
-                            <h2 className="font-serif text-3xl font-bold text-foreground">My Listings</h2>
+                            <h2
+                                ref={desktopMyListingsRef}
+                                className={`${cormorantHeading.className} text-[23px] font-medium leading-[1.05] text-foreground`}
+                            >
+                                My Listings
+                            </h2>
                             <Link href="/dashboard/sales">
                                 <Button variant="outline" className="rounded-full">Manage Sales & Labels</Button>
                             </Link>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <div className="space-y-4">
                             {listings.length === 0 ? (
                                 <div className="col-span-full rounded-[2rem] border border-dashed border-border py-20 text-center bg-card/40">
                                     <Tag className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
@@ -900,54 +1261,75 @@ export default function SellPageClient({ isSellerInitially, listings }: SellPage
                                     </p>
                                 </div>
                             ) : (
-                                listings.map((listing) => (
-                                    <Card key={listing.id} className="p-0 overflow-hidden border-border/60 group hover:border-primary/20 transition-all">
-                                        <div className="relative aspect-[4/3] bg-muted/20">
-                                            <Image
-                                                src={listing.image_url}
-                                                alt={listing.title}
-                                                fill
-                                                className="object-cover transition-transform duration-500 group-hover:scale-105"
-                                            />
-                                            <div className="absolute top-3 right-3 flex gap-2">
-                                                <Badge className={`${listing.status === "SOLD" ? "bg-green-100 text-green-700" : "bg-primary/10 text-primary"} rounded-full border-none`}>
-                                                    {listing.status}
-                                                </Badge>
-                                            </div>
-                                        </div>
-                                        <div className="p-5">
-                                            <h3 className="font-serif text-xl font-bold mb-1 line-clamp-1">{listing.title}</h3>
-                                            <p className="text-2xl font-bold text-foreground mb-4">${Number(listing.price).toLocaleString()}</p>
+                                listings.map((listing) => {
+                                    const modStatus = listing.moderation_status || "PENDING";
+                                    const isApproved = modStatus === "APPROVED";
+                                    const isRejected = modStatus === "REJECTED";
+                                    const statusClass = isApproved
+                                        ? "bg-[#e7ddd3] text-[#4a3328]"
+                                        : isRejected
+                                            ? "bg-red-100 text-red-700"
+                                            : "bg-yellow-100 text-yellow-700";
+                                    const label = isApproved ? (listing.status === "SOLD" ? "Sold" : "Active") : modStatus;
 
-                                            <div className="flex items-center gap-2 pt-4 border-t border-border/50">
+                                    return (
+                                        <article key={listing.id} className="rounded-[1.6rem] border border-[#ddd3cb] bg-[#fbf8f5] p-4">
+                                            <Link href={`/listings/${listing.id}`} className="grid grid-cols-[140px_1fr] gap-4">
+                                                <div className="relative overflow-hidden rounded-[1.05rem] border border-[#e3d8cf] bg-[#f2ebe4]">
+                                                    <div className="relative aspect-[3/4]">
+                                                        <Image src={listing.image_url} alt={listing.title} fill className="object-contain p-2" sizes="160px" />
+                                                    </div>
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <h3 className="line-clamp-2 text-[1.9rem] leading-[1.12] font-semibold text-[#2f2925]">{listing.title}</h3>
+                                                    <p className="mt-1 truncate text-[1.02rem] text-[#8a7667]">
+                                                        {listing.category || "Fashion"}
+                                                        {listing.type ? ` · ${listing.type}` : ""}
+                                                        {listing.size ? ` · Size ${listing.size}` : ""}
+                                                        {listing.brand ? ` · ${listing.brand}` : ""}
+                                                    </p>
+                                                    <p className="mt-2 text-[2rem] leading-none font-semibold text-[#2f2925]">
+                                                        ${Number(listing.price).toLocaleString()}
+                                                    </p>
+                                                    <div className="mt-3">
+                                                        <span className={`inline-flex rounded-full px-3 py-1 text-[0.95rem] font-semibold ${statusClass}`}>
+                                                            {label}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </Link>
+
+                                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => startEditListing(listing)}
+                                                    className="inline-flex h-10 items-center rounded-full border border-[#ddd3cb] bg-white px-4 text-[0.96rem] text-[#4a3328]"
+                                                >
+                                                    Edit
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDeleteListing(listing.id)}
+                                                    disabled={deletingListingId === listing.id}
+                                                    className="inline-flex h-10 items-center rounded-full border border-[#ddd3cb] bg-white px-4 text-[0.96rem] text-[#4a3328] disabled:opacity-50"
+                                                >
+                                                    {deletingListingId === listing.id ? "Deleting..." : "Delete"}
+                                                </button>
                                                 {listing.label_url ? (
                                                     <a
                                                         href={listing.label_url}
                                                         target="_blank"
                                                         rel="noreferrer"
-                                                        className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-lg hover:opacity-90 transition-all"
+                                                        className="inline-flex h-10 items-center gap-2 rounded-full border border-[#ddd3cb] bg-white px-4 text-[0.96rem] text-[#4a3328]"
                                                     >
-                                                        <Printer className="w-4 h-4" />
-                                                        Reprint Label
+                                                        <Printer className="h-4 w-4" />
+                                                        Print Label
                                                     </a>
-                                                ) : (
-                                                    <Link href={`/listings/${listing.id}`} className="flex-1">
-                                                        <Button variant="outline" className="w-full rounded-xl">View Details</Button>
-                                                    </Link>
-                                                )}
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    onClick={() => handleDeleteListing(listing.id)}
-                                                    disabled={deletingListingId === listing.id}
-                                                    className="h-10 w-10 text-destructive hover:bg-destructive/10 rounded-xl"
-                                                >
-                                                    <X className="w-5 h-5" />
-                                                </Button>
+                                                ) : null}
                                             </div>
-                                        </div>
-                                    </Card>
-                                ))
+                                        </article>
+                                    );
+                                })
                             )}
                         </div>
                     </div>

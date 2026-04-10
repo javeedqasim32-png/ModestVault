@@ -5,7 +5,7 @@ import { auth } from "@/auth";
 import { addToCartAndRedirect } from "@/app/actions/cart";
 import { getFavoriteListingIdsForSessionUser } from "@/app/actions/favorites";
 import { getOrderedListingGallery, getPrimaryListingImage } from "@/lib/listing-images";
-import { MessageCircle, ShoppingBag, Star, ChevronRight, ChevronLeft } from "lucide-react";
+import { MessageCircle, Plus, ShoppingBag, Star, ChevronRight, ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import RecentlyViewedTracker from "@/components/marketplace/RecentlyViewedTracker";
 import FavoriteButton from "@/components/marketplace/FavoriteButton";
@@ -250,13 +250,23 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                             label="Save"
                             labelClassName="text-[13px]"
                         />
-                        <Link
-                            href={`/messages/start?sellerId=${listing.user_id}&listingId=${listing.id}`}
-                            className="inline-flex min-h-[42px] flex-1 items-center justify-center gap-2 rounded-full border border-[#ddd3cb] bg-[#fbf8f5] px-4 text-[13px] text-[#2f2925]"
-                        >
-                            <MessageCircle className="h-4 w-4" />
-                            Message
-                        </Link>
+                        {!isOwner ? (
+                            <Link
+                                href={`/messages/start?sellerId=${listing.user_id}&listingId=${listing.id}`}
+                                className="inline-flex min-h-[42px] flex-1 items-center justify-center gap-2 rounded-full border border-[#ddd3cb] bg-[#fbf8f5] px-4 text-[13px] text-[#2f2925]"
+                            >
+                                <MessageCircle className="h-4 w-4" />
+                                Message
+                            </Link>
+                        ) : (
+                            <Link
+                                href="/sell?create=1"
+                                className="inline-flex min-h-[42px] flex-1 items-center justify-center gap-2 rounded-full border border-[#ddd3cb] bg-[#fbf8f5] px-4 text-[13px] text-[#2f2925]"
+                            >
+                                <Plus className="h-4 w-4" />
+                                Add listing
+                            </Link>
+                        )}
                         {isAvailable && !isOwner ? (
                             <form
                                 action={async () => {

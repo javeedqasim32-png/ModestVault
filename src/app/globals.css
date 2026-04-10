@@ -97,6 +97,10 @@ html {
   letter-spacing: 0 !important;
 }
 
+.font-cormorant-heading {
+  font-family: var(--font-cormorant-local), var(--font-serif), serif;
+}
+
 a,
 button,
 input {

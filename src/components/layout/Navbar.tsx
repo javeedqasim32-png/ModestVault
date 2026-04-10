@@ -3,8 +3,9 @@ import { auth } from "@/auth";
 import { getCartCountForSessionUser } from "@/app/actions/cart";
 import { getFavoriteCountForSessionUser } from "@/app/actions/favorites";
 import { getUnreadMessageCountForSessionUser } from "@/app/actions/messages";
-import { Heart, MessageCircle, Search, ShoppingBag } from "lucide-react";
+import { Heart, Search, ShoppingBag } from "lucide-react";
 import Image from "next/image";
+import MessageNavButton from "@/components/layout/MessageNavButton";
 
 export default async function Navbar() {
     const session = await auth();
@@ -46,14 +47,7 @@ export default async function Navbar() {
                             </span>
                         ) : null}
                     </Link>
-                    <Link href="/messages" className="relative flex h-11 w-11 items-center justify-center rounded-full text-foreground hover:bg-secondary">
-                        <MessageCircle className="h-5 w-5" />
-                        {unreadMessageCount > 0 ? (
-                            <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] text-primary-foreground">
-                                {unreadMessageCount > 99 ? "99+" : unreadMessageCount}
-                            </span>
-                        ) : null}
-                    </Link>
+                    <MessageNavButton unreadMessageCount={unreadMessageCount} />
                     <Link href="/cart" className="relative flex h-11 w-11 items-center justify-center rounded-full text-foreground hover:bg-secondary">
                         <ShoppingBag className="h-5 w-5" />
                         {cartCount > 0 ? (

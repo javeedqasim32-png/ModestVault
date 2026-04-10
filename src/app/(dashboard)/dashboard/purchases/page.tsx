@@ -31,6 +31,7 @@ export default async function PurchasesPage() {
                     },
                     user: {
                         select: {
+                            id: true,
                             first_name: true,
                             last_name: true
                         }
@@ -64,7 +65,9 @@ export default async function PurchasesPage() {
                 image_url: getPrimaryListingImage(purchase.listing, "card"),
                 title: purchase.listing.title,
                 description: purchase.listing.description,
+                category: purchase.listing.category,
                 user: {
+                    id: purchase.listing.user.id,
                     first_name: purchase.listing.user.first_name,
                     last_name: purchase.listing.user.last_name,
                 },

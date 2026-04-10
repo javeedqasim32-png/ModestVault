@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { MessageCircle } from "lucide-react";
+import { MessageCircle, Pencil, Plus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { getPrimaryListingImage } from "@/lib/listing-images";
 import { serializeListing } from "@/lib/serialization";
@@ -28,6 +28,7 @@ function formatMemberSince(date: Date) {
 export default async function SellerProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await auth();
+  const isOwnProfile = session?.user?.id === id;
 
   const seller = await prisma.user.findUnique({
     where: { id },
@@ -128,19 +129,39 @@ export default async function SellerProfilePage({ params }: { params: Promise<{ 
             </div>
 
             <div className="mt-4 flex w-full justify-center gap-2">
-              <Link
-                href={`/messages/start?sellerId=${seller.id}`}
-                className="inline-flex min-h-[42px] min-w-[150px] items-center justify-center gap-2 rounded-full border border-[#4a3328] bg-[#4a3328] px-6 text-[13px] font-medium text-white"
-              >
-                <MessageCircle className="h-4 w-4" />
-                Message
-              </Link>
-              <button
-                type="button"
-                className="inline-flex min-h-[42px] min-w-[130px] items-center justify-center rounded-full border border-[#ddd3cb] bg-[#fbf8f5] px-6 text-[13px] font-medium text-[#2f2925]"
-              >
-                Follow
-              </button>
+              {!isOwnProfile ? (
+                <Link
+                  href={`/messages/start?sellerId=${seller.id}`}
+                  className="inline-flex min-h-[42px] min-w-[150px] items-center justify-center gap-2 rounded-full border border-[#4a3328] bg-[#4a3328] px-6 text-[13px] font-medium text-white"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  Message
+                </Link>
+              ) : (
+                <Link
+                  href="/sell?create=1"
+                  className="inline-flex min-h-[42px] min-w-[150px] items-center justify-center gap-2 rounded-full border border-[#4a3328] bg-[#4a3328] px-6 text-[13px] font-medium text-white"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add listing
+                </Link>
+              )}
+              {isOwnProfile ? (
+                <Link
+                  href="/sell?manage=1"
+                  className="inline-flex min-h-[42px] min-w-[130px] items-center justify-center gap-2 rounded-full border border-[#ddd3cb] bg-[#fbf8f5] px-6 text-[13px] font-medium text-[#2f2925]"
+                >
+                  <Pencil className="h-4 w-4" />
+                  Edit Listings
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  className="inline-flex min-h-[42px] min-w-[130px] items-center justify-center rounded-full border border-[#ddd3cb] bg-[#fbf8f5] px-6 text-[13px] font-medium text-[#2f2925]"
+                >
+                  Follow
+                </button>
+              )}
             </div>
           </div>
         </section>
