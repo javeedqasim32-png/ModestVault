@@ -15,6 +15,8 @@
 
 # next.js
 /.next/
+/Desktop/
+**/.next/
 /out/
 
 # production
@@ -42,3 +44,4 @@ next-env.d.ts
 
 /src/generated/prisma
 /public/uploads/
+/public/listings/

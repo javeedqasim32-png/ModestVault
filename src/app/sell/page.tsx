@@ -67,6 +67,8 @@ export default async function SellPage({
             title: serialized.title,
             description: serialized.description,
             price: serialized.price,
+            created_at: serialized.created_at,
+            updated_at: serialized.updated_at,
             style: serialized.style,
             category: serialized.category,
             subcategory: serialized.subcategory,
@@ -111,6 +113,7 @@ export default async function SellPage({
 
     return (
         <SellPageClient
+            currentUserId={session.user.id}
             isSellerInitially={user.seller_enabled}
             listings={safeListings}
             openCreateInitially={openCreateInitially}

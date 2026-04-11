@@ -2,10 +2,11 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import localFont from "next/font/local";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createListing, deleteListing, replaceListingImages, updateListing } from "../actions/listings";
 import { onboardSellerAction } from "../actions/stripe";
-import { Tag, UploadCloud, ChevronRight, Heart, PackagePlus, X, Printer, TrendingUp, Users, ShieldCheck, CreditCard } from "lucide-react";
+import { Tag, UploadCloud, ChevronLeft, ChevronRight, Heart, PackagePlus, X, Printer, TrendingUp, Users, ShieldCheck, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
 import { useRouter } from "next/navigation";
@@ -18,6 +19,8 @@ type ListingItem = {
     description: string;
     price: number | string;
     image_url: string;
+    created_at?: string;
+    updated_at?: string;
     style?: string;
     category?: string;
     subcategory?: string | null;
@@ -32,6 +35,7 @@ type ListingItem = {
 };
 
 type SellPageClientProps = {
+    currentUserId: string;
     isSellerInitially: boolean;
     listings: ListingItem[];
     openCreateInitially?: boolean;
@@ -61,9 +65,45 @@ const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_TOTAL_IMAGE_BYTES = 18 * 1024 * 1024;
 const COMPRESSIBLE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_OPTIMIZED_DIMENSION = 2000;
+const MAX_MEASUREMENTS_CHARS = 300;
+const MEASUREMENTS_MARKER = "\n\nMeasurements:\n";
+const SOLD_VIEWED_KEY_PREFIX = "sell-viewed-sold";
+const cormorantHeading = localFont({
+    src: [
+        { path: "../../fonts/CormorantGaramond-Regular.ttf", weight: "400", style: "normal" },
+        { path: "../../fonts/CormorantGaramond-SemiBold.ttf", weight: "600", style: "normal" },
+    ],
+    display: "swap",
+});
+
 function replaceFileExtension(filename: string, nextExt: string) {
     const cleanName = filename.replace(/\.[^/.]+$/, "");
     return `${cleanName}.${nextExt}`;
+}
+
+function extractMeasurementsFromDescription(description: string) {
+    const markerIndex = description.indexOf(MEASUREMENTS_MARKER);
+    if (markerIndex === -1) {
+        return "";
+    }
+    return description.slice(markerIndex + MEASUREMENTS_MARKER.length).trim();
+}
+
+function stripMeasurementsFromDescription(description: string) {
+    const markerIndex = description.indexOf(MEASUREMENTS_MARKER);
+    if (markerIndex === -1) {
+        return description;
+    }
+    return description.slice(0, markerIndex).trimEnd();
+}
+
+function composeListingDescription(description: string, measurements: string) {
+    const baseDescription = stripMeasurementsFromDescription(description).trim();
+    const normalizedMeasurements = measurements.trim().slice(0, MAX_MEASUREMENTS_CHARS);
+    if (!normalizedMeasurements) {
+        return baseDescription;
+    }
+    return `${baseDescription}${MEASUREMENTS_MARKER}${normalizedMeasurements}`;
 }
 
 async function loadImageFromFile(file: File): Promise<HTMLImageElement> {
@@ -145,6 +185,7 @@ async function optimizeImageFile(file: File): Promise<File> {
 }
 
 export default function SellPageClient({
+    currentUserId,
     isSellerInitially,
     listings,
     openCreateInitially = false,
@@ -174,6 +215,7 @@ export default function SellPageClient({
     const [editListingType, setEditListingType] = useState("");
     const [taxonomyErrors, setTaxonomyErrors] = useState<ListingTaxonomyErrors>({});
     const [editTaxonomyErrors, setEditTaxonomyErrors] = useState<ListingTaxonomyErrors>({});
+    const [viewedSoldListingIds, setViewedSoldListingIds] = useState<Set<string>>(new Set());
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const mobileMyListingsRef = useRef<HTMLHeadingElement | null>(null);
     const desktopMyListingsRef = useRef<HTMLHeadingElement | null>(null);
@@ -203,10 +245,15 @@ export default function SellPageClient({
     );
 
     const filteredListings = useMemo(() => {
-        if (mobileTab === "LISTINGS") return listings;
-        if (mobileTab === "SOLD") return listings.filter((listing) => listing.status === "SOLD");
-        if (mobileTab === "ACTIVE") return listings.filter((listing) => listing.moderation_status === "APPROVED" && listing.status !== "SOLD");
-        if (mobileTab === "PENDING") return listings.filter((listing) => listing.moderation_status === "PENDING");
+        const byCreatedDesc = (a: ListingItem, b: ListingItem) =>
+            new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+        const byUpdatedDesc = (a: ListingItem, b: ListingItem) =>
+            new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime();
+
+        if (mobileTab === "LISTINGS") return [...listings].sort(byCreatedDesc);
+        if (mobileTab === "SOLD") return listings.filter((listing) => listing.status === "SOLD").sort(byUpdatedDesc);
+        if (mobileTab === "ACTIVE") return listings.filter((listing) => listing.moderation_status === "APPROVED" && listing.status !== "SOLD").sort(byCreatedDesc);
+        if (mobileTab === "PENDING") return listings.filter((listing) => listing.moderation_status === "PENDING").sort(byCreatedDesc);
         return [];
     }, [listings, mobileTab]);
 
@@ -216,6 +263,52 @@ export default function SellPageClient({
         const listedValue = listings.reduce((sum, listing) => sum + Number(listing.price || 0), 0);
         return { activeCount, soldCount, listedValue };
     }, [listings]);
+    const soldViewedStorageKey = `${SOLD_VIEWED_KEY_PREFIX}:${currentUserId}`;
+
+    useEffect(() => {
+        try {
+            const raw = window.localStorage.getItem(soldViewedStorageKey);
+            if (!raw) {
+                setViewedSoldListingIds(new Set());
+                return;
+            }
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+                setViewedSoldListingIds(new Set(parsed.filter((item): item is string => typeof item === "string")));
+            }
+        } catch {
+            setViewedSoldListingIds(new Set());
+        }
+    }, [soldViewedStorageKey]);
+
+    const markSoldListingsViewed = (listingIds: string[]) => {
+        if (listingIds.length === 0) return;
+        setViewedSoldListingIds((prev) => {
+            const next = new Set(prev);
+            let changed = false;
+            for (const listingId of listingIds) {
+                if (!next.has(listingId)) {
+                    next.add(listingId);
+                    changed = true;
+                }
+            }
+            if (changed) {
+                window.localStorage.setItem(soldViewedStorageKey, JSON.stringify(Array.from(next)));
+            }
+            return changed ? next : prev;
+        });
+    };
+
+    useEffect(() => {
+        if (mobileTab !== "SOLD") return;
+        const soldIds = filteredListings
+            .filter((listing) => listing.status === "SOLD")
+            .map((listing) => listing.id);
+        markSoldListingsViewed(soldIds);
+    }, [mobileTab, filteredListings]);
+
+    const isNewSoldListing = (listing: ListingItem) =>
+        listing.status === "SOLD" && !viewedSoldListingIds.has(listing.id);
 
     useEffect(() => {
         if (!subcategory) {
@@ -347,6 +440,15 @@ export default function SellPageClient({
     const removeImage = (indexToRemove: number) => {
         setSelectedFiles((prev) => prev.filter((_, index) => index !== indexToRemove));
     };
+    const moveImage = (fromIndex: number, toIndex: number) => {
+        setSelectedFiles((prev) => {
+            if (toIndex < 0 || toIndex >= prev.length) return prev;
+            const next = [...prev];
+            const [moved] = next.splice(fromIndex, 1);
+            next.splice(toIndex, 0, moved);
+            return next;
+        });
+    };
 
     useEffect(() => {
         const urls = selectedFiles.map((file) => URL.createObjectURL(file));
@@ -419,6 +521,15 @@ export default function SellPageClient({
     const removeEditImage = (indexToRemove: number) => {
         setEditFiles((prev) => prev.filter((_, index) => index !== indexToRemove));
     };
+    const moveEditImage = (fromIndex: number, toIndex: number) => {
+        setEditFiles((prev) => {
+            if (toIndex < 0 || toIndex >= prev.length) return prev;
+            const next = [...prev];
+            const [moved] = next.splice(fromIndex, 1);
+            next.splice(toIndex, 0, moved);
+            return next;
+        });
+    };
 
     const handleDeleteListing = async (listingId: string) => {
         const confirmed = window.confirm("Delete this listing? This will remove it from your listings and delete its images.");
@@ -475,13 +586,12 @@ export default function SellPageClient({
                     <p className="text-sm text-muted-foreground">New listing</p>
                 </div>
             ) : null}
-            <div className="mb-8 rounded-[1.75rem] bg-[linear-gradient(135deg,#f3e7de_0%,#ecdccf_55%,#e2cab9_100%)] p-6 sm:p-8">
-                <p className="text-[11px] uppercase tracking-[0.28em] text-muted-foreground">List new item</p>
-                <h1 className="mt-2 font-serif text-3xl md:text-4xl font-bold text-foreground mb-3">
+            <div className="mb-8 rounded-[1.75rem] bg-[linear-gradient(135deg,#f3e7de_0%,#ecdccf_55%,#e2cab9_100%)] px-6 pb-6 pt-4 sm:px-8 sm:pb-8 sm:pt-5">
+                <h1 className={`${cormorantHeading.className} mt-0 text-3xl font-semibold text-foreground md:text-4xl mb-1.5`}>
                     Create Listing
                 </h1>
                 <p className="text-muted-foreground">
-                    Present your fashion pieces in their best light.
+                    If possible, make your cover photo, a photo of the model wearing the article from the website OR a full-length photo of you wearing the article.
                 </p>
             </div>
 
@@ -506,6 +616,9 @@ export default function SellPageClient({
 
                     const formData = new FormData(e.currentTarget);
                     formData.delete("images");
+                    const description = String(formData.get("description") || "");
+                    const measurements = String(formData.get("measurements") || "");
+                    formData.set("description", composeListingDescription(description, measurements));
                     formData.set("style", taxonomyValidation.normalized.style);
                     formData.set("category", taxonomyValidation.normalized.category);
                     formData.set("subcategory", taxonomyValidation.normalized.subcategory || "");
@@ -548,28 +661,60 @@ export default function SellPageClient({
                             <div className="w-full p-3 sm:p-4">
                                 <div className="grid grid-cols-2 gap-2 p-2 sm:grid-cols-3">
                                     {previewUrls.map((previewUrl, index) => (
-                                        <div key={`${previewUrl}-${index}`} className="relative overflow-hidden rounded-lg border border-border/70 bg-card">
-                                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                                            <img
-                                                src={previewUrl}
-                                                alt={`Preview ${index + 1}`}
-                                                className="aspect-square w-full object-contain bg-muted/40"
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={() => removeImage(index)}
-                                                aria-label={`Remove image ${index + 1}`}
-                                                className="absolute right-1.5 top-1.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-black/70 text-white"
-                                            >
-                                                <X className="h-4 w-4" />
-                                            </button>
+                                        <div key={`${previewUrl}-${index}`} className="rounded-lg border border-border/70 bg-card p-1.5">
+                                            <div className="relative overflow-hidden rounded-md">
+                                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                <img
+                                                    src={previewUrl}
+                                                    alt={`Preview ${index + 1}`}
+                                                    className="aspect-square w-full object-contain bg-muted/40"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removeImage(index)}
+                                                    aria-label={`Remove image ${index + 1}`}
+                                                    className="absolute right-1.5 top-1.5 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full bg-black/70 text-white"
+                                                >
+                                                    <X className="h-4 w-4" />
+                                                </button>
+                                                <div className="absolute left-1.5 top-1.5 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-medium text-white">
+                                                    {index + 1}
+                                                </div>
+                                            </div>
+                                            <div className="mt-1.5 grid grid-cols-3 gap-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => moveImage(index, index - 1)}
+                                                    disabled={index === 0}
+                                                    className="inline-flex h-7 items-center justify-center rounded-md border border-border text-[10px] text-foreground disabled:opacity-40"
+                                                >
+                                                    <ChevronLeft className="h-3.5 w-3.5" />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => moveImage(index, 0)}
+                                                    disabled={index === 0}
+                                                    className="inline-flex h-7 items-center justify-center rounded-md border border-border px-1 text-[10px] text-foreground disabled:opacity-40"
+                                                >
+                                                    Set First
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => moveImage(index, index + 1)}
+                                                    disabled={index === previewUrls.length - 1}
+                                                    className="inline-flex h-7 items-center justify-center rounded-md border border-border text-[10px] text-foreground disabled:opacity-40"
+                                                >
+                                                    <ChevronRight className="h-3.5 w-3.5" />
+                                                </button>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
-                                <div className="mt-2 flex items-center justify-between px-2 pb-2">
+                                <div className="mt-2 flex flex-wrap items-center justify-between gap-2 px-2 pb-2">
                                     <p className="text-xs text-muted-foreground">
                                         {selectedFiles.length}/6 selected
                                     </p>
+                                    <p className="text-xs text-muted-foreground">Image 1 appears first on listing.</p>
                                     <Button
                                         type="button"
                                         variant="outline"
@@ -775,8 +920,33 @@ export default function SellPageClient({
                             </select>
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="size">Size</Label>
-                            <Input id="size" name="size" placeholder="e.g., Medium / 38" className="h-12" />
+                            <div className="space-y-2">
+                                <Label htmlFor="size">Size</Label>
+                                <select
+                                    id="size"
+                                    name="size"
+                                    className="h-12 w-full border border-border bg-background px-4 text-sm focus:border-primary focus:outline-none transition-colors"
+                                    defaultValue=""
+                                >
+                                    <option value="" disabled>Select Size</option>
+                                    <option value="X-Small">X-Small</option>
+                                    <option value="Medium">Medium</option>
+                                    <option value="Large">Large</option>
+                                    <option value="XL">XL</option>
+                                    <option value="XXL">XXL</option>
+                                </select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="measurements">Measurements</Label>
+                                <textarea
+                                    id="measurements"
+                                    name="measurements"
+                                    rows={3}
+                                    maxLength={MAX_MEASUREMENTS_CHARS}
+                                    placeholder="Shoulders, Bust, Waist, Hip, Length"
+                                    className="w-full border border-border bg-background p-4 text-sm focus:border-primary focus:outline-none transition-colors resize-none"
+                                />
+                            </div>
                         </div>
                     </div>
                 </section>
@@ -937,6 +1107,9 @@ export default function SellPageClient({
                                 setEditTaxonomyErrors({});
                                 try {
                                     const formData = new FormData(event.currentTarget);
+                                    const description = String(formData.get("description") || "");
+                                    const measurements = String(formData.get("measurements") || "");
+                                    formData.set("description", composeListingDescription(description, measurements));
                                     if (!editTaxonomyValidation.ok) {
                                         setEditTaxonomyErrors(editTaxonomyValidation.errors);
                                         setError(editTaxonomyValidation.message);
@@ -1102,8 +1275,34 @@ export default function SellPageClient({
                                     <Input id="edit-condition" name="condition" defaultValue={editingListing.condition || ""} />
                                 </div>
                                 <div className="space-y-1">
-                                    <Label htmlFor="edit-size">Size</Label>
-                                    <Input id="edit-size" name="size" defaultValue={editingListing.size || ""} />
+                                    <div className="space-y-1">
+                                        <Label htmlFor="edit-size">Size</Label>
+                                        <select
+                                            id="edit-size"
+                                            name="size"
+                                            defaultValue={editingListing.size || ""}
+                                            className="h-11 w-full rounded-[0.75rem] border border-border bg-background px-3 text-sm text-foreground"
+                                        >
+                                            <option value="">Select Size</option>
+                                            <option value="X-Small">X-Small</option>
+                                            <option value="Medium">Medium</option>
+                                            <option value="Large">Large</option>
+                                            <option value="XL">XL</option>
+                                            <option value="XXL">XXL</option>
+                                        </select>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label htmlFor="edit-measurements">Measurements</Label>
+                                        <textarea
+                                            id="edit-measurements"
+                                            name="measurements"
+                                            rows={3}
+                                            maxLength={MAX_MEASUREMENTS_CHARS}
+                                            defaultValue={extractMeasurementsFromDescription(editingListing.description)}
+                                            placeholder="Shoulders, Bust, Waist, Hip, Length"
+                                            className="w-full rounded-[0.75rem] border border-border bg-background p-3 text-sm text-foreground"
+                                        />
+                                    </div>
                                 </div>
                             </div>
 
@@ -1119,7 +1318,7 @@ export default function SellPageClient({
                                     name="description"
                                     required
                                     rows={4}
-                                    defaultValue={editingListing.description}
+                                    defaultValue={stripMeasurementsFromDescription(editingListing.description)}
                                     className="w-full rounded-[0.75rem] border border-border bg-background p-3 text-sm text-foreground"
                                 />
                             </div>
@@ -1135,21 +1334,55 @@ export default function SellPageClient({
                                     className="block w-full rounded-[0.75rem] border border-border bg-background p-2 text-sm"
                                 />
                                 {editPreviewUrls.length > 0 ? (
-                                    <div className="grid grid-cols-3 gap-2">
-                                        {editPreviewUrls.map((url, index) => (
-                                            <div key={`${url}-${index}`} className="relative overflow-hidden rounded-lg border border-border">
-                                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                <img src={url} alt={`New image ${index + 1}`} className="aspect-square w-full object-cover" />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => removeEditImage(index)}
-                                                    className="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-white"
-                                                >
-                                                    <X className="h-3.5 w-3.5" />
-                                                </button>
-                                            </div>
-                                        ))}
-                                    </div>
+                                    <>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {editPreviewUrls.map((url, index) => (
+                                                <div key={`${url}-${index}`} className="rounded-lg border border-border bg-card p-1.5">
+                                                    <div className="relative overflow-hidden rounded-md">
+                                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                        <img src={url} alt={`New image ${index + 1}`} className="aspect-square w-full object-cover" />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeEditImage(index)}
+                                                            className="absolute right-1 top-1 z-10 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-white"
+                                                        >
+                                                            <X className="h-3.5 w-3.5" />
+                                                        </button>
+                                                        <div className="absolute left-1 top-1 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-medium text-white">
+                                                            {index + 1}
+                                                        </div>
+                                                    </div>
+                                                    <div className="mt-1.5 grid grid-cols-3 gap-1">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => moveEditImage(index, index - 1)}
+                                                            disabled={index === 0}
+                                                            className="inline-flex h-6 items-center justify-center rounded-md border border-border text-foreground disabled:opacity-40"
+                                                        >
+                                                            <ChevronLeft className="h-3.5 w-3.5" />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => moveEditImage(index, 0)}
+                                                            disabled={index === 0}
+                                                            className="inline-flex h-6 items-center justify-center rounded-md border border-border px-1 text-[10px] text-foreground disabled:opacity-40"
+                                                        >
+                                                            Set First
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => moveEditImage(index, index + 1)}
+                                                            disabled={index === editPreviewUrls.length - 1}
+                                                            className="inline-flex h-6 items-center justify-center rounded-md border border-border text-foreground disabled:opacity-40"
+                                                        >
+                                                            <ChevronRight className="h-3.5 w-3.5" />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <p className="mt-2 text-xs text-muted-foreground">Image 1 appears first on listing.</p>
+                                    </>
                                 ) : null}
                             </div>
 
@@ -1180,7 +1413,7 @@ export default function SellPageClient({
                         className="mb-3 flex w-full items-center justify-between gap-3 rounded-[1.65rem] border border-[#ddd3cb] bg-[#fbf8f5] px-5 py-4 text-left"
                     >
                         <div>
-                            <p className="font-serif text-[23px] font-semibold leading-[1.05] text-foreground">List New Item</p>
+                            <p className={`${cormorantHeading.className} text-[23px] font-semibold leading-[1.05] text-foreground`}>List New Item</p>
                             <p className="mt-1.5 text-[0.92rem] leading-[1.25] text-[#8a7667]">
                                 {listingStats.activeCount} active · {listingStats.soldCount} sold · ${listingStats.listedValue.toLocaleString()} listed value
                             </p>
@@ -1189,7 +1422,7 @@ export default function SellPageClient({
                     </button>
                 </div>
 
-                <div className="overflow-x-auto border-b border-[#ddd3cb] bg-[#f7f2ed] pl-6 pr-4">
+                <div className="overflow-x-auto border-b border-[#ddd3cb] bg-[#f7f2ed] px-8">
                     <div className="inline-flex min-w-max items-center gap-7 pt-2.5">
                         {mobileTabs.map((tab) => (
                             <button
@@ -1216,7 +1449,7 @@ export default function SellPageClient({
                     <div className="px-4 pt-4">
                         <h2
                             ref={mobileMyListingsRef}
-                            className="mb-4 font-serif text-[23px] font-medium leading-[1.05] text-foreground"
+                            className={`${cormorantHeading.className} mb-4 text-[23px] font-medium leading-[1.05] text-foreground`}
                         >
                             My Listings
                         </h2>
@@ -1230,31 +1463,31 @@ export default function SellPageClient({
 
                 {mobileTab === "ANALYTICS" ? (
                     <div className="px-4 pb-4 pt-4">
-                        <h3 className="mb-4 font-serif text-[23px] font-medium leading-[1.05] text-foreground">
+                        <h3 className={`${cormorantHeading.className} mb-4 text-[23px] font-medium leading-[1.05] text-[#2f2925]`}>
                             Analytics
                         </h3>
 
                         <div className="grid grid-cols-2 gap-3">
                             <div className="rounded-[1.6rem] border border-[#e3dbd3] bg-[#f8f3ee] px-4 py-[12px]">
                                 <p className="text-[11px] uppercase tracking-[0.16em] text-[#8a7667]">Total Listings</p>
-                                <p className="mt-1.5 font-serif text-[2rem] leading-none text-[#2f2925]">{analytics.totalListings}</p>
+                                <p className={`${cormorantHeading.className} mt-1.5 text-[2rem] leading-none text-[#2f2925]`}>{analytics.totalListings}</p>
                                 <p className="mt-1 text-[0.88rem] text-[#8a7667]">All time</p>
                             </div>
                             <div className="rounded-[1.6rem] border border-[#e3dbd3] bg-[#f8f3ee] px-4 py-[12px]">
                                 <p className="text-[11px] uppercase tracking-[0.16em] text-[#8a7667]">Revenue</p>
-                                <p className="mt-1.5 font-serif text-[2rem] leading-none text-[#2f2925]">
+                                <p className={`${cormorantHeading.className} mt-1.5 text-[2rem] leading-none text-[#2f2925]`}>
                                     ${analytics.deliveredRevenue.toFixed(2)}
                                 </p>
                                 <p className="mt-1 text-[0.88rem] text-[#8a7667]">From sold</p>
                             </div>
                             <div className="rounded-[1.6rem] border border-[#e3dbd3] bg-[#f8f3ee] px-4 py-[12px]">
                                 <p className="text-[11px] uppercase tracking-[0.16em] text-[#8a7667]">Active</p>
-                                <p className="mt-1.5 font-serif text-[2rem] leading-none text-[#2f2925]">{analytics.activeListings}</p>
+                                <p className={`${cormorantHeading.className} mt-1.5 text-[2rem] leading-none text-[#2f2925]`}>{analytics.activeListings}</p>
                                 <p className="mt-1 text-[0.88rem] text-[#8a7667]">Live now</p>
                             </div>
                             <div className="rounded-[1.6rem] border border-[#e3dbd3] bg-[#f8f3ee] px-4 py-[12px]">
                                 <p className="text-[11px] uppercase tracking-[0.16em] text-[#8a7667]">Avg Price</p>
-                                <p className="mt-1.5 font-serif text-[2rem] leading-none text-[#2f2925]">
+                                <p className={`${cormorantHeading.className} mt-1.5 text-[2rem] leading-none text-[#2f2925]`}>
                                     ${analytics.averagePrice.toFixed(2)}
                                 </p>
                                 <p className="mt-1 text-[0.88rem] text-[#8a7667]">All listings</p>
@@ -1305,7 +1538,13 @@ export default function SellPageClient({
                             return (
                                 <article key={listing.id} className="rounded-[1.45rem] border border-[#ddd3cb] bg-[#fbf8f5] p-3.5">
                                     <div className="grid grid-cols-[96px_1fr] gap-3">
-                                        <Link href={`/listings/${listing.id}`} className="col-span-1">
+                                        <Link
+                                            href={`/listings/${listing.id}`}
+                                            className="col-span-1"
+                                            onClick={() => {
+                                                if (listing.status === "SOLD") markSoldListingsViewed([listing.id]);
+                                            }}
+                                        >
                                             <div className="relative overflow-hidden rounded-[1.05rem] border border-[#e3d8cf] bg-[#f2ebe4]">
                                                 <div className="relative aspect-[2/3]">
                                                     <Image src={listing.image_url} alt={listing.title} fill className="object-cover" sizes="110px" />
@@ -1313,7 +1552,13 @@ export default function SellPageClient({
                                             </div>
                                         </Link>
                                         <div className="min-w-0">
-                                            <Link href={`/listings/${listing.id}`} className="block">
+                                            <Link
+                                                href={`/listings/${listing.id}`}
+                                                className="block"
+                                                onClick={() => {
+                                                    if (listing.status === "SOLD") markSoldListingsViewed([listing.id]);
+                                                }}
+                                            >
                                                 <h3 className="line-clamp-2 text-[1.04rem] leading-[1.2] font-semibold text-[#2f2925]">{listing.title}</h3>
                                                 <p className="mt-1 truncate text-[0.8rem] text-[#8a7667]">
                                                     {listing.category || "Fashion"}
@@ -1326,18 +1571,27 @@ export default function SellPageClient({
                                                 </p>
                                             </Link>
                                             <div className="mt-2">
-                                                <span className={`inline-flex rounded-full px-2.5 py-[3px] text-[0.8rem] font-medium ${statusClass}`}>
-                                                    {label}
-                                                </span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`inline-flex rounded-full px-2.5 py-[3px] text-[0.8rem] font-medium ${statusClass}`}>
+                                                        {label}
+                                                    </span>
+                                                    {isNewSoldListing(listing) ? (
+                                                        <span className="inline-flex rounded-full bg-[#4a3328] px-2 py-[3px] text-[0.67rem] font-semibold uppercase tracking-[0.08em] text-white">
+                                                            NEW
+                                                        </span>
+                                                    ) : null}
+                                                </div>
                                             </div>
                                             <div className="mt-2.5 flex items-center gap-2.5">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => startEditListing(listing)}
-                                                    className="inline-flex h-8 items-center rounded-full border border-[#d7cdc4] bg-white px-3.5 text-[0.84rem] font-medium text-[#5f4a3c]"
-                                                >
-                                                    Edit
-                                                </button>
+                                                {listing.status !== "SOLD" ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => startEditListing(listing)}
+                                                        className="inline-flex h-8 items-center rounded-full border border-[#d7cdc4] bg-white px-3.5 text-[0.84rem] font-medium text-[#5f4a3c]"
+                                                    >
+                                                        Edit
+                                                    </button>
+                                                ) : null}
                                                 <button
                                                     type="button"
                                                     onClick={() => {
@@ -1389,7 +1643,7 @@ export default function SellPageClient({
                         <div className="flex items-center justify-between">
                             <h2
                                 ref={desktopMyListingsRef}
-                                className="font-serif text-[23px] font-medium leading-[1.05] text-foreground"
+                                className={`${cormorantHeading.className} text-[23px] font-medium leading-[1.05] text-foreground`}
                             >
                                 My Listings
                             </h2>
@@ -1421,7 +1675,13 @@ export default function SellPageClient({
 
                                     return (
                                         <article key={listing.id} className="rounded-[1.6rem] border border-[#ddd3cb] bg-[#fbf8f5] p-4">
-                                            <Link href={`/listings/${listing.id}`} className="grid grid-cols-[140px_1fr] gap-4">
+                                            <Link
+                                                href={`/listings/${listing.id}`}
+                                                className="grid grid-cols-[140px_1fr] gap-4"
+                                                onClick={() => {
+                                                    if (listing.status === "SOLD") markSoldListingsViewed([listing.id]);
+                                                }}
+                                            >
                                                 <div className="relative overflow-hidden rounded-[1.05rem] border border-[#e3d8cf] bg-[#f2ebe4]">
                                                     <div className="relative aspect-[3/4]">
                                                         <Image src={listing.image_url} alt={listing.title} fill className="object-contain p-2" sizes="160px" />
@@ -1439,21 +1699,30 @@ export default function SellPageClient({
                                                         ${Number(listing.price).toLocaleString()}
                                                     </p>
                                                     <div className="mt-3">
-                                                        <span className={`inline-flex rounded-full px-3 py-1 text-[0.95rem] font-semibold ${statusClass}`}>
-                                                            {label}
-                                                        </span>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`inline-flex rounded-full px-3 py-1 text-[0.95rem] font-semibold ${statusClass}`}>
+                                                                {label}
+                                                            </span>
+                                                            {isNewSoldListing(listing) ? (
+                                                                <span className="inline-flex rounded-full bg-[#4a3328] px-2.5 py-1 text-[0.74rem] font-semibold uppercase tracking-[0.08em] text-white">
+                                                                    NEW
+                                                                </span>
+                                                            ) : null}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </Link>
 
                                             <div className="mt-3 flex flex-wrap items-center gap-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => startEditListing(listing)}
-                                                    className="inline-flex h-10 items-center rounded-full border border-[#ddd3cb] bg-white px-4 text-[0.96rem] text-[#4a3328]"
-                                                >
-                                                    Edit
-                                                </button>
+                                                {listing.status !== "SOLD" ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => startEditListing(listing)}
+                                                        className="inline-flex h-10 items-center rounded-full border border-[#ddd3cb] bg-white px-4 text-[0.96rem] text-[#4a3328]"
+                                                    >
+                                                        Edit
+                                                    </button>
+                                                ) : null}
                                                 <button
                                                     type="button"
                                                     onClick={() => handleDeleteListing(listing.id)}

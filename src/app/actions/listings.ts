@@ -316,11 +316,14 @@ export async function updateListing(listingId: string, formData: FormData) {
 
     const listing = await prisma.listing.findUnique({
         where: { id: listingId },
-        select: { id: true, user_id: true },
+        select: { id: true, user_id: true, status: true },
     });
 
     if (!listing || listing.user_id !== session.user.id) {
         return { error: "Listing not found or you do not have permission to edit it." };
+    }
+    if (listing.status === "SOLD") {
+        return { error: "Sold listings cannot be edited." };
     }
 
     const title = String(formData.get("title") || "").trim();
