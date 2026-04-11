@@ -3,9 +3,11 @@ import { auth } from "@/auth";
 import { getCartCountForSessionUser } from "@/app/actions/cart";
 import { getFavoriteCountForSessionUser } from "@/app/actions/favorites";
 import { getUnreadMessageCountForSessionUser } from "@/app/actions/messages";
-import { Heart, Search, ShoppingBag } from "lucide-react";
+import { Search } from "lucide-react";
 import Image from "next/image";
 import MessageNavButton from "@/components/layout/MessageNavButton";
+import BagNavButton from "@/components/layout/BagNavButton";
+import FavoritesNavButton from "@/components/layout/FavoritesNavButton";
 
 export default async function Navbar() {
     const session = await auth();
@@ -39,23 +41,9 @@ export default async function Navbar() {
                 </div>
 
                 <div className="ml-auto flex items-center gap-1 sm:gap-2">
-                    <Link href="/favorites" className="relative flex h-11 w-11 items-center justify-center rounded-full text-foreground hover:bg-secondary">
-                        <Heart className="h-5 w-5" />
-                        {favoriteCount > 0 ? (
-                            <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] text-primary-foreground">
-                                {favoriteCount > 99 ? "99+" : favoriteCount}
-                            </span>
-                        ) : null}
-                    </Link>
+                    <FavoritesNavButton favoriteCount={favoriteCount} />
                     <MessageNavButton unreadMessageCount={unreadMessageCount} />
-                    <Link href="/cart" className="relative flex h-11 w-11 items-center justify-center rounded-full text-foreground hover:bg-secondary">
-                        <ShoppingBag className="h-5 w-5" />
-                        {cartCount > 0 ? (
-                            <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] text-primary-foreground">
-                                {cartCount > 99 ? "99+" : cartCount}
-                            </span>
-                        ) : null}
-                    </Link>
+                    <BagNavButton cartCount={cartCount} />
                     {session?.user ? (
                         null
                     ) : (

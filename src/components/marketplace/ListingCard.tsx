@@ -9,6 +9,7 @@ type ListingCardProps = {
     href: string;
     imageUrl: string;
     title: string;
+    titleClassName?: string;
     description?: string | null;
     price: number | string;
     category?: string | null;
@@ -27,6 +28,7 @@ export default function ListingCard({
     href,
     imageUrl,
     title,
+    titleClassName,
     description,
     price,
     category,
@@ -89,7 +91,7 @@ export default function ListingCard({
                             )}
                         </div>
 
-                        <h3 className="font-serif text-2xl leading-tight text-foreground sm:text-[1.9rem]">
+                        <h3 className={`font-serif text-2xl leading-tight text-foreground sm:text-[1.9rem] ${titleClassName ?? ""}`}>
                             {title}
                         </h3>
                         {description ? (

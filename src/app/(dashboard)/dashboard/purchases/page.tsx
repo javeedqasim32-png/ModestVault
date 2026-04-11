@@ -2,6 +2,7 @@ import { serializePurchase } from "@/lib/serialization";
 import { auth } from "@/auth";
 import { getPrimaryListingImage } from "@/lib/listing-images";
 import { prisma } from "@/lib/prisma";
+import { getCartCountForSessionUser } from "@/app/actions/cart";
 import Link from "next/link";
 import { ShoppingBag } from "lucide-react";
 import { redirect } from "next/navigation";
@@ -75,9 +76,11 @@ export default async function PurchasesPage() {
         };
     });
 
+    const cartCount = await getCartCountForSessionUser();
+
     return (
         <>
-            <MobileOrdersClient orders={mobileOrders} />
+            <MobileOrdersClient orders={mobileOrders} cartCount={cartCount} />
 
             <div className="hidden space-y-6 sm:block">
                 <div className="rounded-[1.75rem] border border-border/80 bg-[linear-gradient(180deg,#faf5f1_0%,#f1e7e0_100%)] p-6 sm:p-8">

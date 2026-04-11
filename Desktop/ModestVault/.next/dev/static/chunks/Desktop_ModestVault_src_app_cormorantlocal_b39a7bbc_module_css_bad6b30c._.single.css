@@ -1,0 +1,35 @@
+/* [project]/Desktop/ModestVault/src/app/cormorantlocal_b39a7bbc.module.css [app-client] (css) */
+@font-face {
+  font-family: cormorantLocal;
+  src: url("../media/CormorantGaramond_Regular-s.p.b9af452b.ttf") format("truetype");
+  font-display: swap;
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: cormorantLocal;
+  src: url("../media/CormorantGaramond_SemiBold-s.p.3a9fc824.ttf") format("truetype");
+  font-display: swap;
+  font-weight: 600;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: cormorantLocal Fallback;
+  src: local(Arial);
+  ascent-override: 105.17%;
+  descent-override: 32.67%;
+  line-gap-override: 0.0%;
+  size-adjust: 87.85%;
+}
+
+.cormorantlocal_b39a7bbc-module__mav1Aq__className {
+  font-family: cormorantLocal, cormorantLocal Fallback;
+}
+
+.cormorantlocal_b39a7bbc-module__mav1Aq__variable {
+  --font-cormorant-local: "cormorantLocal", "cormorantLocal Fallback";
+}
+
+/*# sourceMappingURL=Desktop_ModestVault_src_app_cormorantlocal_b39a7bbc_module_css_bad6b30c._.single.css.map*/

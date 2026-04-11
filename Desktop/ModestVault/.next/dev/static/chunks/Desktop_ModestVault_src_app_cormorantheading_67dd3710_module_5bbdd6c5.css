@@ -1,0 +1,31 @@
+/* [project]/Desktop/ModestVault/src/app/cormorantheading_67dd3710.module.css [app-client] (css) */
+@font-face {
+  font-family: cormorantHeading;
+  src: url("../media/CormorantGaramond_Regular-s.p.b9af452b.ttf") format("truetype");
+  font-display: swap;
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: cormorantHeading;
+  src: url("../media/CormorantGaramond_SemiBold-s.p.3a9fc824.ttf") format("truetype");
+  font-display: swap;
+  font-weight: 600;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: cormorantHeading Fallback;
+  src: local(Arial);
+  ascent-override: 105.17%;
+  descent-override: 32.67%;
+  line-gap-override: 0.0%;
+  size-adjust: 87.85%;
+}
+
+.cormorantheading_67dd3710-module__onmqLG__className {
+  font-family: cormorantHeading, cormorantHeading Fallback;
+}
+
+/*# sourceMappingURL=Desktop_ModestVault_src_app_cormorantheading_67dd3710_module_5bbdd6c5.css.map*/

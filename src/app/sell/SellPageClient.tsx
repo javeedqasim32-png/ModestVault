@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import localFont from "next/font/local";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createListing, deleteListing, replaceListingImages, updateListing } from "../actions/listings";
 import { onboardSellerAction } from "../actions/stripe";
@@ -62,14 +61,6 @@ const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_TOTAL_IMAGE_BYTES = 18 * 1024 * 1024;
 const COMPRESSIBLE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_OPTIMIZED_DIMENSION = 2000;
-const cormorantHeading = localFont({
-    src: [
-        { path: "../../fonts/CormorantGaramond-Regular.ttf", weight: "400", style: "normal" },
-        { path: "../../fonts/CormorantGaramond-SemiBold.ttf", weight: "600", style: "normal" },
-    ],
-    display: "swap",
-});
-
 function replaceFileExtension(filename: string, nextExt: string) {
     const cleanName = filename.replace(/\.[^/.]+$/, "");
     return `${cleanName}.${nextExt}`;
@@ -177,12 +168,19 @@ export default function SellPageClient({
     const [category, setCategory] = useState("");
     const [subcategory, setSubcategory] = useState("");
     const [listingType, setListingType] = useState("");
+    const [editStyle, setEditStyle] = useState("");
+    const [editCategory, setEditCategory] = useState("");
+    const [editSubcategory, setEditSubcategory] = useState("");
+    const [editListingType, setEditListingType] = useState("");
     const [taxonomyErrors, setTaxonomyErrors] = useState<ListingTaxonomyErrors>({});
+    const [editTaxonomyErrors, setEditTaxonomyErrors] = useState<ListingTaxonomyErrors>({});
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const mobileMyListingsRef = useRef<HTMLHeadingElement | null>(null);
     const desktopMyListingsRef = useRef<HTMLHeadingElement | null>(null);
     const subcategoryOptions = useMemo(() => getSubcategories(category), [category]);
     const typeOptions = useMemo(() => getTypes(subcategory), [subcategory]);
+    const editSubcategoryOptions = useMemo(() => getSubcategories(editCategory), [editCategory]);
+    const editTypeOptions = useMemo(() => getTypes(editSubcategory), [editSubcategory]);
     const taxonomyValidation = useMemo(
         () =>
             validateListingTaxonomy({
@@ -192,6 +190,16 @@ export default function SellPageClient({
                 type: listingType || null,
             }),
         [style, category, subcategory, listingType]
+    );
+    const editTaxonomyValidation = useMemo(
+        () =>
+            validateListingTaxonomy({
+                style: editStyle,
+                category: editCategory,
+                subcategory: editSubcategory || null,
+                type: editListingType || null,
+            }),
+        [editStyle, editCategory, editSubcategory, editListingType]
     );
 
     const filteredListings = useMemo(() => {
@@ -234,6 +242,32 @@ export default function SellPageClient({
             if (listingType) setListingType("");
         }
     }, [category, subcategory, listingType]);
+
+    useEffect(() => {
+        if (!editSubcategory) {
+            if (editListingType) setEditListingType("");
+            return;
+        }
+
+        const allowedTypes = getTypes(editSubcategory);
+        if (!allowedTypes.includes(editListingType)) {
+            setEditListingType("");
+        }
+    }, [editSubcategory, editListingType]);
+
+    useEffect(() => {
+        if (!editCategory) {
+            if (editSubcategory) setEditSubcategory("");
+            if (editListingType) setEditListingType("");
+            return;
+        }
+
+        const allowedSubcategories = getSubcategories(editCategory);
+        if (!allowedSubcategories.includes(editSubcategory)) {
+            if (editSubcategory) setEditSubcategory("");
+            if (editListingType) setEditListingType("");
+        }
+    }, [editCategory, editSubcategory, editListingType]);
 
     async function handleStripeOnboarding() {
         setLoading(true);
@@ -410,11 +444,21 @@ export default function SellPageClient({
         setEditingListing(listing);
         setEditFiles([]);
         setError("");
+        setEditStyle(listing.style || "");
+        setEditCategory(listing.category || "");
+        setEditSubcategory(listing.subcategory || "");
+        setEditListingType(listing.type || "");
+        setEditTaxonomyErrors({});
     };
 
     const closeEditListing = () => {
         setEditingListing(null);
         setEditFiles([]);
+        setEditStyle("");
+        setEditCategory("");
+        setEditSubcategory("");
+        setEditListingType("");
+        setEditTaxonomyErrors({});
     };
 
     const renderCreateForm = (showMobileBack: boolean) => (
@@ -799,7 +843,7 @@ export default function SellPageClient({
                         <div className="mx-auto mb-3 inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/35 bg-white/10 text-3xl sm:mb-5 sm:h-16 sm:w-16 sm:text-4xl">
                             🏪
                         </div>
-                        <h1 className="font-serif text-[1.95rem] leading-[1.08] text-white sm:text-[2.85rem]">
+                        <h1 className="font-serif text-[23px] font-medium leading-[1.05] text-white">
                             Start Selling on Modaire
                         </h1>
                         <p className="mx-auto mt-2 max-w-2xl text-[0.94rem] leading-[1.55] text-[#f1ddd0] sm:mt-4 sm:text-[1.1rem] sm:leading-[1.8]">
@@ -890,8 +934,18 @@ export default function SellPageClient({
                                 event.preventDefault();
                                 setSavingEdit(true);
                                 setError("");
+                                setEditTaxonomyErrors({});
                                 try {
                                     const formData = new FormData(event.currentTarget);
+                                    if (!editTaxonomyValidation.ok) {
+                                        setEditTaxonomyErrors(editTaxonomyValidation.errors);
+                                        setError(editTaxonomyValidation.message);
+                                        return;
+                                    }
+                                    formData.set("style", editTaxonomyValidation.normalized.style);
+                                    formData.set("category", editTaxonomyValidation.normalized.category);
+                                    formData.set("subcategory", editTaxonomyValidation.normalized.subcategory || "");
+                                    formData.set("type", editTaxonomyValidation.normalized.type || "");
                                     const result = await updateListing(editingListing.id, formData);
                                     if (result?.error) {
                                         setError(result.error);
@@ -930,23 +984,116 @@ export default function SellPageClient({
                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 <div className="space-y-1">
                                     <Label htmlFor="edit-style">Style</Label>
-                                    <Input id="edit-style" name="style" required defaultValue={editingListing.style || ""} />
+                                    <select
+                                        id="edit-style"
+                                        name="style"
+                                        required
+                                        value={editStyle}
+                                        onChange={(event) => {
+                                            setEditStyle(event.target.value);
+                                            if (editTaxonomyErrors.style) {
+                                                setEditTaxonomyErrors((prev) => ({ ...prev, style: undefined }));
+                                            }
+                                        }}
+                                        className="w-full h-12 border border-border bg-background px-4 text-sm focus:border-primary focus:outline-none transition-colors"
+                                    >
+                                        <option value="">Select Style</option>
+                                        {styleOptions.map((item) => (
+                                            <option key={item} value={item}>
+                                                {item}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    {editTaxonomyErrors.style ? <p className="text-xs text-red-600">{editTaxonomyErrors.style}</p> : null}
                                 </div>
                                 <div className="space-y-1">
                                     <Label htmlFor="edit-category">Category</Label>
-                                    <Input id="edit-category" name="category" required defaultValue={editingListing.category || ""} />
+                                    <select
+                                        id="edit-category"
+                                        name="category"
+                                        required
+                                        value={editCategory}
+                                        onChange={(event) => {
+                                            setEditCategory(event.target.value);
+                                            if (editTaxonomyErrors.category || editTaxonomyErrors.subcategory || editTaxonomyErrors.type) {
+                                                setEditTaxonomyErrors((prev) => ({
+                                                    ...prev,
+                                                    category: undefined,
+                                                    subcategory: undefined,
+                                                    type: undefined,
+                                                }));
+                                            }
+                                        }}
+                                        className="w-full h-12 border border-border bg-background px-4 text-sm focus:border-primary focus:outline-none transition-colors"
+                                    >
+                                        <option value="">Select Category</option>
+                                        {categoryOptions.map((item) => (
+                                            <option key={item} value={item}>
+                                                {item}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    {editTaxonomyErrors.category ? <p className="text-xs text-red-600">{editTaxonomyErrors.category}</p> : null}
                                 </div>
                             </div>
 
                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                <div className="space-y-1">
-                                    <Label htmlFor="edit-subcategory">Subcategory</Label>
-                                    <Input id="edit-subcategory" name="subcategory" defaultValue={editingListing.subcategory || ""} />
-                                </div>
-                                <div className="space-y-1">
-                                    <Label htmlFor="edit-type">Type</Label>
-                                    <Input id="edit-type" name="type" defaultValue={editingListing.type || ""} />
-                                </div>
+                                {editSubcategoryOptions.length > 0 ? (
+                                    <div className="space-y-1">
+                                        <Label htmlFor="edit-subcategory">Subcategory</Label>
+                                        <select
+                                            id="edit-subcategory"
+                                            name="subcategory"
+                                            required
+                                            value={editSubcategory}
+                                            onChange={(event) => {
+                                                setEditSubcategory(event.target.value);
+                                                if (editTaxonomyErrors.subcategory || editTaxonomyErrors.type) {
+                                                    setEditTaxonomyErrors((prev) => ({ ...prev, subcategory: undefined, type: undefined }));
+                                                }
+                                            }}
+                                            className="w-full h-12 border border-border bg-background px-4 text-sm focus:border-primary focus:outline-none transition-colors"
+                                        >
+                                            <option value="">Select Subcategory</option>
+                                            {editSubcategoryOptions.map((item) => (
+                                                <option key={item} value={item}>
+                                                    {item}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        {editTaxonomyErrors.subcategory ? <p className="text-xs text-red-600">{editTaxonomyErrors.subcategory}</p> : null}
+                                    </div>
+                                ) : (
+                                    <input type="hidden" name="subcategory" value="" />
+                                )}
+                                {editTypeOptions.length > 0 ? (
+                                    <div className="space-y-1">
+                                        <Label htmlFor="edit-type">Type</Label>
+                                        <select
+                                            id="edit-type"
+                                            name="type"
+                                            required
+                                            value={editListingType}
+                                            onChange={(event) => {
+                                                setEditListingType(event.target.value);
+                                                if (editTaxonomyErrors.type) {
+                                                    setEditTaxonomyErrors((prev) => ({ ...prev, type: undefined }));
+                                                }
+                                            }}
+                                            className="w-full h-12 border border-border bg-background px-4 text-sm focus:border-primary focus:outline-none transition-colors"
+                                        >
+                                            <option value="">Select Type</option>
+                                            {editTypeOptions.map((item) => (
+                                                <option key={item} value={item}>
+                                                    {item}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        {editTaxonomyErrors.type ? <p className="text-xs text-red-600">{editTaxonomyErrors.type}</p> : null}
+                                    </div>
+                                ) : (
+                                    <input type="hidden" name="type" value="" />
+                                )}
                             </div>
 
                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1033,7 +1180,7 @@ export default function SellPageClient({
                         className="mb-3 flex w-full items-center justify-between gap-3 rounded-[1.65rem] border border-[#ddd3cb] bg-[#fbf8f5] px-5 py-4 text-left"
                     >
                         <div>
-                            <p className={`${cormorantHeading.className} text-[23px] font-semibold leading-[1.05] text-foreground`}>List New Item</p>
+                            <p className="font-serif text-[23px] font-semibold leading-[1.05] text-foreground">List New Item</p>
                             <p className="mt-1.5 text-[0.92rem] leading-[1.25] text-[#8a7667]">
                                 {listingStats.activeCount} active · {listingStats.soldCount} sold · ${listingStats.listedValue.toLocaleString()} listed value
                             </p>
@@ -1069,7 +1216,7 @@ export default function SellPageClient({
                     <div className="px-4 pt-4">
                         <h2
                             ref={mobileMyListingsRef}
-                            className={`${cormorantHeading.className} mb-4 text-[23px] font-medium leading-[1.05] text-foreground`}
+                            className="mb-4 font-serif text-[23px] font-medium leading-[1.05] text-foreground"
                         >
                             My Listings
                         </h2>
@@ -1083,31 +1230,31 @@ export default function SellPageClient({
 
                 {mobileTab === "ANALYTICS" ? (
                     <div className="px-4 pb-4 pt-4">
-                        <h3 className={`${cormorantHeading.className} mb-4 text-[23px] font-medium leading-[1.05] text-foreground`}>
+                        <h3 className="mb-4 font-serif text-[23px] font-medium leading-[1.05] text-foreground">
                             Analytics
                         </h3>
 
                         <div className="grid grid-cols-2 gap-3">
                             <div className="rounded-[1.6rem] border border-[#e3dbd3] bg-[#f8f3ee] px-4 py-[12px]">
                                 <p className="text-[11px] uppercase tracking-[0.16em] text-[#8a7667]">Total Listings</p>
-                                <p className={`${cormorantHeading.className} mt-1.5 text-[2rem] leading-none text-[#2f2925]`}>{analytics.totalListings}</p>
+                                <p className="mt-1.5 font-serif text-[2rem] leading-none text-[#2f2925]">{analytics.totalListings}</p>
                                 <p className="mt-1 text-[0.88rem] text-[#8a7667]">All time</p>
                             </div>
                             <div className="rounded-[1.6rem] border border-[#e3dbd3] bg-[#f8f3ee] px-4 py-[12px]">
                                 <p className="text-[11px] uppercase tracking-[0.16em] text-[#8a7667]">Revenue</p>
-                                <p className={`${cormorantHeading.className} mt-1.5 text-[2rem] leading-none text-[#2f2925]`}>
+                                <p className="mt-1.5 font-serif text-[2rem] leading-none text-[#2f2925]">
                                     ${analytics.deliveredRevenue.toFixed(2)}
                                 </p>
                                 <p className="mt-1 text-[0.88rem] text-[#8a7667]">From sold</p>
                             </div>
                             <div className="rounded-[1.6rem] border border-[#e3dbd3] bg-[#f8f3ee] px-4 py-[12px]">
                                 <p className="text-[11px] uppercase tracking-[0.16em] text-[#8a7667]">Active</p>
-                                <p className={`${cormorantHeading.className} mt-1.5 text-[2rem] leading-none text-[#2f2925]`}>{analytics.activeListings}</p>
+                                <p className="mt-1.5 font-serif text-[2rem] leading-none text-[#2f2925]">{analytics.activeListings}</p>
                                 <p className="mt-1 text-[0.88rem] text-[#8a7667]">Live now</p>
                             </div>
                             <div className="rounded-[1.6rem] border border-[#e3dbd3] bg-[#f8f3ee] px-4 py-[12px]">
                                 <p className="text-[11px] uppercase tracking-[0.16em] text-[#8a7667]">Avg Price</p>
-                                <p className={`${cormorantHeading.className} mt-1.5 text-[2rem] leading-none text-[#2f2925]`}>
+                                <p className="mt-1.5 font-serif text-[2rem] leading-none text-[#2f2925]">
                                     ${analytics.averagePrice.toFixed(2)}
                                 </p>
                                 <p className="mt-1 text-[0.88rem] text-[#8a7667]">All listings</p>
@@ -1242,7 +1389,7 @@ export default function SellPageClient({
                         <div className="flex items-center justify-between">
                             <h2
                                 ref={desktopMyListingsRef}
-                                className={`${cormorantHeading.className} text-[23px] font-medium leading-[1.05] text-foreground`}
+                                className="font-serif text-[23px] font-medium leading-[1.05] text-foreground"
                             >
                                 My Listings
                             </h2>

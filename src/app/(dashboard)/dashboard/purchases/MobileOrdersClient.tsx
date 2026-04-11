@@ -125,7 +125,7 @@ function formatCategoryLabel(value: string) {
         .join(" ");
 }
 
-export default function MobileOrdersClient({ orders }: { orders: MobileOrderItem[] }) {
+export default function MobileOrdersClient({ orders, cartCount }: { orders: MobileOrderItem[]; cartCount: number }) {
     const [activeTab, setActiveTab] = useState<OrdersTab>("ALL");
 
     const filtered = useMemo(() => {
@@ -206,7 +206,9 @@ export default function MobileOrdersClient({ orders }: { orders: MobileOrderItem
                 >
                     <div>
                         <p className={`${cormorantHeading.className} text-[23px] font-semibold leading-[1.05] text-foreground`}>Your Bag</p>
-                        <p className="mt-1.5 text-[0.92rem] leading-[1.25] text-[#8a7667]">0 items · Tap to start shopping</p>
+                        <p className="mt-1.5 text-[0.92rem] leading-[1.25] text-[#8a7667]">
+                            {cartCount} {cartCount === 1 ? "item" : "items"} · {cartCount > 0 ? "Tap to view bag" : "Tap to start shopping"}
+                        </p>
                     </div>
                     <ChevronRight className="h-5 w-5 text-[#8a7667]" />
                 </Link>

@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { ChevronRight, CircleHelp, FileText, PencilLine, ShieldCheck, ShoppingBag, Tag, Trash2, TrendingUp, UserRound, Wallet } from "lucide-react";
+import { ChevronRight, CircleHelp, FileText, ShieldCheck, ShoppingBag, Tag, Trash2, TrendingUp, UserRound, Wallet } from "lucide-react";
 import Link from "next/link";
 
 export default async function ProfileDashboard() {
@@ -14,6 +14,7 @@ export default async function ProfileDashboard() {
 
     const isSeller = dbUser?.seller_enabled || false;
     const isAdmin = (session?.user as { isAdmin?: boolean })?.isAdmin;
+    const profileHref = userId ? `/sellers/${userId}` : "/dashboard/settings";
     const favoriteDelegate = (prisma as unknown as {
         favoriteItem?: {
             count: (args: unknown) => Promise<number>;
@@ -41,11 +42,10 @@ export default async function ProfileDashboard() {
                     <h1 className="mt-4 text-[38px] leading-[1] text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif" }}>{session?.user?.name ?? "Test User"}</h1>
                     <p className="mt-2 text-[14px] text-[#8a7667]">{session?.user?.email}</p>
                     <Link
-                        href="/dashboard/settings"
-                        className="mt-6 inline-flex h-12 items-center gap-2 rounded-full border border-[#d7cac0] bg-[#f4efea] px-7 text-[14px] font-normal text-[#2f2925] transition hover:bg-[#ede7df]"
+                        href={profileHref}
+                        className="mt-6 inline-flex h-12 items-center rounded-full border border-[#d7cac0] bg-[#f4efea] px-7 text-[14px] font-normal text-[#2f2925] transition hover:bg-[#ede7df]"
                     >
-                        <PencilLine className="h-4 w-4" />
-                        Edit Profile
+                        View Profile
                     </Link>
                 </section>
 
