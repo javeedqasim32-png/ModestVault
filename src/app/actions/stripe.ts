@@ -9,50 +9,58 @@ import { getAppUrl } from "@/lib/app-url";
  * Creates a Stripe Connect onboarding link for the user.
  */
 export async function onboardSellerAction() {
-    const session = await auth();
-    if (!session?.user?.id) {
-        throw new Error("You must be logged in to onboard as a seller.");
-    }
+    try {
+        const session = await auth();
+        if (!session?.user?.id) {
+            throw new Error("You must be logged in to onboard as a seller.");
+        }
 
-    // 1. Get user from DB to check for existing stripe_account_id
-    const user = await prisma.user.findUnique({
-        where: { id: session.user.id },
-        select: { stripe_account_id: true, email: true },
-    });
-
-    if (!user) throw new Error("User not found.");
-
-    let stripeAccountId = user.stripe_account_id;
-    const appUrl = await getAppUrl();
-
-    // 2. Create Stripe account if it doesn't exist
-    if (!stripeAccountId) {
-        const account = await stripe.accounts.create({
-            type: "express",
-            email: user.email,
-            capabilities: {
-                card_payments: { requested: true },
-                transfers: { requested: true },
-            },
-        });
-        stripeAccountId = account.id;
-
-        // Save to database
-        await prisma.user.update({
+        // 1. Get user from DB to check for existing stripe_account_id
+        const user = await prisma.user.findUnique({
             where: { id: session.user.id },
-            data: { stripe_account_id: stripeAccountId },
+            select: { stripe_account_id: true, email: true },
         });
+
+        if (!user) throw new Error("User not found.");
+
+        let stripeAccountId = user.stripe_account_id;
+        const appUrl = await getAppUrl();
+
+        // 2. Create Stripe account if it doesn't exist
+        if (!stripeAccountId) {
+            const account = await stripe.accounts.create({
+                type: "express",
+                email: user.email,
+                capabilities: {
+                    card_payments: { requested: true },
+                    transfers: { requested: true },
+                },
+            });
+            stripeAccountId = account.id;
+
+            // Save to database
+            await prisma.user.update({
+                where: { id: session.user.id },
+                data: { stripe_account_id: stripeAccountId },
+            });
+        }
+
+        // 3. Create Account Link for onboarding
+        const accountLink = await stripe.accountLinks.create({
+            account: stripeAccountId,
+            refresh_url: `${appUrl}/sell`,
+            return_url: `${appUrl}/sell/onboarding-complete`,
+            type: "account_onboarding",
+        });
+
+        return { url: accountLink.url };
+    } catch (error) {
+        console.error("Error in onboardSellerAction:", error);
+        if (error instanceof Error) {
+            throw new Error(`Stripe Onboarding Error: ${error.message}`);
+        }
+        throw new Error("An unexpected error occurred during Stripe onboarding.");
     }
-
-    // 3. Create Account Link for onboarding
-    const accountLink = await stripe.accountLinks.create({
-        account: stripeAccountId,
-        refresh_url: `${appUrl}/sell`,
-        return_url: `${appUrl}/sell/onboarding-complete`,
-        type: "account_onboarding",
-    });
-
-    return { url: accountLink.url };
 }
 
 /**
