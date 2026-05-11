@@ -311,3 +311,11 @@ input {
 .btn-logout:hover {
   background: var(--cr-d);
 }
+
+@utility no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}

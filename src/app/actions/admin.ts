@@ -25,6 +25,14 @@ async function requireAdmin() {
     return user;
 }
 
+const REFUND_HOLD_DAYS = 3;
+
+function getHoldUntilDate(from: Date) {
+    const holdUntil = new Date(from);
+    holdUntil.setDate(holdUntil.getDate() + REFUND_HOLD_DAYS);
+    return holdUntil;
+}
+
 /**
  * Approves a listing for public visibility.
  */
@@ -91,8 +99,11 @@ export async function updateOrderShipping(
             updateData.shipped_at = new Date();
         }
         if (data.shippingStatus === "DELIVERED") {
-            updateData.delivered_at = new Date();
+            const deliveredAt = new Date();
+            updateData.delivered_at = deliveredAt;
+            updateData.hold_until = getHoldUntilDate(deliveredAt);
             updateData.order_status = "FULFILLED";
+            updateData.seller_transfer_status = "PENDING_HOLD";
         }
     }
 

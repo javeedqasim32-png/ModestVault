@@ -42,14 +42,16 @@ type CheckoutResponse = {
 export function PreCheckoutClient({
     listingId,
     listingTitle,
-    listingPrice
+    listingPrice,
+    initialAddress
 }: {
     listingId: string;
     listingTitle: string;
     listingPrice: number;
+    initialAddress?: ShippingAddressFormData;
 }) {
     const [step, setStep] = useState<"ADDRESS" | "RATES">("ADDRESS");
-    const [address, setAddress] = useState<ShippingAddressFormData>({
+    const [address, setAddress] = useState<ShippingAddressFormData>(initialAddress || {
         name: "",
         line1: "",
         line2: "",

@@ -106,6 +106,7 @@ model Purchase {
   listing           Listing  @relation(fields: [listing_id], references: [id])
   amount            Decimal
   stripe_session_id String?  @unique
+  payment_intent_id String?  @unique
   created_at        DateTime @default(now())
   order             Order?
 }
@@ -130,6 +131,12 @@ model Order {
   label_url             String?
   shipped_at            DateTime?
   delivered_at          DateTime?
+  hold_until            DateTime?
+  seller_transfer_status String   @default("PENDING_HOLD") // PENDING_HOLD, READY_FOR_RELEASE, RELEASED, BLOCKED, FAILED
+  seller_transfer_id     String?
+  seller_transfer_amount_cents Int?
+  seller_transfer_currency String?
+  seller_transfer_released_at DateTime?
   created_at            DateTime  @default(now())
   updated_at            DateTime  @updatedAt
 }

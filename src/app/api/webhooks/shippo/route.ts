@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
-import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 
@@ -22,10 +21,18 @@ function mapShippoStatusToPrisma(shippoStatus: string): string {
     }
 }
 
+const REFUND_HOLD_DAYS = 3;
+
+function getHoldUntilDate(from: Date) {
+    const holdUntil = new Date(from);
+    holdUntil.setDate(holdUntil.getDate() + REFUND_HOLD_DAYS);
+    return holdUntil;
+}
+
 export async function POST(req: Request) {
     try {
         const bodyText = await req.text();
-        const headersList = await headers();
+        await headers();
 
         // In a strict production environment, you should verify the Shippo signature
         // const signature = headersList.get("x-shippo-signature");
@@ -44,17 +51,36 @@ export async function POST(req: Request) {
                 const newStatus = mapShippoStatusToPrisma(shippoStatus);
 
                 // Find the associated order
-                const existingOrder = await (prisma as any).order.findFirst({
+                const orderDelegate = (prisma as unknown as {
+                    order: {
+                        findFirst: (args: { where: { tracking_number: string } }) => Promise<{
+                            id: string;
+                            shipping_status: string;
+                            shipped_at: Date | null;
+                            delivered_at: Date | null;
+                        } | null>;
+                        update: (args: { where: { id: string }; data: Record<string, unknown> }) => Promise<unknown>;
+                    };
+                }).order;
+
+                const existingOrder = await orderDelegate.findFirst({
                     where: { tracking_number: trackingNumber },
                 });
 
                 if (existingOrder && existingOrder.shipping_status !== newStatus) {
-                    await (prisma as any).order.update({
+                    await orderDelegate.update({
                         where: { id: existingOrder.id },
                         data: {
                             shipping_status: newStatus,
                             ...(newStatus === "SHIPPED" && !existingOrder.shipped_at ? { shipped_at: new Date() } : {}),
-                            ...(newStatus === "DELIVERED" && !existingOrder.delivered_at ? { delivered_at: new Date() } : {}),
+                            ...(newStatus === "DELIVERED" && !existingOrder.delivered_at
+                                ? {
+                                    delivered_at: new Date(),
+                                    hold_until: getHoldUntilDate(new Date()),
+                                    order_status: "FULFILLED",
+                                    seller_transfer_status: "PENDING_HOLD",
+                                }
+                                : {}),
                         }
                     });
 
@@ -67,8 +93,9 @@ export async function POST(req: Request) {
         }
 
         return NextResponse.json({ received: true });
-    } catch (err: any) {
-        console.error("Shippo Webhook Error:", err.message);
-        return new NextResponse(`Webhook Error: ${err.message}`, { status: 400 });
+    } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Unknown webhook error";
+        console.error("Shippo Webhook Error:", message);
+        return new NextResponse(`Webhook Error: ${message}`, { status: 400 });
     }
 }

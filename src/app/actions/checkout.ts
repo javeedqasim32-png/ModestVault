@@ -247,9 +247,6 @@ export async function createCheckoutSessionWithShipping(
         if (!Number.isFinite(shippingCents) || shippingCents < 0) throw new Error("Invalid shipping amount.");
 
         const unitAmount = Math.round(Number(listing.price) * 100);
-        const itemPlatformFee = Math.round(unitAmount * 0.15); // 15% fee on item
-        // Keep 100% of shipping on platform, while seller payout is based on item only.
-        const feeAmount = itemPlatformFee + shippingCents;
         const coverImage = getPrimaryListingImage(listing, "detail");
 
         const checkoutSession = await stripe.checkout.sessions.create({
@@ -280,10 +277,6 @@ export async function createCheckoutSessionWithShipping(
                 }
             ],
             mode: "payment",
-            payment_intent_data: {
-                transfer_data: { destination: listing.user.stripe_account_id as string },
-                application_fee_amount: feeAmount,
-            },
             success_url: `${appUrl}/buy/success?session_id={CHECKOUT_SESSION_ID}&listingId=${listing.id}`,
             cancel_url: `${appUrl}/buy/checkout?listingId=${listing.id}`,
             customer_email: session.user.email ?? undefined,

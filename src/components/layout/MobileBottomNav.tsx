@@ -34,6 +34,7 @@ export default function MobileBottomNav() {
                 {items.map((item) => {
                     const Icon = item.icon;
                     const active = item.match(pathname);
+                    const isSell = item.href === "/sell";
 
                     return (
                         <Link
@@ -42,15 +43,17 @@ export default function MobileBottomNav() {
                             aria-current={active ? "page" : undefined}
                             className={`flex min-w-0 flex-1 flex-col items-center gap-1 rounded-[1rem] px-1 py-2 text-[11px] transition-colors ${
                                 active
-                                    ? "bg-[#ece4dc] text-black"
+                                    ? "text-black"
                                     : "text-foreground/72 hover:bg-white/60"
                             }`}
                         >
                             <span
                                 className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors ${
-                                    active
-                                        ? "h-10 w-10 shrink-0 !bg-black !text-white border border-black shadow-[0_8px_18px_rgba(0,0,0,0.22)]"
-                                        : "text-current"
+                                    isSell
+                                        ? `${active ? "h-10 w-10 scale-105" : "h-9 w-9"} shrink-0 !bg-black !text-white border border-black shadow-[0_8px_18px_rgba(0,0,0,0.22)]`
+                                        : active
+                                            ? "h-10 w-10 shrink-0 !bg-black !text-white border border-black shadow-[0_8px_18px_rgba(0,0,0,0.22)]"
+                                            : "text-current"
                                 }`}
                             >
                                 <Icon className="h-5 w-5" />
