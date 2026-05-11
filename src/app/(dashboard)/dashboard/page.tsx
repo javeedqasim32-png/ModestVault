@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { ChevronRight, CircleHelp, FileText, ShieldCheck, ShoppingBag, Tag, Trash2, TrendingUp, UserRound, Wallet } from "lucide-react";
+import { ChevronRight, CircleHelp, FileText, ShieldCheck, ShoppingBag, Tag, TrendingUp, UserRound, Wallet } from "lucide-react";
 import Link from "next/link";
 
 export default async function ProfileDashboard() {
@@ -80,14 +80,6 @@ export default async function ProfileDashboard() {
                                 <ChevronRight className="h-4 w-4" />
                             </span>
                         </Link>
-                        <div className="flex items-center justify-between border-b border-[#d9cfc7] px-4 py-7">
-                            <span className="text-[16px] text-[#2f2925]">Eid Collection</span>
-                            <span className="flex items-center gap-2 text-[16px] text-[#8a7667]">
-                                0 items
-                                <ChevronRight className="h-4 w-4" />
-                                <Trash2 className="h-4 w-4" />
-                            </span>
-                        </div>
                     </div>
                 </section>
 

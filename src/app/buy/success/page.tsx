@@ -25,6 +25,10 @@ export default async function BuySuccessPage({ searchParams }: { searchParams: P
 
     // 1. Verify the checkout session with Stripe
     const checkoutSession = await stripe.checkout.sessions.retrieve(session_id);
+    const paymentIntentId =
+        typeof checkoutSession.payment_intent === "string"
+            ? checkoutSession.payment_intent
+            : checkoutSession.payment_intent?.id || null;
     const metadata = (checkoutSession.metadata || {}) as Record<string, string>;
     const shippingAddressFromMeta = metadata.shipLine1 ? {
         name: metadata.shipName || "",
@@ -72,8 +76,15 @@ export default async function BuySuccessPage({ searchParams }: { searchParams: P
                                 ? Number(metadata.itemAmountCents) / 100
                                 : (checkoutSession.amount_total || 0) / 100,
                             stripe_session_id: session_id,
+                            payment_intent_id: paymentIntentId,
                         }
                     });
+
+                    const itemAmountCents = metadata.itemAmountCents
+                        ? Number(metadata.itemAmountCents)
+                        : Math.round((checkoutSession.amount_total || 0));
+                    const sellerTransferAmountCents = Math.max(0, Math.round(itemAmountCents * 0.85));
+                    const sellerTransferCurrency = (checkoutSession.currency || "usd").toLowerCase();
 
                     order = await (tx as any).order.create({
                         data: {
@@ -92,6 +103,9 @@ export default async function BuySuccessPage({ searchParams }: { searchParams: P
                                 : undefined,
                             shipping_option_currency: metadata.shippingCurrency || undefined,
                             shipping_option_selected_at: shippingOptionSelectedInCheckout ? new Date() : undefined,
+                            seller_transfer_status: "PENDING_HOLD",
+                            seller_transfer_amount_cents: sellerTransferAmountCents,
+                            seller_transfer_currency: sellerTransferCurrency,
                         },
                         include: { purchase: { include: { listing: { include: { user: true } } } } }
                     });

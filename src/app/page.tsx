@@ -49,15 +49,6 @@ const HOME_EDITORIAL_MEDIA = {
   trending: "/home-placeholders/editorial-placeholder.svg",
 } as const;
 
-const TRENDING_TAGS = [
-  "#AbayaSzn",
-  "#FestivePret",
-  "#ModestBride",
-  "#ShalwarKameez",
-  "#EidLook",
-  "#Kaftan",
-] as const;
-
 import { serializeListing } from "@/lib/serialization";
 
 const cormorantHeading = localFont({
@@ -426,23 +417,7 @@ export default async function Home() {
                 ))}
               </div>
 
-              <div className="pt-3">
-                <h2 className={`${cormorantHeading.className} text-[23px] font-medium leading-[1.05] text-foreground`}>
-                  Trending
-                </h2>
-                <div className="mt-2 grid grid-cols-3 gap-[10px] px-[16px] pb-[14px] pt-[10px]">
-                  {TRENDING_TAGS.map((tag) => (
-                    <span
-                      key={tag}
-                      className="inline-flex min-h-[44px] w-full items-center justify-center rounded-full border border-[#ddd3cb] bg-[#fbf8f5] px-[14px] py-[10px] text-[12px] font-normal leading-none text-[#8a7667]"
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex items-baseline justify-between pb-[10px] pt-[2px]">
+              <div className="flex items-baseline justify-between pb-[10px] pt-[10px]">
                 <h2 className={`${cormorantHeading.className} text-[23px] font-medium leading-[1.05] text-foreground`}>
                   Recently Viewed
                 </h2>

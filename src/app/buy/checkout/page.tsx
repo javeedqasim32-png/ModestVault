@@ -42,12 +42,39 @@ export default async function BuyCheckoutPage({
         redirect(`/listings/${listing.id}`);
     }
 
+    const user = await prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: {
+            first_name: true,
+            last_name: true,
+            phone: true,
+            street1: true,
+            street2: true,
+            city: true,
+            state: true,
+            zip: true,
+            country: true,
+        }
+    });
+
+    const initialAddress = user ? {
+        name: `${user.first_name} ${user.last_name}`.trim(),
+        line1: user.street1 || "",
+        line2: user.street2 || "",
+        city: user.city || "",
+        state: user.state || "",
+        postal_code: user.zip || "",
+        country: user.country || "US",
+        phone: user.phone || "",
+    } : undefined;
+
     return (
         <div className="container mx-auto px-6 py-12 min-h-[calc(100vh-100px)]">
             <PreCheckoutClient
                 listingId={listing.id}
                 listingTitle={listing.title}
                 listingPrice={Number(listing.price)}
+                initialAddress={initialAddress}
             />
         </div>
     );

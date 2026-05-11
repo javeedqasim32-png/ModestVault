@@ -1,16 +1,30 @@
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
-import Image from "next/image";
 import { auth } from "@/auth";
 import { addToCartAndRedirect } from "@/app/actions/cart";
 import { getFavoriteListingIdsForSessionUser } from "@/app/actions/favorites";
-import { getOrderedListingGallery, getPrimaryListingImage } from "@/lib/listing-images";
+import { getOrderedListingGallery } from "@/lib/listing-images";
 import { MessageCircle, Plus, ShoppingBag, Star, ChevronRight, ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import RecentlyViewedTracker from "@/components/marketplace/RecentlyViewedTracker";
 import FavoriteButton from "@/components/marketplace/FavoriteButton";
+import ListingImageGallery from "@/components/marketplace/ListingImageGallery";
+import ShareListingButton from "@/components/marketplace/ShareListingButton";
 
 export const dynamic = "force-dynamic";
+
+const MEASUREMENTS_MARKER = "\n\nMeasurements:\n";
+
+function splitDescriptionAndMeasurements(description: string) {
+    const markerIndex = description.indexOf(MEASUREMENTS_MARKER);
+    if (markerIndex === -1) {
+        return { description: description.trim(), measurements: "" };
+    }
+    return {
+        description: description.slice(0, markerIndex).trim(),
+        measurements: description.slice(markerIndex + MEASUREMENTS_MARKER.length).trim(),
+    };
+}
 
 export default async function ListingDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = await params;
@@ -70,7 +84,6 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
     const isOwner = session?.user?.id === listing.user_id;
     const isAvailable = listing.status === "AVAILABLE";
     const orderedImages = getOrderedListingGallery(listing);
-    const primaryImage = getPrimaryListingImage(listing, "detail");
     const favoriteListingIds = new Set(await getFavoriteListingIdsForSessionUser([listing.id]));
     const sellerFullName = `${listing.user.first_name} ${listing.user.last_name}`.trim();
     const sellerInitial = (listing.user.first_name?.[0] || "M").toUpperCase();
@@ -79,6 +92,7 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
         ? Number((listing.user.reviewsReceived.reduce((sum, review) => sum + review.rating, 0) / sellerReviewCount).toFixed(1))
         : 0;
     const sellerReviews = listing.user.reviewsReceived.slice(0, 5);
+    const { description: cleanDescription, measurements } = splitDescriptionAndMeasurements(listing.description || "");
     const metaPills = [
         { label: "Size", value: listing.size || "M" },
         { label: "Condition", value: listing.condition || "Like new" },
@@ -90,7 +104,7 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
     return (
         <div className="min-h-screen bg-[#EFE7DE]">
             <RecentlyViewedTracker listingId={listing.id} viewerId={session?.user?.id ?? null} />
-            <div className="mx-auto w-full max-w-[820px] pb-36">
+            <div className="mx-auto w-full max-w-[760px] pb-36">
                 <div className="px-4 pb-3 pt-4">
                     <Link href="/browse" className="inline-flex items-center gap-1 text-[12px] text-[#8a7667] hover:text-[#2f2925]">
                         <ChevronLeft className="h-4 w-4" />
@@ -98,50 +112,26 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                     </Link>
                 </div>
 
-                <div className="space-y-2 px-4">
-                    <div className="relative aspect-[3/4] overflow-hidden rounded-[18px] border border-[#ddd3cb] bg-[#faf8f6]">
-                        <Image
-                            src={primaryImage}
-                            alt={listing.title}
-                            fill
-                            className="object-cover"
-                            priority
-                        />
-                        {listing.status === "SOLD" && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-black/35">
-                                <span className="text-2xl font-semibold uppercase tracking-widest text-white">
-                                    Sold
-                                </span>
-                            </div>
-                        )}
-                    </div>
-                    {orderedImages.length > 1 ? (
-                        <div className="grid grid-cols-5 gap-2">
-                            {orderedImages.map((image, index) => (
-                                <div
-                                    key={`${listing.id}-${index}`}
-                                    className="relative aspect-[3/4] overflow-hidden rounded-[10px] border border-[#ddd3cb] bg-[#faf8f6]"
-                                >
-                                    <Image
-                                        src={image.thumbUrl || image.mediumUrl || image.originalUrl}
-                                        alt={`${listing.title} view ${index + 1}`}
-                                        fill
-                                        className="object-cover"
-                                        sizes="20vw"
-                                    />
-                                </div>
-                            ))}
-                        </div>
-                    ) : null}
-                </div>
+                <ListingImageGallery
+                    images={orderedImages}
+                    title={listing.title}
+                    isSold={listing.status === "SOLD"}
+                />
 
                 <div className="mt-1 px-4 pt-2">
-                    <h1
-                        className="text-[24px] leading-[1.2] text-[#2f2925]"
-                        style={{ fontFamily: "var(--font-serif), serif", fontWeight: 600 }}
-                    >
-                        {listing.title}
-                    </h1>
+                    <div className="flex items-start justify-between gap-3">
+                        <h1
+                            className="text-[24px] leading-[1.2] text-[#2f2925]"
+                            style={{ fontFamily: "var(--font-serif), serif", fontWeight: 600 }}
+                        >
+                            {listing.title}
+                        </h1>
+                        <ShareListingButton
+                            title={listing.title}
+                            className="inline-flex h-11 w-11 shrink-0 items-center justify-center text-[#2f2925]"
+                            iconClassName="h-6 w-6"
+                        />
+                    </div>
                     <p className="mt-1 text-[22px] font-semibold leading-none text-[#4a3328]">
                         ${Number(listing.price).toLocaleString()}
                     </p>
@@ -186,9 +176,18 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                     <div className="mt-6">
                         <h2 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[#8a7667]">Description</h2>
                         <p className="mt-2 text-[13px] leading-[1.65] text-[#8a7667]">
-                            {listing.description}
+                            {cleanDescription}
                         </p>
                     </div>
+
+                    {measurements ? (
+                        <div className="mt-6">
+                            <h2 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[#8a7667]">Measurements</h2>
+                            <p className="mt-2 text-[13px] leading-[1.65] text-[#8a7667]">
+                                {measurements}
+                            </p>
+                        </div>
+                    ) : null}
 
                     {sellerReviews.length > 0 ? (
                         <div className="mt-6">
@@ -241,19 +240,19 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                 </div>
 
                 <div className="fixed inset-x-0 bottom-[86px] z-[70] border-t border-[#ddd3cb] bg-[#fbf8f5]/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-[#fbf8f5]/80 md:bottom-0">
-                    <div className="mx-auto flex w-full max-w-[820px] gap-2">
+                    <div className="mx-auto flex w-full max-w-[760px] gap-2">
                         <FavoriteButton
                             listingId={listing.id}
                             initialFavorited={favoriteListingIds.has(listing.id)}
-                            className="inline-flex min-h-[42px] flex-1 items-center justify-center gap-2 rounded-full border border-[#ddd3cb] bg-[#fbf8f5] px-4 text-[13px] text-[#2f2925]"
+                            className="inline-flex min-h-[42px] basis-[25%] shrink-0 items-center justify-center gap-2 rounded-full border border-[#ddd3cb] bg-[#fbf8f5] px-3 text-[12px] text-[#2f2925] whitespace-nowrap"
                             iconClassName="h-4 w-4"
                             label="Save"
-                            labelClassName="text-[13px]"
+                            labelClassName="text-[12px]"
                         />
                         {!isOwner ? (
                             <Link
                                 href={`/messages/start?sellerId=${listing.user_id}&listingId=${listing.id}`}
-                                className="inline-flex min-h-[42px] flex-1 items-center justify-center gap-2 rounded-full border border-[#ddd3cb] bg-[#fbf8f5] px-4 text-[13px] text-[#2f2925]"
+                                className="inline-flex min-h-[42px] basis-[29%] shrink-0 items-center justify-center gap-2 rounded-full border border-[#ddd3cb] bg-[#fbf8f5] px-3 text-[12px] text-[#2f2925] whitespace-nowrap"
                             >
                                 <MessageCircle className="h-4 w-4" />
                                 Message
@@ -261,7 +260,7 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                         ) : (
                             <Link
                                 href="/sell?create=1"
-                                className="inline-flex min-h-[42px] flex-1 items-center justify-center gap-2 rounded-full border border-[#ddd3cb] bg-[#fbf8f5] px-4 text-[13px] text-[#2f2925]"
+                                className="inline-flex min-h-[42px] basis-[29%] shrink-0 items-center justify-center gap-2 rounded-full border border-[#ddd3cb] bg-[#fbf8f5] px-3 text-[12px] text-[#2f2925] whitespace-nowrap"
                             >
                                 <Plus className="h-4 w-4" />
                                 Add listing
@@ -273,11 +272,11 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                                     "use server";
                                     await addToCartAndRedirect(listing.id);
                                 }}
-                                className="flex-1"
+                                className="basis-[42%] shrink-0"
                             >
                                 <button
                                     type="submit"
-                                    className="inline-flex min-h-[42px] w-full items-center justify-center gap-2 rounded-full border border-[#a07c61] bg-[#a07c61] px-4 text-[13px] font-medium text-white"
+                                    className="inline-flex min-h-[42px] w-full items-center justify-center gap-2 rounded-full border border-[#a07c61] bg-[#a07c61] px-3 text-[12px] font-medium text-white whitespace-nowrap"
                                 >
                                     <ShoppingBag className="h-4 w-4" />
                                     Add to Bag
@@ -287,7 +286,7 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                             <button
                                 type="button"
                                 disabled
-                                className="inline-flex min-h-[42px] flex-1 items-center justify-center rounded-full border border-[#cdbfb3] bg-[#cdbfb3] px-4 text-[13px] font-medium text-white disabled:opacity-80"
+                                className="inline-flex min-h-[42px] basis-[42%] shrink-0 items-center justify-center rounded-full border border-[#cdbfb3] bg-[#cdbfb3] px-3 text-[12px] font-medium text-white whitespace-nowrap disabled:opacity-80"
                             >
                                 {isOwner ? "Your listing" : "Sold Out"}
                             </button>
