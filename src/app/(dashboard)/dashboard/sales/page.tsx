@@ -13,13 +13,8 @@ export default async function SalesPage() {
         redirect("/login");
     }
 
-    let sales: any[] = [];
-    try {
-        const res = await getSellerSales(session.user.id);
-        sales = res.success && Array.isArray(res.sales) ? res.sales : [];
-    } catch (err) {
-        console.error("Dashboard Sales Fetch Error:", err);
-    }
+    const res = await getSellerSales(session.user.id);
+    const sales = res.success && Array.isArray(res.sales) ? res.sales : [];
 
     return (
         <div className="space-y-8 max-w-6xl mx-auto py-6">
