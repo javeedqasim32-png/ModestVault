@@ -249,10 +249,55 @@ export async function createCheckoutSessionWithShipping(
         const unitAmount = Math.round(Number(listing.price) * 100);
         const coverImage = getPrimaryListingImage(listing, "detail");
 
+        // 1. Sync the address to the Stripe Customer so Tax can be calculated without second entry
+        const dbUser = await prisma.user.findUnique({
+            where: { id: session.user.id },
+            select: { stripe_customer_id: true, email: true, first_name: true, last_name: true }
+        });
+
+        let customerId = dbUser?.stripe_customer_id;
+
+        if (!customerId) {
+            const customer = await stripe.customers.create({
+                email: dbUser?.email || undefined,
+                name: `${dbUser?.first_name || ""} ${dbUser?.last_name || ""}`.trim(),
+            });
+            customerId = customer.id;
+            await prisma.user.update({
+                where: { id: session.user.id },
+                data: { stripe_customer_id: customerId }
+            });
+        }
+
+        // Always update the customer address to our latest normalized address
+        await stripe.customers.update(customerId, {
+            shipping: {
+                name: normalizedAddress.name,
+                address: {
+                    line1: normalizedAddress.line1,
+                    line2: normalizedAddress.line2 || undefined,
+                    city: normalizedAddress.city,
+                    state: normalizedAddress.state,
+                    postal_code: normalizedAddress.postal_code,
+                    country: normalizedAddress.country,
+                }
+            },
+            address: {
+                line1: normalizedAddress.line1,
+                line2: normalizedAddress.line2 || undefined,
+                city: normalizedAddress.city,
+                state: normalizedAddress.state,
+                postal_code: normalizedAddress.postal_code,
+                country: normalizedAddress.country,
+            }
+        });
+
         const checkoutSession = await stripe.checkout.sessions.create({
+            customer: customerId,
             automatic_tax: { enabled: true },
-            shipping_address_collection: {
-                allowed_countries: ["US", "CA"],
+            customer_update: {
+                shipping: "auto",
+                address: "auto"
             },
             payment_method_types: ["card"],
             line_items: [
@@ -283,7 +328,6 @@ export async function createCheckoutSessionWithShipping(
             mode: "payment",
             success_url: `${appUrl}/buy/success?session_id={CHECKOUT_SESSION_ID}&listingId=${listing.id}`,
             cancel_url: `${appUrl}/buy/checkout?listingId=${listing.id}`,
-            customer_email: session.user.email ?? undefined,
             metadata: {
                 listingId: listing.id,
                 buyerId: session.user.id,
