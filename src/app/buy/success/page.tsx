@@ -7,6 +7,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { BuySuccessClient } from "@/components/marketplace/BuySuccessClient";
 import { purchaseLabel } from "@/lib/shippo";
+import { sendOrderConfirmationEmail, sendSaleNotificationEmail } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
 
@@ -118,6 +119,23 @@ export default async function BuySuccessPage({ searchParams }: { searchParams: P
                         }
                     });
                 });
+
+                // 4. Send notification emails
+                const buyerEmail = checkoutSession.customer_details?.email;
+                if (buyerEmail) {
+                    await sendOrderConfirmationEmail(
+                        buyerEmail, 
+                        listing.title, 
+                        (checkoutSession.amount_total || 0) / 100
+                    );
+                }
+                if (listing.user.email) {
+                    await sendSaleNotificationEmail(
+                        listing.user.email, 
+                        listing.title, 
+                        Number(listing.price)
+                    );
+                }
             } catch (error: any) {
                 if (error.message === "ALREADY_SOLD") {
                     return (
