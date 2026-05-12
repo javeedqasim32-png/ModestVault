@@ -9,13 +9,20 @@ export function serializeListing(listing: any) {
     return {
         ...listing,
         price: listing.price ? Number(listing.price) : 0,
-        // Recursively serialize nested images if they exist
-        images: listing.images ? listing.images.map((img: any) => ({ ...img })) : [],
-        // Convert dates to strings/ISOs if needed, though Next.js handles Dates pretty well now.
-        // But for safety with complex objects:
-        created_at: listing.created_at?.toISOString?.() || listing.created_at,
-        updated_at: listing.updated_at?.toISOString?.() || listing.updated_at,
-        reviewed_at: listing.reviewed_at?.toISOString?.() || listing.reviewed_at,
+        view_count: listing.view_count ? Number(listing.view_count) : 0,
+        // Recursively serialize nested images and ensure their dates are stringified
+        images: listing.images ? listing.images.map((img: any) => ({ 
+            ...img,
+            created_at: img.created_at?.toISOString?.() || (typeof img.created_at === 'string' ? img.created_at : null),
+            updated_at: img.updated_at?.toISOString?.() || (typeof img.updated_at === 'string' ? img.updated_at : null),
+        })) : [],
+        user: listing.user ? {
+            ...listing.user,
+            created_at: listing.user.created_at?.toISOString?.() || (typeof listing.user.created_at === 'string' ? listing.user.created_at : null),
+        } : undefined,
+        created_at: listing.created_at?.toISOString?.() || (typeof listing.created_at === 'string' ? listing.created_at : null),
+        updated_at: listing.updated_at?.toISOString?.() || (typeof listing.updated_at === 'string' ? listing.updated_at : null),
+        reviewed_at: listing.reviewed_at?.toISOString?.() || (typeof listing.reviewed_at === 'string' ? listing.reviewed_at : null),
     };
 }
 
@@ -25,19 +32,23 @@ export function serializePurchase(purchase: any) {
     return {
         ...purchase,
         amount: purchase.amount ? Number(purchase.amount) : 0,
-        created_at: purchase.created_at?.toISOString?.() || purchase.created_at,
-        updated_at: purchase.updated_at?.toISOString?.() || purchase.updated_at,
+        created_at: purchase.created_at?.toISOString?.() || (typeof purchase.created_at === 'string' ? purchase.created_at : null),
+        updated_at: purchase.updated_at?.toISOString?.() || (typeof purchase.updated_at === 'string' ? purchase.updated_at : null),
         listing: purchase.listing ? serializeListing(purchase.listing) : undefined,
+        buyer: purchase.buyer ? {
+            ...purchase.buyer,
+            created_at: purchase.buyer.created_at?.toISOString?.() || (typeof purchase.buyer.created_at === 'string' ? purchase.buyer.created_at : null),
+        } : undefined,
         order: purchase.order ? {
             ...purchase.order,
             shipping_option_amount: purchase.order.shipping_option_amount ? Number(purchase.order.shipping_option_amount) : null,
             seller_transfer_amount_cents: purchase.order.seller_transfer_amount_cents ? Number(purchase.order.seller_transfer_amount_cents) : null,
-            created_at: purchase.order.created_at?.toISOString?.() || purchase.order.created_at,
-            updated_at: purchase.order.updated_at?.toISOString?.() || purchase.order.updated_at,
-            delivered_at: purchase.order.delivered_at?.toISOString?.() || purchase.order.delivered_at,
-            hold_until: purchase.order.hold_until?.toISOString?.() || purchase.order.hold_until,
-            seller_transfer_released_at: purchase.order.seller_transfer_released_at?.toISOString?.() || purchase.order.seller_transfer_released_at,
-            shipping_option_selected_at: purchase.order.shipping_option_selected_at?.toISOString?.() || purchase.order.shipping_option_selected_at,
+            created_at: purchase.order.created_at?.toISOString?.() || (typeof purchase.order.created_at === 'string' ? purchase.order.created_at : null),
+            updated_at: purchase.order.updated_at?.toISOString?.() || (typeof purchase.order.updated_at === 'string' ? purchase.order.updated_at : null),
+            delivered_at: purchase.order.delivered_at?.toISOString?.() || (typeof purchase.order.delivered_at === 'string' ? purchase.order.delivered_at : null),
+            hold_until: purchase.order.hold_until?.toISOString?.() || (typeof purchase.order.hold_until === 'string' ? purchase.order.hold_until : null),
+            seller_transfer_released_at: purchase.order.seller_transfer_released_at?.toISOString?.() || (typeof purchase.order.seller_transfer_released_at === 'string' ? purchase.order.seller_transfer_released_at : null),
+            shipping_option_selected_at: purchase.order.shipping_option_selected_at?.toISOString?.() || (typeof purchase.order.shipping_option_selected_at === 'string' ? purchase.order.shipping_option_selected_at : null),
         } : undefined,
     };
 }
