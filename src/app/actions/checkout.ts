@@ -250,6 +250,7 @@ export async function createCheckoutSessionWithShipping(
         const coverImage = getPrimaryListingImage(listing, "detail");
 
         const checkoutSession = await stripe.checkout.sessions.create({
+            automatic_tax: { enabled: true },
             payment_method_types: ["card"],
             line_items: [
                 {
