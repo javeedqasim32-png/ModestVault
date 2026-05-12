@@ -216,6 +216,7 @@ export default function SellPageClient({
     const [taxonomyErrors, setTaxonomyErrors] = useState<ListingTaxonomyErrors>({});
     const [editTaxonomyErrors, setEditTaxonomyErrors] = useState<ListingTaxonomyErrors>({});
     const [viewedSoldListingIds, setViewedSoldListingIds] = useState<Set<string>>(new Set());
+    const [isOptimizing, setIsOptimizing] = useState(false);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const mobileMyListingsRef = useRef<HTMLHeadingElement | null>(null);
     const desktopMyListingsRef = useRef<HTMLHeadingElement | null>(null);
@@ -381,8 +382,7 @@ export default function SellPageClient({
 
     const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files ?? []);
-        setError(""); // Clear previous errors
-
+        setError(""); 
         if (files.length === 0) {
             e.target.value = "";
             return;
@@ -394,47 +394,51 @@ export default function SellPageClient({
             return;
         }
 
-        const merged = [...selectedFiles];
+        setIsOptimizing(true);
+        try {
+            const merged = [...selectedFiles];
 
-        for (const rawFile of files) {
-            const file = await optimizeImageFile(rawFile);
-            if (!COMPRESSIBLE_TYPES.has(file.type) && file.size > MAX_IMAGE_BYTES) {
-                setError(`"${rawFile.name}" is larger than 10MB. Please choose a smaller file.`);
-                e.target.value = "";
+            for (const rawFile of files) {
+                const file = await optimizeImageFile(rawFile);
+                if (!COMPRESSIBLE_TYPES.has(file.type) && file.size > MAX_IMAGE_BYTES) {
+                    setError(`"${rawFile.name}" is larger than 10MB. Please choose a smaller file.`);
+                    return;
+                }
+                if (file.size > MAX_IMAGE_BYTES) {
+                    setError(`"${rawFile.name}" is still larger than 10MB after optimization.`);
+                    return;
+                }
+
+                const duplicate = merged.some(
+                    (existing) =>
+                        existing.name === file.name &&
+                        existing.size === file.size &&
+                        existing.lastModified === file.lastModified
+                );
+                if (!duplicate) {
+                    merged.push(file);
+                }
+
+                if (merged.length > MAX_IMAGES) {
+                    setError("You can upload a maximum of 6 images.");
+                    break;
+                }
+            }
+
+            const totalImageBytes = merged.reduce((total, file) => total + file.size, 0);
+            if (totalImageBytes > MAX_TOTAL_IMAGE_BYTES) {
+                setError("Total image upload size is too large. Please keep all images under 18MB combined.");
                 return;
             }
-            if (file.size > MAX_IMAGE_BYTES) {
-                setError(`"${rawFile.name}" is still larger than 10MB after optimization.`);
-                e.target.value = "";
-                return;
-            }
 
-            const duplicate = merged.some(
-                (existing) =>
-                    existing.name === file.name &&
-                    existing.size === file.size &&
-                    existing.lastModified === file.lastModified
-            );
-            if (!duplicate) {
-                merged.push(file);
-            }
-
-            if (merged.length > MAX_IMAGES) {
-                setError("You can upload a maximum of 6 images.");
-                e.target.value = "";
-                return;
-            }
-        }
-
-        const totalImageBytes = merged.reduce((total, file) => total + file.size, 0);
-        if (totalImageBytes > MAX_TOTAL_IMAGE_BYTES) {
-            setError("Total image upload size is too large. Please keep all images under 18MB combined.");
+            setSelectedFiles(merged);
+        } catch (err) {
+            console.error("Optimization error:", err);
+            setError("Failed to process images.");
+        } finally {
+            setIsOptimizing(false);
             e.target.value = "";
-            return;
         }
-
-        setSelectedFiles(merged);
-        e.target.value = "";
     };
 
     const removeImage = (indexToRemove: number) => {
@@ -742,6 +746,15 @@ export default function SellPageClient({
                                 </Button>
                             </div>
                         )}
+                        
+                        {isOptimizing && (
+                            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white/60 backdrop-blur-[2px]">
+                                <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+                                <p className="mt-3 text-xs font-medium text-foreground">Optimizing photos...</p>
+                                <p className="mt-1 text-[10px] text-muted-foreground italic">Making upload faster</p>
+                            </div>
+                        )}
+
                         <input
                             ref={fileInputRef}
                             type="file"
