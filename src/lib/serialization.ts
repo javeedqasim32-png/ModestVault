@@ -26,7 +26,18 @@ export function serializePurchase(purchase: any) {
         ...purchase,
         amount: purchase.amount ? Number(purchase.amount) : 0,
         created_at: purchase.created_at?.toISOString?.() || purchase.created_at,
+        updated_at: purchase.updated_at?.toISOString?.() || purchase.updated_at,
         listing: purchase.listing ? serializeListing(purchase.listing) : undefined,
-        order: purchase.order ? { ...purchase.order } : undefined,
+        order: purchase.order ? {
+            ...purchase.order,
+            shipping_option_amount: purchase.order.shipping_option_amount ? Number(purchase.order.shipping_option_amount) : null,
+            seller_transfer_amount_cents: purchase.order.seller_transfer_amount_cents ? Number(purchase.order.seller_transfer_amount_cents) : null,
+            created_at: purchase.order.created_at?.toISOString?.() || purchase.order.created_at,
+            updated_at: purchase.order.updated_at?.toISOString?.() || purchase.order.updated_at,
+            delivered_at: purchase.order.delivered_at?.toISOString?.() || purchase.order.delivered_at,
+            hold_until: purchase.order.hold_until?.toISOString?.() || purchase.order.hold_until,
+            seller_transfer_released_at: purchase.order.seller_transfer_released_at?.toISOString?.() || purchase.order.seller_transfer_released_at,
+            shipping_option_selected_at: purchase.order.shipping_option_selected_at?.toISOString?.() || purchase.order.shipping_option_selected_at,
+        } : undefined,
     };
 }
