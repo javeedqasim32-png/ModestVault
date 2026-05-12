@@ -80,17 +80,40 @@ export async function getShipmentRates({
         throw new Error(errorMsg);
     }
 
-    return {
-        shipmentId: shipment.objectId,
-        rates: (shipment.rates as any[]).map(r => ({
+    const allRates = (shipment.rates as any[])
+        .map(r => ({
             id: r.objectId,
             carrier: r.provider,
             serviceLevel: r.servicelevel.name,
             amount: r.amount,
             currency: r.currency,
-            estimatedDays: r.estimatedDays,
+            estimatedDays: r.estimatedDays ? Number(r.estimatedDays) : 99,
             durationTerms: r.durationTerms
-        })).sort((a, b) => parseFloat(a.amount) - parseFloat(b.amount))
+        }))
+        .sort((a, b) => parseFloat(a.amount) - parseFloat(b.amount));
+
+    if (allRates.length <= 4) {
+        return { shipmentId: shipment.objectId, rates: allRates };
+    }
+
+    // Always include the cheapest
+    const cheapest = allRates[0];
+    
+    // Find the fastest (excluding those without estimatedDays)
+    const fastest = [...allRates].sort((a, b) => a.estimatedDays - b.estimatedDays)[0];
+
+    // Get a few middle options that aren't the cheapest or fastest already
+    const remaining = allRates.filter(r => r.id !== cheapest.id && r.id !== fastest.id);
+    const middleOptions = remaining.slice(0, 2);
+
+    const curatedRates = [cheapest, fastest, ...middleOptions]
+        // Filter out duplicates (if cheapest is also fastest)
+        .filter((v, i, a) => a.findIndex(t => t.id === v.id) === i)
+        .sort((a, b) => parseFloat(a.amount) - parseFloat(b.amount));
+
+    return {
+        shipmentId: shipment.objectId,
+        rates: curatedRates
     };
 }
 
