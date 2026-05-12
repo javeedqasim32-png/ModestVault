@@ -83,3 +83,63 @@ export async function sendOrderConfirmationEmail(email: string, listingTitle: st
         console.error("❌ Failed to send order confirmation email:", error);
     }
 }
+
+export async function sendTrackingUpdateEmail(email: string, listingTitle: string, status: string, trackingNumber: string, carrier: string): Promise<void> {
+    try {
+        const mailOptions = {
+            from: `"Modaire" <${process.env.EMAIL_USER}>`,
+            to: email,
+            subject: `Update on your order: ${listingTitle}`,
+            html: `
+                <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 600px; margin: auto; border: 1px solid #eee; border-radius: 10px;">
+                    <h2 style="color: #4a3328;">Shipping Update</h2>
+                    <p>Your item <strong>${listingTitle}</strong> is now <strong>${status.toLowerCase()}</strong>.</p>
+                    <div style="background: #f9f4f1; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                        <p style="margin: 0; font-size: 14px; color: #8a7667;">${carrier} Tracking Number</p>
+                        <p style="margin: 5px 0; font-weight: bold; font-family: monospace;">${trackingNumber}</p>
+                    </div>
+                    <p>You can track the progress of your delivery through the button below.</p>
+                    <a href="https://www.google.com/search?q=${trackingNumber}" style="display: inline-block; background: #a07c61; color: white; padding: 12px 25px; text-decoration: none; border-radius: 25px; font-weight: bold; margin-top: 10px;">Track Package</a>
+                </div>
+            `
+        };
+        await transporter.sendMail(mailOptions);
+    } catch (error) {
+        console.error("❌ Failed to send tracking update email:", error);
+    }
+}
+
+export async function sendDeliveryNotificationEmail(buyerEmail: string, sellerEmail: string, listingTitle: string): Promise<void> {
+    try {
+        // 1. Notify Buyer
+        await transporter.sendMail({
+            from: `"Modaire" <${process.env.EMAIL_USER}>`,
+            to: buyerEmail,
+            subject: 'Delivered! Modaire Order',
+            html: `
+                <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 600px; margin: auto; border: 1px solid #eee; border-radius: 10px;">
+                    <h2 style="color: #4a3328;">Package Delivered!</h2>
+                    <p>Great news! Your item <strong>${listingTitle}</strong> has been delivered.</p>
+                    <p>We hope you love your new find! If there are any issues, please contact us within 3 days.</p>
+                </div>
+            `
+        });
+
+        // 2. Notify Seller
+        await transporter.sendMail({
+            from: `"Modaire" <${process.env.EMAIL_USER}>`,
+            to: sellerEmail,
+            subject: 'Item Delivered - Your payout is coming soon!',
+            html: `
+                <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 600px; margin: auto; border: 1px solid #eee; border-radius: 10px;">
+                    <h2 style="color: #4a3328;">Successful Delivery!</h2>
+                    <p>Your item <strong>${listingTitle}</strong> has been successfully delivered to the buyer.</p>
+                    <p>According to our policy, your funds will be released to your Stripe account automatically in <strong>3 days</strong>.</p>
+                    <p>Thank you for selling on Modaire!</p>
+                </div>
+            `
+        });
+    } catch (error) {
+        console.error("❌ Failed to send delivery notification emails:", error);
+    }
+}
