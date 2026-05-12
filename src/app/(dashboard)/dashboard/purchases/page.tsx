@@ -19,29 +19,47 @@ export default async function PurchasesPage() {
         redirect("/login");
     }
 
-    const purchases = ((await (prisma.purchase as any).findMany({
-        where: { buyer_id: session.user.id },
-        include: {
-            order: true,
-            listing: {
-                include: {
-                    images: {
-                        orderBy: { imageOrder: "asc" },
-                        take: 1,
-                        select: { imageUrl: true, thumbUrl: true, mediumUrl: true, imageOrder: true },
-                    },
-                    user: {
-                        select: {
-                            id: true,
-                            first_name: true,
-                            last_name: true
+    let purchases: any[] = [];
+    let dbError = null;
+    try {
+        const rawPurchases = await (prisma as any).purchase.findMany({
+            where: { buyer_id: session.user.id },
+            include: {
+                order: true,
+                listing: {
+                    include: {
+                        images: {
+                            orderBy: { imageOrder: "asc" },
+                            take: 1,
+                            select: { imageUrl: true, thumbUrl: true, mediumUrl: true, imageOrder: true },
+                        },
+                        user: {
+                            select: {
+                                id: true,
+                                first_name: true,
+                                last_name: true
+                            }
                         }
                     }
                 }
-            }
-        },
-        orderBy: { created_at: "desc" }
-    })) as any[]).map(p => serializePurchase(p));
+            },
+            orderBy: { created_at: "desc" }
+        });
+        purchases = (rawPurchases as any[]).map(p => serializePurchase(p));
+    } catch (err: any) {
+        console.error("Dashboard Purchases Fetch Error:", err);
+        dbError = err.message || "Unknown database error";
+    }
+
+    if (dbError) {
+        return (
+            <div className="p-8 text-center bg-red-50 rounded-xl border border-red-200">
+                <h2 className="text-red-700 font-bold">Database Connection Error</h2>
+                <p className="text-red-600 text-sm mt-2">{dbError}</p>
+                <p className="text-xs text-red-400 mt-4">Please ensure `npx prisma generate` was run on the server.</p>
+            </div>
+        );
+    }
 
     const mobileOrders = purchases.map((purchase) => {
         const orderStatus = purchase.order?.shipping_status || "PROCESSING";
