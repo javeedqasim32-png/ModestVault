@@ -1,101 +1,84 @@
 import { NextResponse } from "next/server";
-import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
-import { revalidatePath } from "next/cache";
-
-// Shippo statuses: UNKNOWN, PRE_TRANSIT, TRANSIT, DELIVERED, RETURNED, FAILURE
-function mapShippoStatusToPrisma(shippoStatus: string): string {
-    switch (shippoStatus) {
-        case "PRE_TRANSIT":
-            return "PROCESSING";
-        case "TRANSIT":
-            return "SHIPPED";
-        case "DELIVERED":
-            return "DELIVERED";
-        case "RETURNED":
-            return "RETURNED";
-        case "FAILURE":
-            return "CANCELLED";
-        default:
-            return "NOT_SHIPPED";
-    }
-}
-
-const REFUND_HOLD_DAYS = 3;
-
-function getHoldUntilDate(from: Date) {
-    const holdUntil = new Date(from);
-    holdUntil.setDate(holdUntil.getDate() + REFUND_HOLD_DAYS);
-    return holdUntil;
-}
+import { sendTrackingUpdateEmail, sendDeliveryNotificationEmail } from "@/lib/email";
 
 export async function POST(req: Request) {
     try {
-        const bodyText = await req.text();
-        await headers();
-
-        // In a strict production environment, you should verify the Shippo signature
-        // const signature = headersList.get("x-shippo-signature");
-        // const isVerified = verifyShippoSignature(bodyText, signature, process.env.SHIPPO_WEBHOOK_SECRET);
-        // if (!isVerified) return new NextResponse("Invalid signature", { status: 401 });
-
-        const payload = JSON.parse(bodyText);
-
-        // Shippo sends 'track_updated' event
-        if (payload.event === "track_updated") {
-            const data = payload.data;
-            const trackingNumber = data.tracking_number;
-            const shippoStatus = data.tracking_status?.status;
-
-            if (trackingNumber && shippoStatus) {
-                const newStatus = mapShippoStatusToPrisma(shippoStatus);
-
-                // Find the associated order
-                const orderDelegate = (prisma as unknown as {
-                    order: {
-                        findFirst: (args: { where: { tracking_number: string } }) => Promise<{
-                            id: string;
-                            shipping_status: string;
-                            shipped_at: Date | null;
-                            delivered_at: Date | null;
-                        } | null>;
-                        update: (args: { where: { id: string }; data: Record<string, unknown> }) => Promise<unknown>;
-                    };
-                }).order;
-
-                const existingOrder = await orderDelegate.findFirst({
-                    where: { tracking_number: trackingNumber },
-                });
-
-                if (existingOrder && existingOrder.shipping_status !== newStatus) {
-                    await orderDelegate.update({
-                        where: { id: existingOrder.id },
-                        data: {
-                            shipping_status: newStatus,
-                            ...(newStatus === "SHIPPED" && !existingOrder.shipped_at ? { shipped_at: new Date() } : {}),
-                            ...(newStatus === "DELIVERED" && !existingOrder.delivered_at
-                                ? {
-                                    delivered_at: new Date(),
-                                    hold_until: getHoldUntilDate(new Date()),
-                                    order_status: "FULFILLED",
-                                    seller_transfer_status: "PENDING_HOLD",
-                                }
-                                : {}),
-                        }
-                    });
-
-                    // Instantly invalidate the UI cache for buyers and admins
-                    revalidatePath("/dashboard/purchases");
-                    revalidatePath("/dashboard/sales");
-                    revalidatePath("/admin/orders");
-                }
-            }
+        const payload = await req.json();
+        
+        // Shippo delivers track updates with event: "track_updated"
+        if (payload.event !== "track_updated" || !payload.data) {
+            return NextResponse.json({ received: true });
         }
 
-        return NextResponse.json({ received: true });
-    } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : "Unknown webhook error";
-        console.error("Shippo Webhook Error:", message);
-        return new NextResponse(`Webhook Error: ${message}`, { status: 400 });
+        const trackData = payload.data;
+        const trackingNumber = trackData.tracking_number;
+        const status = trackData.tracking_status?.status; // e.g., "DELIVERED", "TRANSIT", "FAILURE"
+        const carrier = trackData.carrier;
+
+        if (!trackingNumber || !status) {
+            return NextResponse.json({ error: "Missing tracking data" }, { status: 400 });
+        }
+
+        // 1. Find the order with this tracking number
+        const order = await prisma.order.findFirst({
+            where: { tracking_number: trackingNumber },
+            include: {
+                purchase: {
+                    include: {
+                        listing: {
+                            include: { user: true } // seller
+                        },
+                        buyer: true
+                    }
+                }
+            }
+        });
+
+        if (!order) {
+            console.log(`⚠️ Shippo Webhook: No order found for tracking number ${trackingNumber}`);
+            return NextResponse.json({ received: true });
+        }
+
+        const buyerEmail = order.purchase.buyer.email;
+        const sellerEmail = order.purchase.listing.user.email;
+        const listingTitle = order.purchase.listing.title;
+
+        // 2. Map Shippo status to our database status
+        let newStatus = order.shipping_status;
+        let deliveredAt: Date | null = null;
+
+        if (status === "DELIVERED") {
+            newStatus = "DELIVERED";
+            deliveredAt = new Date();
+        } else if (status === "TRANSIT" || status === "PRE_TRANSIT") {
+            newStatus = "SHIPPED";
+        } else if (status === "FAILURE" || status === "RETURNED") {
+            newStatus = "RETURNED";
+        }
+
+        // 3. Update the order in the database
+        await prisma.order.update({
+            where: { id: order.id },
+            data: {
+                shipping_status: newStatus,
+                delivered_at: deliveredAt || undefined,
+                updated_at: new Date()
+            }
+        });
+
+        // 4. Send the appropriate email
+        if (status === "DELIVERED") {
+            await sendDeliveryNotificationEmail(buyerEmail, sellerEmail, listingTitle);
+        } else {
+            const displayStatus = trackData.tracking_status?.status_details || status;
+            await sendTrackingUpdateEmail(buyerEmail, listingTitle, displayStatus, trackingNumber, carrier);
+        }
+
+        console.log(`✅ Shippo Webhook Processed: Order ${order.id} is now ${status}`);
+        return NextResponse.json({ success: true });
+    } catch (error) {
+        console.error("❌ Shippo Webhook Error:", error);
+        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }
