@@ -14,8 +14,7 @@ export default async function SalesPage() {
     }
 
     const res = await getSellerSales(session.user.id);
-    const rawSales = res.success && Array.isArray(res.sales) ? res.sales : [];
-    const sales = rawSales.map((sale) => serializePurchase(sale));
+    const sales = res.success && Array.isArray(res.sales) ? res.sales : [];
 
     return (
         <div className="space-y-8 max-w-6xl mx-auto py-6">
