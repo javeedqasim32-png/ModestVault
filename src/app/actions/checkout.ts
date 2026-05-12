@@ -251,6 +251,9 @@ export async function createCheckoutSessionWithShipping(
 
         const checkoutSession = await stripe.checkout.sessions.create({
             automatic_tax: { enabled: true },
+            shipping_address_collection: {
+                allowed_countries: ["US", "CA"],
+            },
             payment_method_types: ["card"],
             line_items: [
                 {
@@ -281,6 +284,19 @@ export async function createCheckoutSessionWithShipping(
             success_url: `${appUrl}/buy/success?session_id={CHECKOUT_SESSION_ID}&listingId=${listing.id}`,
             cancel_url: `${appUrl}/buy/checkout?listingId=${listing.id}`,
             customer_email: session.user.email ?? undefined,
+            payment_intent_data: {
+                shipping: {
+                    name: normalizedAddress.name,
+                    address: {
+                        line1: normalizedAddress.line1,
+                        line2: normalizedAddress.line2 || undefined,
+                        city: normalizedAddress.city,
+                        state: normalizedAddress.state,
+                        postal_code: normalizedAddress.postal_code,
+                        country: normalizedAddress.country,
+                    }
+                }
+            },
             metadata: {
                 listingId: listing.id,
                 buyerId: session.user.id,
