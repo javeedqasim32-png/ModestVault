@@ -19,38 +19,29 @@ export default async function PurchasesPage() {
         redirect("/login");
     }
 
-    let purchases: any[] = [];
-    try {
-        const purchaseDelegate = (prisma as any).purchase;
-        if (purchaseDelegate) {
-            const rawPurchases = await purchaseDelegate.findMany({
-                where: { buyer_id: session.user.id },
+    const purchases = ((await (prisma.purchase as any).findMany({
+        where: { buyer_id: session.user.id },
+        include: {
+            order: true,
+            listing: {
                 include: {
-                    order: true,
-                    listing: {
-                        include: {
-                            images: {
-                                orderBy: { imageOrder: "asc" },
-                                take: 1,
-                                select: { imageUrl: true, thumbUrl: true, mediumUrl: true, imageOrder: true },
-                            },
-                            user: {
-                                select: {
-                                    id: true,
-                                    first_name: true,
-                                    last_name: true
-                                }
-                            }
+                    images: {
+                        orderBy: { imageOrder: "asc" },
+                        take: 1,
+                        select: { imageUrl: true, thumbUrl: true, mediumUrl: true, imageOrder: true },
+                    },
+                    user: {
+                        select: {
+                            id: true,
+                            first_name: true,
+                            last_name: true
                         }
                     }
-                },
-                orderBy: { created_at: "desc" }
-            });
-            purchases = (rawPurchases as any[]).map(p => serializePurchase(p));
-        }
-    } catch (err) {
-        console.error("Dashboard Purchases Fetch Error:", err);
-    }
+                }
+            }
+        },
+        orderBy: { created_at: "desc" }
+    })) as any[]).map(p => serializePurchase(p));
 
     const mobileOrders = purchases.map((purchase) => {
         const orderStatus = purchase.order?.shipping_status || "PROCESSING";
