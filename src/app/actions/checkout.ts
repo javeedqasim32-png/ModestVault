@@ -274,19 +274,21 @@ export async function createCheckoutSessionWithShipping(
             shipping: {
                 name: normalizedAddress.name,
                 address: {
-                    line1: "4124 Adelaide Dr",
-                    city: "McKinney",
-                    state: "TX",
-                    postal_code: "75071",
-                    country: "US",
+                    line1: normalizedAddress.line1,
+                    line2: normalizedAddress.line2 || undefined,
+                    city: normalizedAddress.city,
+                    state: normalizedAddress.state,
+                    postal_code: normalizedAddress.postal_code,
+                    country: normalizedAddress.country,
                 }
             },
             address: {
-                line1: "4124 Adelaide Dr",
-                city: "McKinney",
-                state: "TX",
-                postal_code: "75071",
-                country: "US",
+                line1: normalizedAddress.line1,
+                line2: normalizedAddress.line2 || undefined,
+                city: normalizedAddress.city,
+                state: normalizedAddress.state,
+                postal_code: normalizedAddress.postal_code,
+                country: normalizedAddress.country,
             }
         });
 
