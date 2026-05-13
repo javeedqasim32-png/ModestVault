@@ -17,7 +17,7 @@ export default async function SalesPage() {
     const sales = res.success && Array.isArray(res.sales) ? res.sales : [];
 
     return (
-        <div className="space-y-8 max-w-6xl mx-auto py-6">
+        <div className="space-y-8 max-w-6xl mx-auto py-6 px-4 sm:px-6">
             <div className="rounded-[1.75rem] border border-border/80 bg-[linear-gradient(135deg,#f3e7de_0%,#eeded3_55%,#e7d2c4_100%)] p-8 md:p-10">
                 <div className="inline-flex items-center gap-2 rounded-full border border-border/80 bg-card/70 px-4 py-2 text-[11px] uppercase tracking-[0.28em] text-muted-foreground">
                     <TrendingUp className="h-3.5 w-3.5 text-primary" />

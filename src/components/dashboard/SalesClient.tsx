@@ -63,117 +63,117 @@ export function SalesClient({ sales }: { sales: SaleItem[] }) {
             </div>
 
             {filteredSales.length === 0 ? (
-                <Card className="p-12 text-center border-dashed border-border/60">
-                    <div className="w-16 h-16 bg-muted/30 rounded-full flex items-center justify-center mx-auto mb-4 text-muted-foreground/40">
+                <Card className="p-12 text-center border-dashed border-border/60 bg-transparent">
+                    <div className="w-16 h-16 bg-white/50 rounded-full flex items-center justify-center mx-auto mb-4 text-muted-foreground/40 border border-border">
                         <Package className="w-8 h-8" />
                     </div>
-                    <h3 className="text-lg font-serif font-bold mb-2">No sales matching your search</h3>
+                    <h3 className="text-xl font-serif font-bold mb-2 text-foreground">No sales matching your search</h3>
                     <p className="text-muted-foreground max-w-xs mx-auto mb-6">Try searching for a different item title or buyer name.</p>
-                    <Button variant="outline" onClick={() => setSearchTerm("")}>Clear search</Button>
+                    <Button variant="outline" onClick={() => setSearchTerm("")} className="rounded-full px-8">Clear search</Button>
                 </Card>
             ) : (
-                <div className="grid gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                     {filteredSales.map((sale) => (
-                        <Card key={sale.id} className="p-0 overflow-hidden border-border/60 hover:border-primary/20 transition-all group">
-                            <div className="flex flex-col md:flex-row md:items-center">
-                                {/* Image Section */}
-                                <div className="relative w-full md:w-32 h-32 bg-muted/20">
-                                    <Image
-                                        src={sale.listing.images[0]?.imageUrl || "/placeholder.png"}
-                                        alt={sale.listing.title}
-                                        fill
-                                        className="object-cover"
-                                    />
-                                </div>
-
-                                {/* Content Section */}
-                                <div className="flex-1 p-4 md:p-6 grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
-                                    <div className="md:col-span-2">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <h4 className="font-serif font-bold text-lg line-clamp-1">{sale.listing.title}</h4>
-                                            <Badge variant="outline" className="h-5 text-[10px] rounded-full uppercase tracking-wider">
-                                                ID: {sale.id.slice(0, 8)}
-                                            </Badge>
-                                        </div>
-                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                            <span>Buyer: {sale.buyer.first_name} {sale.buyer.last_name}</span>
-                                            <span className="w-1 h-1 rounded-full bg-border" />
-                                            <span>{new Date(sale.created_at).toLocaleDateString()}</span>
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <div className="text-sm font-medium mb-1">Status</div>
-                                        <div className="flex items-center gap-2">
-                                            {sale.order?.shipping_status === "DELIVERED" ? (
-                                                <div className="flex items-center gap-1.5 text-green-600 text-sm font-semibold">
-                                                    <CheckCircle2 className="w-3.5 h-3.5" />
-                                                    Delivered
-                                                </div>
-                                            ) : sale.order?.shipping_status === "PROCESSING" ? (
-                                                <div className="flex items-center gap-1.5 text-blue-600 text-sm font-semibold">
-                                                    <Clock className="w-3.5 h-3.5 animate-pulse" />
-                                                    Processing
-                                                </div>
-                                            ) : (
-                                                <div className="flex items-center gap-1.5 text-amber-600 text-sm font-black uppercase tracking-widest animate-pulse">
-                                                    <AlertCircle className="w-3.5 h-3.5" />
-                                                    Action Required
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    <div className="flex items-center justify-between md:justify-end gap-3 relative">
-                                        <div className="text-right flex flex-col items-end gap-3">
-                                            <div className="text-xl font-bold font-serif">${Number(sale.amount).toLocaleString()}</div>
-
-                                            <div className="flex flex-wrap items-center justify-end gap-2">
-                                                {sale.order?.label_url && (
-                                                    <a
-                                                        href={sale.order.label_url}
-                                                        target="_blank"
-                                                        rel="noreferrer"
-                                                        className="inline-flex items-center gap-2 rounded-xl bg-black px-4 py-2 text-xs font-bold text-white shadow-lg hover:bg-black/90 transition-all scale-100 hover:scale-[1.02]"
-                                                    >
-                                                        <Printer className="w-3.5 h-3.5" />
-                                                        Shipping Label
-                                                    </a>
-                                                )}
-
-                                                {!sale.order?.label_url && (
-                                                    <Button
-                                                        size="sm"
-                                                        variant="primary"
-                                                        className="rounded-xl font-bold shadow-lg shadow-primary/10"
-                                                        onClick={() => setSelectedOrderId(sale.order?.id || null)}
-                                                    >
-                                                        <Package className="w-3.5 h-3.5 mr-2" />
-                                                        Generate Label
-                                                    </Button>
-                                                )}
-
-                                                {sale.order?.tracking_number && (
-                                                    <a
-                                                        href={sale.order.carrier === "USPS"
-                                                            ? `https://tools.usps.com/go/TrackConfirmAction?tLabels=${sale.order.tracking_number}`
-                                                            : `https://google.com/search?q=${sale.order.carrier}+tracking+${sale.order.tracking_number}`}
-                                                        target="_blank"
-                                                        rel="noreferrer"
-                                                        className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2 text-xs font-bold text-foreground hover:bg-muted transition-all"
-                                                    >
-                                                        <Package className="w-3.5 h-3.5 text-muted-foreground" />
-                                                        Track
-                                                    </a>
-                                                )}
+                        <div key={sale.id} className="group relative flex flex-col overflow-hidden rounded-[1.6rem] border border-border/80 bg-[linear-gradient(180deg,#faf5f2_0%,#f4eae3_100%)] shadow-[0_14px_36px_rgba(110,82,63,0.07)] transition-all hover:scale-[1.01]">
+                            {/* Image Section */}
+                            <div className="relative aspect-[3/4] w-full overflow-hidden bg-muted">
+                                <Image
+                                    src={sale.listing.images[0]?.imageUrl || "/placeholder.png"}
+                                    alt={sale.listing.title}
+                                    fill
+                                    className="object-cover transition-transform duration-700 group-hover:scale-105"
+                                    sizes="(max-width: 768px) 50vw, (max-width: 1280px) 33vw, 25vw"
+                                />
+                                
+                                {/* Status Overlay - Bottom Right */}
+                                <div className="absolute bottom-3 right-3 z-10">
+                                    <div className="flex flex-col items-end gap-1.5">
+                                        {sale.order?.shipping_status === "DELIVERED" ? (
+                                            <div className="flex items-center gap-1.5 bg-green-50/90 backdrop-blur-sm border border-green-200 px-3 py-1.5 rounded-full text-green-700 text-[10px] font-bold shadow-sm">
+                                                <CheckCircle2 className="w-3 h-3" />
+                                                DELIVERED
                                             </div>
-
-                                        </div>
-
+                                        ) : sale.order?.shipping_status === "SHIPPED" ? (
+                                            <div className="flex items-center gap-1.5 bg-blue-50/90 backdrop-blur-sm border border-blue-200 px-3 py-1.5 rounded-full text-blue-700 text-[10px] font-bold shadow-sm">
+                                                <Package className="w-3 h-3" />
+                                                SHIPPED
+                                            </div>
+                                        ) : sale.order?.shipping_status === "PROCESSING" ? (
+                                            <div className="flex items-center gap-1.5 bg-amber-50/90 backdrop-blur-sm border border-amber-200 px-3 py-1.5 rounded-full text-amber-700 text-[10px] font-bold shadow-sm">
+                                                <Clock className="w-3 h-3 animate-pulse" />
+                                                PROCESSING
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center gap-1.5 bg-white/90 backdrop-blur-sm border border-border px-3 py-1.5 rounded-full text-foreground/70 text-[10px] font-bold shadow-sm">
+                                                <AlertCircle className="w-3 h-3 text-red-400" />
+                                                ACTION REQ
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>
-                        </Card>
+
+                            {/* Content Section */}
+                            <div className="flex flex-1 flex-col p-4">
+                                <div className="mb-3">
+                                    <div className="flex items-center justify-between gap-2 mb-1">
+                                        <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground/80">ID: {sale.id.slice(0, 8)}</p>
+                                        <span className="text-[14px] font-bold text-foreground font-serif">${Number(sale.amount).toLocaleString()}</span>
+                                    </div>
+                                    <h4 className="font-serif font-bold text-lg leading-tight line-clamp-1 text-foreground mb-1">{sale.listing.title}</h4>
+                                    <div className="text-[12px] text-muted-foreground flex flex-col gap-0.5 mt-2">
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-primary/30" />
+                                            <span>{sale.buyer.first_name} {sale.buyer.last_name}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-border" />
+                                            <span>{new Date(sale.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="mt-auto pt-3 border-t border-border/40 flex flex-col gap-2">
+                                    {sale.order?.label_url && (
+                                        <a
+                                            href={sale.order.label_url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="w-full flex items-center justify-center gap-2 rounded-xl bg-black px-4 py-2.5 text-[11px] font-bold text-white shadow-lg shadow-black/10 hover:bg-black/90 transition-all hover:scale-[1.02]"
+                                        >
+                                            <Printer className="w-3.5 h-3.5" />
+                                            PRINT LABEL
+                                        </a>
+                                    )}
+
+                                    {!sale.order?.label_url && (
+                                        <Button
+                                            size="sm"
+                                            variant="primary"
+                                            className="w-full rounded-xl py-2.5 text-[11px] font-bold shadow-lg shadow-primary/10"
+                                            onClick={() => setSelectedOrderId(sale.order?.id || null)}
+                                        >
+                                            <Package className="w-3.5 h-3.5 mr-2" />
+                                            GENERATE LABEL
+                                        </Button>
+                                    )}
+
+                                    {sale.order?.tracking_number && (
+                                        <a
+                                            href={sale.order.carrier === "USPS"
+                                                ? `https://tools.usps.com/go/TrackConfirmAction?tLabels=${sale.order.tracking_number}`
+                                                : `https://google.com/search?q=${encodeURIComponent(`${sale.order.carrier || 'carrier'} tracking ${sale.order.tracking_number}`)}`}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="w-full flex items-center justify-center gap-2 rounded-xl border border-border bg-white px-4 py-2 text-[11px] font-bold text-foreground/80 hover:bg-muted transition-all"
+                                        >
+                                            <Search className="w-3.5 h-3.5 text-muted-foreground" />
+                                            TRACK
+                                        </a>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
                     ))}
                 </div>
             )}

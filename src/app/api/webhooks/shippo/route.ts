@@ -51,8 +51,10 @@ export async function POST(req: Request) {
         if (status === "DELIVERED") {
             newStatus = "DELIVERED";
             deliveredAt = new Date();
-        } else if (status === "TRANSIT" || status === "PRE_TRANSIT") {
+        } else if (status === "TRANSIT") {
             newStatus = "SHIPPED";
+        } else if (status === "PRE_TRANSIT") {
+            newStatus = "PROCESSING";
         } else if (status === "FAILURE" || status === "RETURNED") {
             newStatus = "RETURNED";
         }
