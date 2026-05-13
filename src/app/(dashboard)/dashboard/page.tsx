@@ -102,7 +102,7 @@ export default async function ProfileDashboard() {
                             <ChevronRight className="h-5 w-5 text-[#8f6e59]" />
                         </Link>
 
-                        <Link href="/dashboard/settings" className="flex items-center justify-between rounded-[22px] border border-[#d9cfc7] bg-[#f4efea] px-5 py-5 transition hover:bg-[#ede7df]">
+                        <Link href="/dashboard/support" className="flex items-center justify-between rounded-[22px] border border-[#d9cfc7] bg-[#f4efea] px-5 py-5 transition hover:bg-[#ede7df]">
                             <span className="flex items-center gap-3.5 text-[15px] text-[#2f2925]">
                                 <CircleHelp className="h-5 w-5 text-[#8f6e59]" />
                                 Support & FAQ
