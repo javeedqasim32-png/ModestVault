@@ -985,8 +985,8 @@ export default function SellPageClient({
     if (!isSeller) {
         const sellerBenefits = [
             {
-                title: "Keep 85% of your sale",
-                desc: "Only a 15% platform fee, designed for modest fashion sellers.",
+                title: "Keep 90% of your sale",
+                desc: "Only a 10% platform fee, designed for modest fashion sellers.",
                 icon: TrendingUp,
                 iconBg: "#d6edd9",
                 iconColor: "#2f9a43",
