@@ -24,7 +24,7 @@ const policyItems = [
   {
     id: "seller",
     label: "Seller Policy",
-    body: "Sellers are responsible for item accuracy, shipping within 3 business days, and accepting returns for items significantly not as described. Modaire charges 10% commission on completed sales via Stripe Connect.",
+    body: "Sellers are responsible for item accuracy, shipping within 3 business days, and accepting returns for items significantly not as described. Modaire charges 15% commission on completed sales via Stripe Connect.",
   },
   {
     id: "refunds",
