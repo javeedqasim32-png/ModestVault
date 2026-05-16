@@ -7,11 +7,11 @@ export const shippo = new Shippo({
 });
 
 export const STANDARD_PARCEL = {
-    length: "12",
-    width: "10",
-    height: "4",
+    length: "14",
+    width: "12",
+    height: "5",
     distanceUnit: "in" as const,
-    weight: "16", // 1 lb = 16 oz
+    weight: "48", // 3 lbs = 48 oz
     massUnit: "oz" as const
 };
 
