@@ -65,7 +65,7 @@ export default async function EarningsPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Available Balance */}
-                <a href={stripeDashboardUrl} target="_blank" rel="noopener noreferrer" className="block w-full text-left rounded-[24px] bg-[linear-gradient(135deg,#b89881_0%,#7f5f4e_100%)] p-8 sm:p-10 text-white shadow-[0_12px_30px_rgba(111,81,67,0.18)] relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_14px_36px_rgba(111,81,67,0.25)]">
+                <a href={stripeDashboardUrl} target="_blank" rel="noopener noreferrer" className="block w-full text-left rounded-[24px] bg-[linear-gradient(135deg,#b89881_0%,#7f5f4e_100%)] p-6 sm:p-8 text-white shadow-[0_12px_30px_rgba(111,81,67,0.18)] relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_14px_36px_rgba(111,81,67,0.25)]">
                     <div className="space-y-6 relative z-10">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2.5">
@@ -84,7 +84,7 @@ export default async function EarningsPage() {
                 </a>
 
                 {/* Pending Balance */}
-                <div className="rounded-[24px] border border-[#d9cfc7] bg-[#f7f2ed] p-8 sm:p-10 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]">
+                <div className="rounded-[24px] border border-[#d9cfc7] bg-[#f7f2ed] p-6 sm:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]">
                     <div className="space-y-6">
                         <div className="flex items-center gap-2.5">
                             <Clock className="w-4 h-4 text-[#8f6e59]" />
@@ -100,7 +100,7 @@ export default async function EarningsPage() {
                 </div>
             </div>
 
-            <div className="rounded-[24px] border border-[#e3d9d1] bg-white p-6 sm:p-8 shadow-[0_4px_20px_rgba(0,0,0,0.02)] space-y-4">
+            <div className="rounded-[24px] border border-[#e3d9d1] bg-white p-5 sm:p-6 shadow-[0_4px_20px_rgba(0,0,0,0.02)] space-y-4">
                 <h3 className="text-[20px] text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif", fontWeight: 500 }}>Understanding your payouts</h3>
                 <p className="text-[15px] text-[#8a7667] leading-[1.6]">
                     Modaire partners with <span className="text-[#2f2925] font-medium">Stripe Express</span> for secure, automated payments.

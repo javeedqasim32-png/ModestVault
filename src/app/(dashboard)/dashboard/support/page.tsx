@@ -29,7 +29,7 @@ export default function SupportPage() {
                         
                         {/* Request New Feature */}
                         <a 
-                            href={`mailto:${supportEmail}?subject=New Feature Request for ModestVault`}
+                            href={`mailto:${supportEmail}?subject=New Feature Request for Modaire`}
                             className="group flex items-center justify-between rounded-[30px] border border-[#d9cfc7] bg-[#f7f2ed] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)] transition hover:bg-[#f2ebe4]"
                         >
                             <div className="flex items-center gap-5">
@@ -91,7 +91,7 @@ export default function SupportPage() {
                 {/* Footer Section */}
                 <section className="px-6 py-10 text-center sm:px-8 border-t border-[#ddd3cb] mt-8 bg-[#ede7df]/30">
                     <p className="text-[13px] text-[#8a7667]">
-                        ModestVault Support is available 7 days a week.
+                        Modaire Support is available 7 days a week.
                     </p>
                 </section>
 

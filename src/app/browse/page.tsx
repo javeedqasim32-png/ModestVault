@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import Image from "next/image";
 import { Package } from "lucide-react";
 import type { Prisma } from "@prisma/client";
@@ -12,6 +13,7 @@ import {
     buildListingBrowseWhere,
     getAvailableFilterOptions,
     parseBrowseFilters,
+    hasActiveBrowseFilters,
     type ListingBrowseFilters,
 } from "@/lib/listingFilters";
 
@@ -58,6 +60,24 @@ export default async function BrowsePage({
             ? [{ view_count: "desc" }, { created_at: "desc" }]
             : { created_at: "desc" };
 
+    if (filters.search) {
+        const searchTerms = filters.search.trim().split(/\s+/);
+        const exactUserMatch = await prisma.user.findFirst({
+            where: {
+                AND: searchTerms.map((term) => ({
+                    OR: [
+                        { first_name: { contains: term, mode: "insensitive" } },
+                        { last_name: { contains: term, mode: "insensitive" } }
+                    ]
+                }))
+            },
+            select: { id: true }
+        });
+        if (exactUserMatch) {
+            redirect(`/sellers/${exactUserMatch.id}`);
+        }
+    }
+
     const [filteredListings, availableListings] = await Promise.all([
         prisma.listing.findMany({
             where: buildListingBrowseWhere(filters),
@@ -84,6 +104,10 @@ export default async function BrowsePage({
             },
         }),
     ]);
+
+    if (filteredListings.length === 0 && hasActiveBrowseFilters(filters)) {
+        redirect("/browse");
+    }
 
     const listingsWithCover = filteredListings.map((listing) => ({
         ...serializeListing(listing),

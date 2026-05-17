@@ -216,14 +216,17 @@ export default async function Home() {
       <div className="mx-auto flex w-full max-w-[1360px] flex-col overflow-hidden bg-[#EFE7DE] sm:rounded-[2rem] sm:border sm:border-border/80 sm:shadow-[0_35px_80px_rgba(114,86,67,0.10)]">
         <section className="bg-transparent px-4 pb-6 pt-3 sm:border-b sm:border-border/80 sm:px-6 sm:py-6 lg:px-10">
           <div className="mb-6 flex flex-wrap items-center gap-3 lg:hidden">
-            <div className="flex flex-1 items-center gap-3 rounded-full border border-border bg-white px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
-              <Search className="h-4 w-4 text-muted-foreground" />
+            <form action="/browse" method="GET" className="flex flex-1 items-center gap-3 rounded-full border border-border bg-white px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+              <Search className="h-4 w-4 text-muted-foreground shrink-0" />
               <input
-                aria-label="Search"
-                placeholder="Search"
+                type="text"
+                name="search"
+                aria-label="Search by brand, style, or category"
+                placeholder="Search brands, styles, categories..."
                 className="w-full bg-transparent text-base outline-none placeholder:text-muted-foreground"
               />
-            </div>
+              <button type="submit" className="hidden">Search</button>
+            </form>
           </div>
 
           <div className="grid grid-cols-5 gap-3 md:grid-cols-5 lg:flex lg:flex-wrap lg:justify-center lg:gap-8 xl:justify-between xl:gap-6">
@@ -402,12 +405,12 @@ export default async function Home() {
                   <Link
                     key={seller.id}
                     href={`/sellers/${seller.id}`}
-                    className="min-w-[110px] rounded-[1.6rem] border border-border/60 bg-[#f6f1ec] px-2 py-4 text-center sm:min-w-[140px]"
+                    className="min-w-[110px] rounded-[1.6rem] border border-border/60 bg-[#f6f1ec] px-2 py-5 text-center sm:min-w-[140px]"
                   >
-                    <div className="mx-auto mb-2 flex h-[52px] w-[52px] items-center justify-center rounded-full border-[3px] border-[#d9cdc3] bg-[#cdb79f] text-[18px] text-[#7b5f4f]">
+                    <div className="mx-auto mb-2 flex h-[44px] w-[44px] items-center justify-center rounded-full border-[2.5px] border-[#d9cdc3] bg-[#cdb79f] text-[15px] text-[#7b5f4f]">
                       <span className={cormorantHeading.className}>{seller.initials}</span>
                     </div>
-                    <p className="truncate text-[15px] leading-tight text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif" }}>
+                    <p className="truncate text-[13px] leading-tight text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif" }}>
                       {seller.name}
                     </p>
                     <p className="mt-1 text-[10px] text-[#8a7667]">
