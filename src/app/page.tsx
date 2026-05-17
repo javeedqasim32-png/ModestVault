@@ -221,8 +221,8 @@ export default async function Home() {
               <input
                 type="text"
                 name="search"
-                aria-label="Search by brand, style, or category"
-                placeholder="Search brands, styles, categories..."
+                aria-label="Search"
+                placeholder="Search"
                 className="w-full bg-transparent text-base outline-none placeholder:text-muted-foreground"
               />
               <button type="submit" className="hidden">Search</button>
