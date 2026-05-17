@@ -402,16 +402,16 @@ export default async function Home() {
                   <Link
                     key={seller.id}
                     href={`/sellers/${seller.id}`}
-                    className="min-w-[146px] rounded-[22px] border border-[#d9cdc3] bg-[#f6f1ec] px-4 py-5 text-center sm:min-w-[170px]"
+                    className="min-w-[110px] rounded-[1.6rem] border border-border/60 bg-[#f6f1ec] px-2 py-4 text-center sm:min-w-[140px]"
                   >
-                    <div className="mx-auto mb-4 flex h-[84px] w-[84px] items-center justify-center rounded-full border-[5px] border-[#d9cdc3] bg-[#cdb79f] text-[34px] text-[#7b5f4f]">
+                    <div className="mx-auto mb-2 flex h-[52px] w-[52px] items-center justify-center rounded-full border-[3px] border-[#d9cdc3] bg-[#cdb79f] text-[18px] text-[#7b5f4f]">
                       <span className={cormorantHeading.className}>{seller.initials}</span>
                     </div>
-                    <p className="truncate text-[22px] leading-tight text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif" }}>
+                    <p className="truncate text-[15px] leading-tight text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif" }}>
                       {seller.name}
                     </p>
-                    <p className="mt-2 text-[12px] text-[#8a7667]">
-                      {seller.soldCount} {seller.soldCount === 1 ? "listing" : "listings"}
+                    <p className="mt-1 text-[10px] text-[#8a7667]">
+                      {seller.soldCount} {seller.soldCount === 1 ? "sale" : "sales"}
                     </p>
                   </Link>
                 ))}
