@@ -98,7 +98,7 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
         { label: "Condition", value: listing.condition || "Like new" },
         { label: "Category", value: listing.category || "Suits" },
         { label: listing.subcategory ? "" : "Type", value: listing.subcategory || listing.type || "Lehenga" },
-        { label: "Brand", value: listing.brand || `${listing.user.first_name} Couture` },
+        ...(listing.brand ? [{ label: "Brand", value: listing.brand }] : []),
     ];
 
     return (
