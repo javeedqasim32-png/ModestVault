@@ -13,7 +13,6 @@ import {
     buildListingBrowseWhere,
     getAvailableFilterOptions,
     parseBrowseFilters,
-    hasActiveBrowseFilters,
     type ListingBrowseFilters,
 } from "@/lib/listingFilters";
 
@@ -104,10 +103,6 @@ export default async function BrowsePage({
             },
         }),
     ]);
-
-    if (filteredListings.length === 0 && hasActiveBrowseFilters(filters)) {
-        redirect("/browse");
-    }
 
     const listingsWithCover = filteredListings.map((listing) => ({
         ...serializeListing(listing),
