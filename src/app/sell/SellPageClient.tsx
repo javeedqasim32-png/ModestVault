@@ -787,9 +787,30 @@ export default function SellPageClient({
                                             method: "POST",
                                             body: apiFormData,
                                         });
+
+                                        if (!res.ok) {
+                                            let errorMsg = `Server error (Status ${res.status})`;
+                                            try {
+                                                const contentType = res.headers.get("content-type") || "";
+                                                if (contentType.includes("application/json")) {
+                                                    const data = await res.json();
+                                                    errorMsg = data?.error || errorMsg;
+                                                } else {
+                                                    const text = await res.text();
+                                                    if (text && !text.trim().startsWith("<")) {
+                                                        errorMsg = text.slice(0, 150) || errorMsg;
+                                                    }
+                                                }
+                                            } catch (parseErr) {
+                                                console.error("Failed to parse error response:", parseErr);
+                                            }
+                                            setError(errorMsg);
+                                            return;
+                                        }
+
                                         const data = await res.json();
-                                        if (!res.ok || data?.error) {
-                                            setError(data?.error || "Image generation failed.");
+                                        if (data?.error) {
+                                            setError(data.error);
                                             return;
                                         }
 

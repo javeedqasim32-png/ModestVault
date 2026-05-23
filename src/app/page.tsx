@@ -211,9 +211,9 @@ export default async function Home() {
   }
 
   return (
-    <div className="bg-[#EFE7DE] px-0 py-0 sm:px-6 sm:py-6 lg:px-8">
+    <div className="bg-[#f6f1e8] px-0 py-0 sm:px-6 sm:py-6 lg:px-8">
       <HomeBackRefresh />
-      <div className="mx-auto flex w-full max-w-[1360px] flex-col overflow-hidden bg-[#EFE7DE] sm:rounded-[2rem] sm:border sm:border-border/80 sm:shadow-[0_35px_80px_rgba(114,86,67,0.10)]">
+      <div className="mx-auto flex w-full max-w-[1360px] flex-col overflow-hidden bg-[#f6f1e8] sm:rounded-[2rem] sm:border sm:border-border/80 sm:shadow-[0_35px_80px_rgba(114,86,67,0.10)]">
         <section className="bg-transparent px-4 pb-6 pt-3 sm:border-b sm:border-border/80 sm:px-6 sm:py-6 lg:px-10">
           <div className="grid grid-cols-5 gap-3 md:grid-cols-5 lg:flex lg:flex-wrap lg:justify-center lg:gap-8 xl:justify-between xl:gap-6">
             {categories.map((category) => (
