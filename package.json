@@ -31,6 +31,8 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-hook-form": "^7.71.2",
+    "replicate": "^1.4.0",
+    "sharp": "^0.34.5",
     "shippo": "^2.18.0",
     "stripe": "^20.4.1"
   },

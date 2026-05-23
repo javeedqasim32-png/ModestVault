@@ -6,7 +6,7 @@ import localFont from "next/font/local";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createListing, deleteListing, replaceListingImages, updateListing } from "../actions/listings";
 import { onboardSellerAction } from "../actions/stripe";
-import { Tag, UploadCloud, ChevronLeft, ChevronRight, Heart, PackagePlus, X, Printer, TrendingUp, Users, ShieldCheck, CreditCard } from "lucide-react";
+import { Tag, UploadCloud, ChevronLeft, ChevronRight, Heart, PackagePlus, X, Printer, TrendingUp, Users, ShieldCheck, CreditCard, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
 import { useRouter } from "next/navigation";
@@ -61,6 +61,16 @@ const mobileTabs: { key: SellTab; label: string }[] = [
 const styleOptions = getStyles();
 const categoryOptions = getCategories();
 const MAX_IMAGES = 6;
+type SlotRole = "fullOutfit" | "top" | "bottom" | "dupatta" | "closeup";
+const SLOTS: Array<{ key: SlotRole; label: string; optional?: boolean }> = [
+    { key: "fullOutfit", label: "Full Outfit" },
+    { key: "top", label: "Top", optional: true },
+    { key: "bottom", label: "Bottom", optional: true },
+    { key: "dupatta", label: "Dupatta", optional: true },
+    { key: "closeup", label: "Close Up", optional: true },
+];
+const orderedSlotFiles = (slots: Partial<Record<SlotRole, File>>): File[] =>
+    SLOTS.map((s) => slots[s.key]).filter((f): f is File => Boolean(f));
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_TOTAL_IMAGE_BYTES = 18 * 1024 * 1024;
 const COMPRESSIBLE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -196,8 +206,12 @@ export default function SellPageClient({
     const [isSeller] = useState(isSellerInitially);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
-    const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-    const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+    const [slotFiles, setSlotFiles] = useState<Partial<Record<SlotRole, File>>>({});
+    const [slotPreviewUrls, setSlotPreviewUrls] = useState<Partial<Record<SlotRole, string>>>({});
+    const [activeUploadSlot, setActiveUploadSlot] = useState<SlotRole | null>(null);
+    const [isUploadAreaExpanded, setIsUploadAreaExpanded] = useState(false);
+    const [generatedImageUrls, setGeneratedImageUrls] = useState<string[]>([]);
+    const [isGenerating, setIsGenerating] = useState(false);
     const [mobileTab, setMobileTab] = useState<SellTab>("LISTINGS");
     const [showCreateForm, setShowCreateForm] = useState(openCreateInitially);
     const [editingListing, setEditingListing] = useState<ListingItem | null>(null);
@@ -382,85 +396,69 @@ export default function SellPageClient({
 
     const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files ?? []);
-        setError(""); 
-        if (files.length === 0) {
+        setError("");
+        const targetSlot = activeUploadSlot;
+        if (files.length === 0 || !targetSlot) {
             e.target.value = "";
+            setActiveUploadSlot(null);
             return;
         }
 
-        if (selectedFiles.length >= MAX_IMAGES) {
-            setError("You can upload a maximum of 6 images.");
-            e.target.value = "";
-            return;
-        }
+        const rawFile = files[0];
 
         setIsOptimizing(true);
         try {
-            const merged = [...selectedFiles];
-
-            for (const rawFile of files) {
-                const file = await optimizeImageFile(rawFile);
-                if (!COMPRESSIBLE_TYPES.has(file.type) && file.size > MAX_IMAGE_BYTES) {
-                    setError(`"${rawFile.name}" is larger than 10MB. Please choose a smaller file.`);
-                    return;
-                }
-                if (file.size > MAX_IMAGE_BYTES) {
-                    setError(`"${rawFile.name}" is still larger than 10MB after optimization.`);
-                    return;
-                }
-
-                const duplicate = merged.some(
-                    (existing) =>
-                        existing.name === file.name &&
-                        existing.size === file.size &&
-                        existing.lastModified === file.lastModified
-                );
-                if (!duplicate) {
-                    merged.push(file);
-                }
-
-                if (merged.length > MAX_IMAGES) {
-                    setError("You can upload a maximum of 6 images.");
-                    break;
-                }
+            const file = await optimizeImageFile(rawFile);
+            if (!COMPRESSIBLE_TYPES.has(file.type) && file.size > MAX_IMAGE_BYTES) {
+                setError(`"${rawFile.name}" is larger than 10MB. Please choose a smaller file.`);
+                return;
+            }
+            if (file.size > MAX_IMAGE_BYTES) {
+                setError(`"${rawFile.name}" is still larger than 10MB after optimization.`);
+                return;
             }
 
-            const totalImageBytes = merged.reduce((total, file) => total + file.size, 0);
-            if (totalImageBytes > MAX_TOTAL_IMAGE_BYTES) {
+            const candidateSlots = { ...slotFiles, [targetSlot]: file };
+            const totalBytes = orderedSlotFiles(candidateSlots).reduce((sum, f) => sum + f.size, 0);
+            if (totalBytes > MAX_TOTAL_IMAGE_BYTES) {
                 setError("Total image upload size is too large. Please keep all images under 18MB combined.");
                 return;
             }
 
-            setSelectedFiles(merged);
+            setSlotFiles(candidateSlots);
         } catch (err) {
             console.error("Optimization error:", err);
             setError("Failed to process images.");
         } finally {
             setIsOptimizing(false);
+            setActiveUploadSlot(null);
             e.target.value = "";
         }
     };
 
-    const removeImage = (indexToRemove: number) => {
-        setSelectedFiles((prev) => prev.filter((_, index) => index !== indexToRemove));
-    };
-    const moveImage = (fromIndex: number, toIndex: number) => {
-        setSelectedFiles((prev) => {
-            if (toIndex < 0 || toIndex >= prev.length) return prev;
-            const next = [...prev];
-            const [moved] = next.splice(fromIndex, 1);
-            next.splice(toIndex, 0, moved);
+    const removeSlot = (slot: SlotRole) => {
+        setSlotFiles((prev) => {
+            const next = { ...prev };
+            delete next[slot];
             return next;
         });
     };
 
+    const removeGeneratedImage = (indexToRemove: number) => {
+        setGeneratedImageUrls((prev) => prev.filter((_, index) => index !== indexToRemove));
+    };
+
     useEffect(() => {
-        const urls = selectedFiles.map((file) => URL.createObjectURL(file));
-        setPreviewUrls(urls);
+        const urls: Partial<Record<SlotRole, string>> = {};
+        for (const slot of SLOTS) {
+            const file = slotFiles[slot.key];
+            if (file) urls[slot.key] = URL.createObjectURL(file);
+        }
+        setSlotPreviewUrls(urls);
         return () => {
-            urls.forEach((url) => URL.revokeObjectURL(url));
+            Object.values(urls).forEach((url) => url && URL.revokeObjectURL(url));
         };
-    }, [selectedFiles]);
+    }, [slotFiles]);
 
     useEffect(() => {
         const urls = editFiles.map((file) => URL.createObjectURL(file));
@@ -627,19 +625,22 @@ export default function SellPageClient({
                     formData.set("category", taxonomyValidation.normalized.category);
                     formData.set("subcategory", taxonomyValidation.normalized.subcategory || "");
                     formData.set("type", taxonomyValidation.normalized.type || "");
-                    if (selectedFiles.length === 0) {
+                    const submissionFiles = orderedSlotFiles(slotFiles);
+                    if (submissionFiles.length === 0) {
                         setError("Please upload at least one image.");
                         setLoading(false);
                         return;
                     }
-                    selectedFiles.forEach((file) => formData.append("images", file));
+                    submissionFiles.forEach((file) => formData.append("images", file));
                     const res = await createListing(formData);
                     if (res?.error) {
                         setError(res.error);
                     } else if (res?.success) {
                         // Successfully created! Close form and refresh listings
                         setShowCreateForm(false);
-                        setSelectedFiles([]);
+                        setSlotFiles({});
+                        setGeneratedImageUrls([]);
+                        setIsUploadAreaExpanded(false);
                         setStyle("");
                         setCategory("");
                         setSubcategory("");
@@ -660,111 +661,186 @@ export default function SellPageClient({
                         Product Photos (Up to 6)
                     </h2>
 
-                    <div className="relative w-full overflow-hidden rounded-[1.75rem] border border-dashed border-border bg-muted/20 min-h-[280px]">
-                        {previewUrls.length > 0 ? (
-                            <div className="w-full p-3 sm:p-4">
-                                <div className="grid grid-cols-2 gap-2 p-2 sm:grid-cols-3">
-                                    {previewUrls.map((previewUrl, index) => (
-                                        <div key={`${previewUrl}-${index}`} className="rounded-lg border border-border/70 bg-card p-1.5">
+                    {generatedImageUrls.length > 0 && (
+                        <div className="rounded-lg border border-border bg-card p-3">
+                            <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">AI Cover</p>
+                            <div className="flex flex-wrap gap-3">
+                                {generatedImageUrls.map((url, index) => (
+                                    <div key={`${url}-${index}`} className="relative w-40">
+                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                        <img
+                                            src={url}
+                                            alt={`AI cover ${index + 1}`}
+                                            className="aspect-[3/4] w-full rounded-md object-cover"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => removeGeneratedImage(index)}
+                                            aria-label="Remove AI cover"
+                                            className="absolute right-1.5 top-1.5 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full bg-black/70 text-white"
+                                        >
+                                            <X className="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {!(isUploadAreaExpanded || Object.keys(slotFiles).length > 0 || generatedImageUrls.length > 0) ? (
+                        <div className="flex flex-col items-center justify-center rounded-[1.75rem] border border-dashed border-border bg-muted/20 p-12 text-center min-h-[240px]">
+                            <UploadCloud className="w-10 h-10 text-muted-foreground mb-4" />
+                            <h3 className="text-sm font-medium text-foreground mb-1">Upload photos</h3>
+                            <p className="text-xs text-muted-foreground mb-4">
+                                Add up to 5 photos of your garment. Our AI can generate a cover from them.
+                            </p>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => setIsUploadAreaExpanded(true)}
+                            >
+                                Upload Images
+                            </Button>
+                        </div>
+                    ) : (
+                    <div className="relative">
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                            {SLOTS.map((slot) => {
+                                const file = slotFiles[slot.key];
+                                const previewUrl = slotPreviewUrls[slot.key];
+                                return (
+                                    <div key={slot.key} className="rounded-lg border border-border/70 bg-card p-1.5">
+                                        {file && previewUrl ? (
                                             <div className="relative overflow-hidden rounded-md">
                                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                                 <img
                                                     src={previewUrl}
-                                                    alt={`Preview ${index + 1}`}
+                                                    alt={slot.label}
                                                     className="aspect-square w-full object-contain bg-muted/40"
                                                 />
                                                 <button
                                                     type="button"
-                                                    onClick={() => removeImage(index)}
-                                                    aria-label={`Remove image ${index + 1}`}
+                                                    onClick={() => removeSlot(slot.key)}
+                                                    aria-label={`Remove ${slot.label}`}
                                                     className="absolute right-1.5 top-1.5 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full bg-black/70 text-white"
                                                 >
                                                     <X className="h-4 w-4" />
                                                 </button>
-                                                <div className="absolute left-1.5 top-1.5 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-medium text-white">
-                                                    {index + 1}
-                                                </div>
                                             </div>
-                                            <div className="mt-1.5 grid grid-cols-3 gap-1">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => moveImage(index, index - 1)}
-                                                    disabled={index === 0}
-                                                    className="inline-flex h-7 items-center justify-center rounded-md border border-border text-[10px] text-foreground disabled:opacity-40"
-                                                >
-                                                    <ChevronLeft className="h-3.5 w-3.5" />
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => moveImage(index, 0)}
-                                                    disabled={index === 0}
-                                                    className="inline-flex h-7 items-center justify-center rounded-md border border-border px-1 text-[10px] text-foreground disabled:opacity-40"
-                                                >
-                                                    Set First
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => moveImage(index, index + 1)}
-                                                    disabled={index === previewUrls.length - 1}
-                                                    className="inline-flex h-7 items-center justify-center rounded-md border border-border text-[10px] text-foreground disabled:opacity-40"
-                                                >
-                                                    <ChevronRight className="h-3.5 w-3.5" />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                                <div className="mt-2 flex flex-wrap items-center justify-between gap-2 px-2 pb-2">
-                                    <p className="text-xs text-muted-foreground">
-                                        {selectedFiles.length}/6 selected
-                                    </p>
-                                    <p className="text-xs text-muted-foreground">Image 1 appears first on listing.</p>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        onClick={() => fileInputRef.current?.click()}
-                                        disabled={selectedFiles.length >= MAX_IMAGES}
-                                    >
-                                        Add More Photos
-                                    </Button>
+                                        ) : (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setActiveUploadSlot(slot.key);
+                                                    fileInputRef.current?.click();
+                                                }}
+                                                className="flex aspect-square w-full flex-col items-center justify-center gap-1.5 rounded-md border border-dashed border-border bg-muted/30 transition-colors hover:bg-muted/60"
+                                            >
+                                                <UploadCloud className="h-5 w-5 text-muted-foreground" />
+                                                <span className="text-[10px] text-muted-foreground">Add Photo</span>
+                                            </button>
+                                        )}
+                                        <p className="mt-1.5 text-center text-[11px] font-medium text-foreground">
+                                            {slot.label}
+                                            {slot.optional && (
+                                                <span className="ml-1 font-normal text-muted-foreground">(optional)</span>
+                                            )}
+                                        </p>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        <div className="mt-3 flex items-center justify-between gap-2">
+                            <p className="text-xs text-muted-foreground">
+                                {orderedSlotFiles(slotFiles).length} photos uploaded · up to 5
+                            </p>
+                        </div>
+
+                        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex items-start gap-2">
+                                <Sparkles className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
+                                <div>
+                                    <p className="text-sm font-medium text-foreground">Generate an AI cover photo</p>
+                                    <p className="text-xs text-muted-foreground">Creates a studio-quality cover from your uploaded photos. Usually takes 2-3 minutes.</p>
                                 </div>
                             </div>
-                        ) : (
-                            <div className="flex flex-col items-center justify-center h-full p-12 text-center absolute inset-0">
-                                <UploadCloud className="w-10 h-10 text-muted-foreground mb-4" />
-                                <h3 className="text-sm font-medium text-foreground mb-1">Upload photos</h3>
-                                <p className="text-xs text-muted-foreground">
-                                    Add up to 6 images. We optimize photos automatically without cropping.
-                                </p>
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    className="mt-4"
-                                    onClick={() => fileInputRef.current?.click()}
-                                >
-                                    Browse Photos
-                                </Button>
-                            </div>
-                        )}
-                        
+                            <Button
+                                type="button"
+                                variant="primary"
+                                size="md"
+                                onClick={async () => {
+                                    const filledSlots = SLOTS.filter((s) => slotFiles[s.key]);
+                                    if (filledSlots.length === 0) {
+                                        setError("Please upload at least one product photo first before generating a cover.");
+                                        return;
+                                    }
+                                    try {
+                                        setIsGenerating(true);
+                                        setError("");
+                                        const apiFormData = new FormData();
+                                        filledSlots.forEach((slot) => {
+                                            apiFormData.append(`reference_${slot.key}`, slotFiles[slot.key]!);
+                                        });
+
+                                        const res = await fetch("/api/ai/generate-cover", {
+                                            method: "POST",
+                                            body: apiFormData,
+                                        });
+                                        const data = await res.json();
+                                        if (!res.ok || data?.error) {
+                                            setError(data?.error || "Image generation failed.");
+                                            return;
+                                        }
+
+                                        const imageUrl = data.imageUrl || data.url;
+                                        if (!imageUrl) {
+                                            setError("Image generation returned no URL.");
+                                            return;
+                                        }
+                                        setGeneratedImageUrls([imageUrl]);
+                                    } catch (err) {
+                                        console.error("AI generate error:", err);
+                                        setError(err instanceof Error ? err.message : "Failed to generate image.");
+                                    } finally {
+                                        setIsGenerating(false);
+                                    }
+                                }}
+                                disabled={isGenerating || orderedSlotFiles(slotFiles).length === 0}
+                                isLoading={isGenerating}
+                                className="w-full sm:w-auto"
+                            >
+                                {isGenerating ? "Generating…" : "Generate Cover"}
+                            </Button>
+                        </div>
+
                         {isOptimizing && (
                             <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white/60 backdrop-blur-[2px]">
                                 <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
-                                <p className="mt-3 text-xs font-medium text-foreground">Optimizing photos...</p>
-                                <p className="mt-1 text-[10px] text-muted-foreground italic">Making upload faster</p>
+                                <p className="mt-3 text-xs font-medium text-foreground">Optimizing photo...</p>
+                            </div>
+                        )}
+
+                        {isGenerating && (
+                            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-white/70 backdrop-blur-[2px]">
+                                <div className="h-10 w-10 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+                                <p className="mt-3 text-sm font-medium text-foreground">Generating AI cover image…</p>
+                                <p className="mt-1 text-[10px] text-muted-foreground italic">This usually takes 2-3 minutes, hang tight</p>
                             </div>
                         )}
 
                         <input
                             ref={fileInputRef}
                             type="file"
-                            name="images"
                             accept="image/*"
-                            multiple
                             onChange={handleImageChange}
-                            className="hidden"
+                            className="absolute w-0 h-0 opacity-0 pointer-events-none"
                         />
+                        {generatedImageUrls.map((url, index) => (
+                            <input key={`${url}-${index}`} type="hidden" name="generatedImageUrls" value={url} />
+                        ))}
                     </div>
+                    )}
                 </section>
 
                 <section className="space-y-6">

@@ -4,6 +4,7 @@ import localFont from "next/font/local";
 import "./globals.css";
 import Navbar from "@/components/layout/Navbar";
 import MobileBottomNav from "@/components/layout/MobileBottomNav";
+import SellerPromptModalGate from "@/components/SellerPromptModalGate";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const playfair = Playfair_Display({ subsets: ["latin"], variable: "--font-playfair" });
@@ -71,6 +72,7 @@ export default function RootLayout({
           {children}
         </main>
         <MobileBottomNav />
+        <SellerPromptModalGate />
       </body>
     </html>
   );

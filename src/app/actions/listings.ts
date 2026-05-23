@@ -33,6 +33,12 @@ function extractImagesFromFormData(formData: FormData) {
             : [];
 }
 
+function extractGeneratedImageUrlsFromFormData(formData: FormData) {
+    return formData
+        .getAll("generatedImageUrls")
+        .filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+}
+
 function getFileExtension(image: File) {
     const originalName = image.name || "upload";
     const filenameParts = originalName.split(".");
@@ -136,8 +142,9 @@ export async function createListing(formData: FormData) {
     const brand = formData.get("brand") as string;
     const size = formData.get("size") as string;
     const images = extractImagesFromFormData(formData);
+    const generatedImageUrls = extractGeneratedImageUrlsFromFormData(formData);
 
-    if (!title || !description || !priceStr || !style || !category || images.length === 0) {
+    if (!title || !description || !priceStr || !style || !category || (images.length === 0 && generatedImageUrls.length === 0)) {
         logCreateListingReject("missing_required_fields", {
             userId: session.user.id,
             hasTitle: Boolean(title),
@@ -145,13 +152,13 @@ export async function createListing(formData: FormData) {
             hasPrice: Boolean(priceStr),
             hasStyle: Boolean(style),
             hasCategory: Boolean(category),
-            imageCount: images.length,
+            imageCount: images.length + generatedImageUrls.length,
         });
         return { error: "Title, description, price, style, category, and at least one image are required." };
     }
 
-    if (images.length > MAX_LISTING_IMAGES) {
-        logCreateListingReject("too_many_images", { userId: session.user.id, imageCount: images.length });
+    if (images.length + generatedImageUrls.length > MAX_LISTING_IMAGES) {
+        logCreateListingReject("too_many_images", { userId: session.user.id, imageCount: images.length + generatedImageUrls.length });
         return { error: "You can upload a maximum of 6 images per listing." };
     }
 
@@ -249,7 +256,20 @@ export async function createListing(formData: FormData) {
         }
 
         const listingId = randomUUID();
-        const listingImages = await uploadImagesForListing({ listingId, images, bucket });
+        const uploadedImages = await uploadImagesForListing({ listingId, images, bucket });
+
+        const generatedListingImages = generatedImageUrls.map((url, index) => ({
+            id: randomUUID(),
+            imageUrl: url,
+            thumbUrl: null,
+            mediumUrl: null,
+            imageOrder: index + 1,
+        }));
+
+        const listingImages = [...generatedListingImages, ...uploadedImages.map((image, index) => ({
+            ...image,
+            imageOrder: generatedListingImages.length + index + 1,
+        }))];
 
         const coverImage = listingImages[0]?.imageUrl;
         if (!coverImage) {

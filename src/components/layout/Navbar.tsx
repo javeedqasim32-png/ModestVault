@@ -17,15 +17,15 @@ export default async function Navbar() {
 
     return (
         <header className="sticky top-0 z-50 w-full border-b border-border/80 bg-[#f7f3ef]/95 backdrop-blur-xl">
-            <div className="mx-auto flex w-full max-w-[1360px] items-center gap-3 px-4 py-4 sm:px-6 lg:px-8">
+            <div className="mx-auto flex w-full max-w-[1360px] items-center gap-3 px-4 pt-4 pb-2 sm:px-6 sm:pb-3 lg:px-8">
                 <Link href="/" className="flex min-w-0 items-center gap-3 sm:border-r sm:border-border/80 sm:pr-8">
                     <div className="flex items-center">
                         <Image
-                            src="/logo.png"
+                            src="/logo-v2.png"
                             alt="Modaire"
                             width={240}
                             height={80}
-                            className="h-12 w-auto sm:h-16 lg:h-20 mix-blend-multiply transition-transform duration-300 translate-y-1 hover:scale-[1.02]"
+                            className="h-8 w-auto sm:h-10 lg:h-12 transition-transform duration-300 translate-y-1 hover:scale-[1.02]"
                             priority
                         />
                     </div>

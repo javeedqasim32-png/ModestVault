@@ -149,3 +149,23 @@ export async function createStripeDashboardLink() {
         return { url: "https://dashboard.stripe.com" };
     }
 }
+
+/**
+ * Returns the user's seller onboarding state for the "become a seller" prompt:
+ *   - "new"     → logged in, no Stripe account at all
+ *   - "partial" → logged in, has a Stripe account but seller_enabled is false (incomplete)
+ *   - null      → logged out OR already a fully-onboarded seller (suppress the prompt)
+ */
+export async function getSellerPromptState(): Promise<"new" | "partial" | null> {
+    const session = await auth();
+    if (!session?.user?.id) return null;
+
+    const user = await prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: { stripe_account_id: true, seller_enabled: true },
+    });
+
+    if (!user) return null;
+    if (user.seller_enabled) return null;
+    return user.stripe_account_id ? "partial" : "new";
+}

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowRight, Heart, Search } from "lucide-react";
+import { ArrowRight, Heart } from "lucide-react";
 import { getPrimaryListingImage } from "@/lib/listing-images";
 import { resolveEditorialMediaUrl } from "@/lib/editorial-media";
 import { prisma } from "@/lib/prisma";
@@ -215,20 +215,6 @@ export default async function Home() {
       <HomeBackRefresh />
       <div className="mx-auto flex w-full max-w-[1360px] flex-col overflow-hidden bg-[#EFE7DE] sm:rounded-[2rem] sm:border sm:border-border/80 sm:shadow-[0_35px_80px_rgba(114,86,67,0.10)]">
         <section className="bg-transparent px-4 pb-6 pt-3 sm:border-b sm:border-border/80 sm:px-6 sm:py-6 lg:px-10">
-          <div className="mb-6 flex flex-wrap items-center gap-3 lg:hidden">
-            <form action="/browse" method="GET" className="flex flex-1 items-center gap-3 rounded-full border border-border bg-white px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
-              <Search className="h-4 w-4 text-muted-foreground shrink-0" />
-              <input
-                type="text"
-                name="search"
-                aria-label="Search"
-                placeholder="Search"
-                className="w-full bg-transparent text-base outline-none placeholder:text-muted-foreground"
-              />
-              <button type="submit" className="hidden">Search</button>
-            </form>
-          </div>
-
           <div className="grid grid-cols-5 gap-3 md:grid-cols-5 lg:flex lg:flex-wrap lg:justify-center lg:gap-8 xl:justify-between xl:gap-6">
             {categories.map((category) => (
               <Link
