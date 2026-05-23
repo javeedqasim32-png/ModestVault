@@ -36,38 +36,47 @@ async function prepareImageForOpenAI(buffer: Buffer): Promise<Buffer> {
 }
 
 export async function POST(req: NextRequest) {
+  const startTime = Date.now();
+  console.log("[AI COVER] Starting generate-cover request...");
+
   try {
     // 1. Authenticate
     const session = await auth();
     const userId = session?.user?.id as string | undefined;
     if (!userId) {
+      console.warn("[AI COVER] Rejecting: Authentication required");
       return NextResponse.json({ error: "Authentication required" }, { status: 401 });
     }
+    console.log(`[AI COVER] Authenticated user: ${userId}`);
 
     // 2. Cooldown
     const last = LAST_GENERATE_BY_USER.get(userId) || 0;
     const now = Date.now();
     if (now - last < COOLDOWN_MS) {
       const wait = Math.ceil((COOLDOWN_MS - (now - last)) / 1000);
+      console.warn(`[AI COVER] Rejecting: Cooldown active (${wait}s remaining)`);
       return NextResponse.json({ error: `Please wait ${wait}s before generating again.` }, { status: 429 });
     }
 
     // 3. Config validation
     const openAiKey = process.env.OPENAI_API_KEY;
     if (!openAiKey) {
+      console.error("[AI COVER] Error: OPENAI_API_KEY is not configured");
       return NextResponse.json({ error: "OPENAI_API_KEY is not configured" }, { status: 500 });
     }
     const staticRefUrl = process.env.AI_STATIC_REFERENCE_URL;
     if (!staticRefUrl) {
+      console.error("[AI COVER] Error: AI studio template URL is not configured");
       return NextResponse.json({ error: "AI studio template URL is not configured." }, { status: 500 });
     }
     const bucket = getS3BucketName();
     if (!bucket) {
+      console.error("[AI COVER] Error: S3 bucket is not configured");
       return NextResponse.json({ error: "S3 bucket is not configured" }, { status: 500 });
     }
 
-    // 4. Parse per-slot files. Frontend sends each filled slot as
-    //    reference_<slotKey> so the backend can route by role.
+    // 4. Parse per-slot files
+    console.log("[AI COVER] Parsing multipart form data...");
     const slotFiles = new Map<SlotRole, File>();
     const contentType = req.headers.get("content-type") || "";
     if (contentType.includes("multipart/form-data")) {
@@ -80,28 +89,34 @@ export async function POST(req: NextRequest) {
           }
         }
       } catch (formErr) {
-        console.error("Failed to parse multipart form data:", formErr);
+        console.error("[AI COVER] Failed to parse multipart form data:", formErr);
         return NextResponse.json({ error: "Invalid form data payload." }, { status: 400 });
       }
     }
 
+    console.log(`[AI COVER] Parsed slots: [${Array.from(slotFiles.keys()).join(", ")}]`);
+
     if (slotFiles.size === 0) {
+      console.warn("[AI COVER] Rejecting: No garment photos provided");
       return NextResponse.json({ error: "At least one garment photo is required to generate the cover." }, { status: 400 });
     }
 
     // Validate every present file
     for (const [slotKey, file] of slotFiles) {
       if (file.size > MAX_FILE_SIZE_BYTES) {
+        console.warn(`[AI COVER] Rejecting: File ${file.name} for slot ${slotKey} exceeds 10MB (${file.size} bytes)`);
         return NextResponse.json({ error: `${slotKey} image (${file.name}) exceeds the maximum allowed size of 10MB.` }, { status: 400 });
       }
       const mt = file.type || "image/png";
       if (!ALLOWED_MIME_TYPES.includes(mt)) {
+        console.warn(`[AI COVER] Rejecting: File ${file.name} for slot ${slotKey} has invalid MIME type ${mt}`);
         return NextResponse.json({ error: `${slotKey} image has an invalid file type. Only PNG, JPEG, and WebP are allowed.` }, { status: 400 });
       }
     }
 
-    // 5. Fetch template from S3. Primary path: S3 SDK with our creds (works for
-    //    private objects too). Fallback: direct HTTP fetch of staticRefUrl.
+    // 5. Fetch template from S3/HTTP
+    console.log(`[AI COVER] Downloading studio template: ${staticRefUrl}`);
+    const downloadStart = Date.now();
     let staticKey = "";
     try {
       const urlObj = new URL(staticRefUrl);
@@ -113,29 +128,36 @@ export async function POST(req: NextRequest) {
     let templateBuffer: Buffer | null = null;
     if (staticKey) {
       try {
+        console.log(`[AI COVER] Attempting template download via S3 SDK with key: "${staticKey}"`);
         const s3Res = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: staticKey }));
         if (s3Res.Body) {
           const bytes = await s3Res.Body.transformToByteArray();
           templateBuffer = Buffer.from(bytes);
+          console.log(`[AI COVER] S3 SDK download successful. Bytes: ${templateBuffer.length}`);
         }
       } catch (s3Err) {
-        console.warn("Failed to download template via S3 SDK, trying HTTP fallback...", s3Err);
+        console.warn("[AI COVER] S3 SDK download failed, attempting HTTP fallback...", s3Err);
       }
     }
+
     if (!templateBuffer) {
       try {
+        console.log("[AI COVER] Attempting template HTTP fallback fetch...");
         const res = await fetch(staticRefUrl);
         if (!res.ok) throw new Error(`HTTP fetch failed with status ${res.status}`);
         const arr = await res.arrayBuffer();
         templateBuffer = Buffer.from(arr);
+        console.log(`[AI COVER] HTTP fetch successful. Bytes: ${templateBuffer.length}`);
       } catch (httpErr) {
-        console.error("Both S3 and HTTP fallback failed for template:", httpErr);
+        console.error("[AI COVER] Both S3 and HTTP fallback failed for template:", httpErr);
         return NextResponse.json({ error: "Failed to load the studio template image." }, { status: 500 });
       }
     }
+    console.log(`[AI COVER] Template loading completed in ${Date.now() - downloadStart}ms`);
 
-    // 6. Backup all garment uploads to S3 (best-effort audit trail), then read
-    //    their bytes and prepare every image (template + garments) for OpenAI.
+    // 6. S3 Audit trail backup
+    console.log("[AI COVER] Saving audit-trail references to S3...");
+    const auditStart = Date.now();
     const garmentBuffers = new Map<SlotRole, Buffer>();
     for (const [slotKey, file] of slotFiles) {
       const buf = Buffer.from(await file.arrayBuffer());
@@ -145,19 +167,20 @@ export async function POST(req: NextRequest) {
         const refKey = `ai-refs/${userId}/${randomUUID()}-${slotKey}.${ext}`;
         await uploadFile(buf, refKey, file.type || "image/png", bucket);
       } catch (err) {
-        console.warn(`Audit-trail S3 backup of ${slotKey} failed (non-fatal):`, err);
+        console.warn(`[AI COVER] Audit-trail S3 backup of ${slotKey} failed (non-fatal):`, err);
       }
     }
+    console.log(`[AI COVER] Audit-trail backups took ${Date.now() - auditStart}ms`);
 
-    // 7. Build the multipart form for OpenAI. image[0] is the template, then
-    //    each filled slot in SLOT_ORDER. Track which slots ended up in the
-    //    payload so the prompt can describe them by role.
+    // 7. Sharp preparation
+    console.log("[AI COVER] Processing images using Sharp (padding & resizing to 1024x1536 PNG)...");
+    const sharpStart = Date.now();
     const formData = new FormData();
     let processedTemplate: Buffer;
     try {
       processedTemplate = await prepareImageForOpenAI(templateBuffer);
     } catch (err) {
-      console.error("Failed to prepare template:", err);
+      console.error("[AI COVER] Failed to prepare template with Sharp:", err);
       return NextResponse.json({ error: "Failed to prepare the studio template." }, { status: 500 });
     }
     formData.append("image[]", new Blob([new Uint8Array(processedTemplate)], { type: "image/png" }), "template.png");
@@ -170,15 +193,15 @@ export async function POST(req: NextRequest) {
       try {
         processed = await prepareImageForOpenAI(buf);
       } catch (err) {
-        console.error(`Failed to prepare ${slot.key}:`, err);
+        console.error(`[AI COVER] Failed to prepare ${slot.key} with Sharp:`, err);
         return NextResponse.json({ error: `Failed to prepare ${slot.key} image.` }, { status: 500 });
       }
       formData.append("image[]", new Blob([new Uint8Array(processed)], { type: "image/png" }), `${slot.key}.png`);
       sentSlots.push(slot.key);
     }
+    console.log(`[AI COVER] Sharp image processing completed in ${Date.now() - sharpStart}ms`);
 
-    // 8. Build the prompt. Image 1 is the template (model + studio). The order
-    //    of the seller's references in sentSlots maps to Image 2, Image 3, etc.
+    // 8. Build Prompt
     const roleDescriptionFor = (slot: SlotRole): string => {
       switch (slot) {
         case "fullOutfit": return "the full outfit reference (primary silhouette, complete styling)";
@@ -190,7 +213,6 @@ export async function POST(req: NextRequest) {
     };
 
     const imageRoleLines = sentSlots.map((slot, idx) => `- Image ${idx + 2}: ${roleDescriptionFor(slot)}`).join("\n");
-
     const promptText = `Create an ultra-realistic luxury Pakistani fashion editorial cover photo.
 
 CRITICAL:
@@ -235,7 +257,9 @@ The final result should resemble a real luxury Pakistani lawn brand campaign pho
     formData.append("size", req.headers.get("x-image-size") || "1024x1536");
     formData.append("quality", "high");
 
-    // 9. Call OpenAI images/edits
+    // 9. Call OpenAI
+    console.log("[AI COVER] Sending request to OpenAI images/edits API...");
+    const openAiStart = Date.now();
     let openAiRes: Response;
     try {
       openAiRes = await fetch("https://api.openai.com/v1/images/edits", {
@@ -244,13 +268,15 @@ The final result should resemble a real luxury Pakistani lawn brand campaign pho
         body: formData,
       });
     } catch (fetchErr) {
-      console.error("Network error calling OpenAI API:", fetchErr);
+      console.error("[AI COVER] Network error calling OpenAI API:", fetchErr);
       return NextResponse.json({ error: "Failed to reach the image generation service." }, { status: 503 });
     }
 
+    console.log(`[AI COVER] OpenAI API responded in ${Date.now() - openAiStart}ms. Status: ${openAiRes.status}`);
+
     if (!openAiRes.ok) {
       const errBody = await openAiRes.text();
-      console.error("OpenAI images/edits error:", openAiRes.status, errBody);
+      console.error("[AI COVER] OpenAI API returned error status:", openAiRes.status, errBody);
 
       if (openAiRes.status === 429) {
         return NextResponse.json({ error: "The image generation service is busy. Please wait a moment and try again." }, { status: 429 });
@@ -261,11 +287,12 @@ The final result should resemble a real luxury Pakistani lawn brand campaign pho
     }
 
     // 10. Resolve generated image to bytes
+    console.log("[AI COVER] Resolving generated cover image bytes...");
     let json: { data?: Array<{ b64_json?: string; url?: string }> };
     try {
       json = await openAiRes.json();
     } catch (parseErr) {
-      console.error("Failed to parse OpenAI JSON response:", parseErr);
+      console.error("[AI COVER] Failed to parse OpenAI JSON response:", parseErr);
       return NextResponse.json({ error: "Failed to process image generation response." }, { status: 502 });
     }
 
@@ -276,22 +303,25 @@ The final result should resemble a real luxury Pakistani lawn brand campaign pho
       imageBuffer = Buffer.from(b64, "base64");
     } else if (hostedUrl) {
       try {
+        console.log(`[AI COVER] Downloading generated image from hosted URL: ${hostedUrl.slice(0, 100)}...`);
         const remote = await fetch(hostedUrl);
         if (!remote.ok) {
-          console.error("Failed to fetch hosted generated image:", remote.status);
+          console.error("[AI COVER] Failed to fetch hosted generated image. Status:", remote.status);
           return NextResponse.json({ error: "Failed to retrieve the generated cover photo." }, { status: 502 });
         }
         imageBuffer = Buffer.from(await remote.arrayBuffer());
       } catch (err) {
-        console.error("Error fetching hosted URL:", err);
+        console.error("[AI COVER] Error fetching hosted URL:", err);
         return NextResponse.json({ error: "Failed to download the generated cover photo." }, { status: 502 });
       }
     } else {
-      console.error("OpenAI response contained no image", json);
+      console.error("[AI COVER] OpenAI response contained no image data", json);
       return NextResponse.json({ error: "No image returned by the generation engine." }, { status: 502 });
     }
 
     // 11. Save to S3
+    console.log("[AI COVER] Uploading final generated cover photo to S3...");
+    const uploadStart = Date.now();
     let finalImageUrl: string;
     try {
       const imageId = randomUUID();
@@ -299,16 +329,18 @@ The final result should resemble a real luxury Pakistani lawn brand campaign pho
       await uploadFile(imageBuffer, outKey, "image/png", bucket);
       finalImageUrl = buildS3ImageUrl(outKey, bucket);
     } catch (err) {
-      console.error("Failed to save final image to S3:", err);
+      console.error("[AI COVER] Failed to save final image to S3:", err);
       return NextResponse.json({ error: "Failed to save the generated cover image." }, { status: 500 });
     }
+    console.log(`[AI COVER] Uploading to S3 completed in ${Date.now() - uploadStart}ms`);
 
     // 12. Mark cooldown
     LAST_GENERATE_BY_USER.set(userId, Date.now());
 
+    console.log(`[AI COVER] Successfully completed cover generation in ${Date.now() - startTime}ms!`);
     return NextResponse.json({ imageUrl: finalImageUrl });
   } catch (err) {
-    console.error("Unexpected error in /api/ai/generate-cover:", err);
+    console.error("[AI COVER] Unexpected critical error:", err);
     return NextResponse.json({ error: "An unexpected system error occurred." }, { status: 500 });
   }
 }
