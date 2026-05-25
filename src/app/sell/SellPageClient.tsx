@@ -821,50 +821,50 @@ export default function SellPageClient({
                                                     setActiveUploadSlot(slot.key);
                                                     fileInputRef.current?.click();
                                                 }}
-                                                className="flex aspect-[3/4] w-full flex-col items-center justify-center px-3 py-4 rounded-[20px] border border-[#f2e7de] bg-[#fbf9f6] text-center transition-all hover:bg-[#f6efe7] hover:border-[#ebdccf]"
+                                                className="flex aspect-[3/4] w-full flex-col items-center justify-center px-4 py-6 rounded-[20px] border border-[#f2e7de] bg-[#fbf9f6] text-center transition-all hover:bg-[#f6efe7] hover:border-[#ebdccf]"
                                             >
-                                                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full border border-[#f2e7de] bg-white shrink-0">
+                                                <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-full border border-[#f2e7de] bg-white shrink-0">
                                                     {slot.key === "fullOutfit" && (
-                                                        <svg viewBox="0 0 24 24" className="w-6 h-6 text-[#7a6050]" fill="none" stroke="currentColor" strokeWidth="1.2">
+                                                        <svg viewBox="0 0 24 24" className="w-8 h-8 text-[#7a6050]" fill="none" stroke="currentColor" strokeWidth="1.2">
                                                             <path d="M12 2a2 2 0 0 1 2 2c0 .6-.3 1.1-.7 1.3L16 7H8l2.7-1.7C10.3 5.1 10 4.6 10 4a2 2 0 0 1 2-2z" strokeLinecap="round" strokeLinejoin="round"/>
                                                             <path d="M8 7l1.5 5.5L7 21h10l-2.5-8.5L16 7H8z" strokeLinecap="round" strokeLinejoin="round"/>
                                                             <path d="M9.5 12.5h5" strokeLinecap="round"/>
                                                         </svg>
                                                     )}
                                                     {slot.key === "top" && (
-                                                        <svg viewBox="0 0 24 24" className="w-6 h-6 text-[#7a6050]" fill="none" stroke="currentColor" strokeWidth="1.2">
+                                                        <svg viewBox="0 0 24 24" className="w-8 h-8 text-[#7a6050]" fill="none" stroke="currentColor" strokeWidth="1.2">
                                                             <path d="M9 4a3 3 0 0 1 6 0h4v4l-2.5 1.5L17 19H7l.5-9.5L5 8V4h4z" strokeLinecap="round" strokeLinejoin="round"/>
                                                         </svg>
                                                     )}
                                                     {slot.key === "bottom" && (
-                                                        <svg viewBox="0 0 24 24" className="w-6 h-6 text-[#7a6050]" fill="none" stroke="currentColor" strokeWidth="1.2">
+                                                        <svg viewBox="0 0 24 24" className="w-8 h-8 text-[#7a6050]" fill="none" stroke="currentColor" strokeWidth="1.2">
                                                             <path d="M6 3h12l1 6-2 11h-3.5L12 9.5 10.5 20H7L5 9l1-6z" strokeLinecap="round" strokeLinejoin="round"/>
                                                             <path d="M7 6c.5.5 1 .5 1.5 0M15.5 6c.5.5 1 .5 1.5 0" strokeLinecap="round"/>
                                                         </svg>
                                                     )}
                                                     {slot.key === "dupatta" && (
-                                                        <svg viewBox="0 0 24 24" className="w-6 h-6 text-[#7a6050]" fill="none" stroke="currentColor" strokeWidth="1.2">
+                                                        <svg viewBox="0 0 24 24" className="w-8 h-8 text-[#7a6050]" fill="none" stroke="currentColor" strokeWidth="1.2">
                                                             <path d="M9 7a3 3 0 0 1 6 0" strokeLinecap="round" strokeLinejoin="round"/>
                                                             <rect x="5" y="7" width="14" height="11" rx="3" strokeLinecap="round" strokeLinejoin="round"/>
                                                             <path d="M11 11h2v2h-2z" strokeLinecap="round" strokeLinejoin="round"/>
                                                         </svg>
                                                     )}
                                                     {slot.key === "closeup" && (
-                                                        <svg viewBox="0 0 24 24" className="w-6 h-6 text-[#7a6050]" fill="none" stroke="currentColor" strokeWidth="1.2">
+                                                        <svg viewBox="0 0 24 24" className="w-8 h-8 text-[#7a6050]" fill="none" stroke="currentColor" strokeWidth="1.2">
                                                             <path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6z" strokeDasharray="3 2" strokeLinecap="round" strokeLinejoin="round"/>
                                                             <path d="M8 8h8M8 12h8M8 16h8M10 6v12M14 6v12" strokeWidth="0.8" opacity="0.6" strokeLinecap="round"/>
                                                         </svg>
                                                     )}
                                                 </div>
                                                 
-                                                <h4 className="text-[12px] font-semibold text-[#2f2925] leading-tight">
+                                                <h4 className="text-[13px] font-semibold text-[#2f2925] leading-tight">
                                                     {slot.label}
                                                     {slot.optional && (
                                                         <span className="ml-1 text-[10px] font-normal text-[#8a7667]">(optional)</span>
                                                     )}
                                                 </h4>
                                                 
-                                                <p className="mt-1 text-[9.5px] text-[#8a7667] leading-tight max-w-[110px] mx-auto">
+                                                <p className="mt-1 text-[10px] text-[#8a7667] leading-tight max-w-[130px] mx-auto">
                                                     {slot.subtitle}
                                                 </p>
                                             </button>
