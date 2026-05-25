@@ -61,13 +61,14 @@ const mobileTabs: { key: SellTab; label: string }[] = [
 const styleOptions = getStyles();
 const categoryOptions = getCategories();
 const MAX_IMAGES = 6;
-type SlotRole = "fullOutfit" | "top" | "bottom" | "dupatta" | "closeup";
-const SLOTS: Array<{ key: SlotRole; label: string; optional?: boolean }> = [
-    { key: "fullOutfit", label: "Full Outfit" },
-    { key: "top", label: "Top", optional: true },
-    { key: "bottom", label: "Bottom", optional: true },
-    { key: "dupatta", label: "Dupatta", optional: true },
-    { key: "closeup", label: "Close Up", optional: true },
+type SlotRole = "fullOutfit" | "top" | "bottom" | "dupatta" | "closeup" | "extra";
+const SLOTS: Array<{ key: SlotRole; label: string; optional?: boolean; subtitle?: string }> = [
+    { key: "fullOutfit", label: "Full Outfit", subtitle: "Show the complete look clearly." },
+    { key: "top", label: "Top", optional: true, subtitle: "Show the top or upper part." },
+    { key: "bottom", label: "Bottom", optional: true, subtitle: "Show the bottom or lower part." },
+    { key: "dupatta", label: "Accessories", optional: true, subtitle: "Add scarves, dupatta, purse, belt, jewelry or any add-ons." },
+    { key: "closeup", label: "Close-Up", optional: true, subtitle: "Show fabric texture, embellishments or stitching." },
+    { key: "extra", label: "Add More Photos", optional: true, subtitle: "Add as many additional photos as needed." },
 ];
 const orderedSlotFiles = (slots: Partial<Record<SlotRole, File>>): File[] =>
     SLOTS.map((s) => slots[s.key]).filter((f): f is File => Boolean(f));
@@ -776,45 +777,43 @@ export default function SellPageClient({
                         </div>
                     )}
 
-                    {!(isUploadAreaExpanded || Object.keys(slotFiles).length > 0 || generatedImageUrls.length > 0) ? (
-                        <div className="flex flex-col items-center justify-center rounded-[1.75rem] border border-dashed border-border bg-muted/20 p-12 text-center min-h-[240px]">
-                            <UploadCloud className="w-10 h-10 text-muted-foreground mb-4" />
-                            <h3 className="text-sm font-medium text-foreground mb-1">Upload photos</h3>
-                            <p className="text-xs text-muted-foreground mb-4">
-                                Add up to 5 photos of your garment. Our AI can generate a cover from them.
-                            </p>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                onClick={() => setIsUploadAreaExpanded(true)}
-                            >
-                                Upload Images
-                            </Button>
-                        </div>
-                    ) : (
+                    <div className="mb-6">
+                        <h3 className="text-[20px] font-semibold text-[#4a3328]" style={{ fontFamily: "var(--font-serif), serif" }}>Add Photos</h3>
+                        <p className="mt-1.5 text-[13px] text-[#8a7667]">
+                            Add clear, well-lit photos to help your item sell faster.
+                        </p>
+                    </div>
+
                     <div className="relative">
-                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
                             {SLOTS.map((slot) => {
                                 const file = slotFiles[slot.key];
                                 const previewUrl = slotPreviewUrls[slot.key];
                                 return (
-                                    <div key={slot.key} className="rounded-lg border border-border/70 bg-card p-1.5">
+                                    <div key={slot.key}>
                                         {file && previewUrl ? (
-                                            <div className="relative overflow-hidden rounded-md">
+                                            <div className="relative aspect-[3/4] overflow-hidden rounded-[20px] border border-[#f2e7de] bg-[#fbf9f6] transition-all hover:shadow-sm">
                                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                                 <img
                                                     src={previewUrl}
                                                     alt={slot.label}
-                                                    className="aspect-square w-full object-contain bg-muted/40"
+                                                    className="h-full w-full object-cover"
                                                 />
+                                                <div className="absolute inset-0 bg-black/5" />
                                                 <button
                                                     type="button"
                                                     onClick={() => removeSlot(slot.key)}
                                                     aria-label={`Remove ${slot.label}`}
-                                                    className="absolute right-1.5 top-1.5 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full bg-black/70 text-white"
+                                                    className="absolute right-2.5 top-2.5 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#fbf9f6]/95 text-[#4a3328] shadow-sm backdrop-blur-[2px] transition-transform hover:scale-105 active:scale-95"
                                                 >
                                                     <X className="h-4 w-4" />
                                                 </button>
+                                                
+                                                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-2.5 pt-6">
+                                                    <p className="text-center text-[10px] font-semibold text-white uppercase tracking-wider">
+                                                        {slot.label}
+                                                    </p>
+                                                </div>
                                             </div>
                                         ) : (
                                             <button
@@ -823,35 +822,84 @@ export default function SellPageClient({
                                                     setActiveUploadSlot(slot.key);
                                                     fileInputRef.current?.click();
                                                 }}
-                                                className="flex aspect-square w-full flex-col items-center justify-center gap-1.5 rounded-md border border-dashed border-border bg-muted/30 transition-colors hover:bg-muted/60"
+                                                className="flex aspect-[3/4] w-full flex-col items-center justify-center px-3 py-4 rounded-[20px] border border-[#f2e7de] bg-[#fbf9f6] text-center transition-all hover:bg-[#f6efe7] hover:border-[#ebdccf]"
                                             >
-                                                <UploadCloud className="h-5 w-5 text-muted-foreground" />
-                                                <span className="text-[10px] text-muted-foreground">Add Photo</span>
+                                                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full border border-[#f2e7de] bg-white shrink-0">
+                                                    {slot.key === "fullOutfit" && (
+                                                        <svg viewBox="0 0 24 24" className="w-6 h-6 text-[#7a6050]" fill="none" stroke="currentColor" strokeWidth="1.2">
+                                                            <path d="M12 2a2 2 0 0 1 2 2c0 .6-.3 1.1-.7 1.3L16 7H8l2.7-1.7C10.3 5.1 10 4.6 10 4a2 2 0 0 1 2-2z" strokeLinecap="round" strokeLinejoin="round"/>
+                                                            <path d="M8 7l1.5 5.5L7 21h10l-2.5-8.5L16 7H8z" strokeLinecap="round" strokeLinejoin="round"/>
+                                                            <path d="M9.5 12.5h5" strokeLinecap="round"/>
+                                                        </svg>
+                                                    )}
+                                                    {slot.key === "top" && (
+                                                        <svg viewBox="0 0 24 24" className="w-6 h-6 text-[#7a6050]" fill="none" stroke="currentColor" strokeWidth="1.2">
+                                                            <path d="M9 4a3 3 0 0 1 6 0h4v4l-2.5 1.5L17 19H7l.5-9.5L5 8V4h4z" strokeLinecap="round" strokeLinejoin="round"/>
+                                                        </svg>
+                                                    )}
+                                                    {slot.key === "bottom" && (
+                                                        <svg viewBox="0 0 24 24" className="w-6 h-6 text-[#7a6050]" fill="none" stroke="currentColor" strokeWidth="1.2">
+                                                            <path d="M6 3h12l1 6-2 11h-3.5L12 9.5 10.5 20H7L5 9l1-6z" strokeLinecap="round" strokeLinejoin="round"/>
+                                                            <path d="M7 6c.5.5 1 .5 1.5 0M15.5 6c.5.5 1 .5 1.5 0" strokeLinecap="round"/>
+                                                        </svg>
+                                                    )}
+                                                    {slot.key === "dupatta" && (
+                                                        <svg viewBox="0 0 24 24" className="w-6 h-6 text-[#7a6050]" fill="none" stroke="currentColor" strokeWidth="1.2">
+                                                            <path d="M9 7a3 3 0 0 1 6 0" strokeLinecap="round" strokeLinejoin="round"/>
+                                                            <rect x="5" y="7" width="14" height="11" rx="3" strokeLinecap="round" strokeLinejoin="round"/>
+                                                            <path d="M11 11h2v2h-2z" strokeLinecap="round" strokeLinejoin="round"/>
+                                                        </svg>
+                                                    )}
+                                                    {slot.key === "closeup" && (
+                                                        <svg viewBox="0 0 24 24" className="w-6 h-6 text-[#7a6050]" fill="none" stroke="currentColor" strokeWidth="1.2">
+                                                            <path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6z" strokeDasharray="3 2" strokeLinecap="round" strokeLinejoin="round"/>
+                                                            <path d="M8 8h8M8 12h8M8 16h8M10 6v12M14 6v12" strokeWidth="0.8" opacity="0.6" strokeLinecap="round"/>
+                                                        </svg>
+                                                    )}
+                                                    {slot.key === "extra" && (
+                                                        <svg viewBox="0 0 24 24" className="w-5 h-5 text-[#7a6050]" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                                            <path d="M12 5v14M5 12h14" strokeLinecap="round" strokeLinejoin="round"/>
+                                                        </svg>
+                                                    )}
+                                                </div>
+                                                
+                                                <h4 className="text-[12px] font-semibold text-[#2f2925] leading-tight">
+                                                    {slot.label}
+                                                    {slot.optional && (
+                                                        <span className="ml-1 text-[10px] font-normal text-[#8a7667]">(optional)</span>
+                                                    )}
+                                                </h4>
+                                                
+                                                <p className="mt-1 text-[9.5px] text-[#8a7667] leading-tight max-w-[110px] mx-auto">
+                                                    {slot.subtitle}
+                                                </p>
                                             </button>
                                         )}
-                                        <p className="mt-1.5 text-center text-[11px] font-medium text-foreground">
-                                            {slot.label}
-                                            {slot.optional && (
-                                                <span className="ml-1 font-normal text-muted-foreground">(optional)</span>
-                                            )}
-                                        </p>
                                     </div>
                                 );
                             })}
                         </div>
 
+                        {/* Sparkling tip banner */}
+                        <div className="mt-5 flex items-center gap-3 rounded-[16px] bg-[#fbf8f5] px-4 py-3 text-[#7a6050] border border-[#f5eee6]">
+                            <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-[#cfb79f]" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                <path d="M12 3v4M12 17v4M3 12h4M17 12h4M6.3 6.3l2.8 2.8M14.9 14.9l2.8 2.8M6.3 17.7l2.8-2.8M14.9 9.1l2.8-2.8" strokeLinecap="round"/>
+                            </svg>
+                            <span className="text-[12px] font-medium text-[#7a6050]">You can add multiple photos in any category.</span>
+                        </div>
+
                         <div className="mt-3 flex items-center justify-between gap-2">
                             <p className="text-xs text-muted-foreground">
-                                {orderedSlotFiles(slotFiles).length} photos uploaded · up to 5
+                                {orderedSlotFiles(slotFiles).length} photos uploaded · No limit
                             </p>
                         </div>
 
-                        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                            <div className="flex items-start gap-2">
-                                <Sparkles className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
+                        <div className="mt-5 flex flex-col gap-3 rounded-[20px] border border-[#e8ddd1] bg-[#faf6f0] p-4">
+                            <div className="flex items-start gap-3">
+                                <Sparkles className="mt-0.5 h-4.5 w-4.5 flex-shrink-0 text-[#cfb79f]" />
                                 <div>
-                                    <p className="text-sm font-medium text-foreground">Generate an AI cover photo</p>
-                                    <p className="text-xs text-muted-foreground">
+                                    <p className="text-xs font-semibold text-[#4a3328]">Generate an AI cover photo</p>
+                                    <p className="mt-0.5 text-[11px] text-[#8a7667] leading-normal">
                                         {generatedImageUrls.length > 0 
                                             ? "AI cover photo generated! Limit: 1 generated cover per listing." 
                                             : "Creates a studio-quality cover from your uploaded photos (takes 2-4 minutes). Limit: 1 generated cover per listing."}
@@ -860,8 +908,7 @@ export default function SellPageClient({
                             </div>
                             <Button
                                 type="button"
-                                variant="primary"
-                                size="md"
+                                variant="outline"
                                 onClick={async () => {
                                     if (generatedImageUrls.length > 0) {
                                         setError("You have already generated an AI cover photo for this listing.");
@@ -926,7 +973,7 @@ export default function SellPageClient({
                                 }}
                                 disabled={isGenerating || orderedSlotFiles(slotFiles).length === 0 || generatedImageUrls.length > 0}
                                 isLoading={isGenerating}
-                                className="w-full sm:w-auto"
+                                className="w-full bg-white hover:bg-[#faf6f0] border-[#cfb79f] text-[#7a6050] hover:text-[#4a3328]"
                             >
                                 {isGenerating ? "Generating…" : "Generate Cover"}
                             </Button>
@@ -941,7 +988,7 @@ export default function SellPageClient({
 
                         {isGenerating && (
                             <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-white/85 backdrop-blur-[2px] p-6 text-center">
-                                <div className="h-10 w-10 animate-spin rounded-full border-3 border-primary/20 border-t-primary" />
+                                <div className="h-10 w-10 animate-spin rounded-full border-3 border-[#cfb79f]/20 border-t-[#cfb79f]" />
                                 <p className="mt-3 text-sm font-semibold text-foreground">AI Studio active...</p>
                                 <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed max-w-[240px] mx-auto">
                                     Generating cover photo. Feel free to fill in the item details below!
@@ -960,7 +1007,6 @@ export default function SellPageClient({
                             <input key={`${url}-${index}`} type="hidden" name="generatedImageUrls" value={url} />
                         ))}
                     </div>
-                    )}
                 </section>
 
                 <section className="space-y-6">
