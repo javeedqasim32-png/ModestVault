@@ -1018,7 +1018,7 @@ export default function SellPageClient({
                                         setTaxonomyErrors((prev) => ({ ...prev, style: undefined }));
                                     }
                                 }}
-                                className="w-full h-12 border border-border bg-background px-4 text-sm focus:border-primary focus:outline-none transition-colors"
+                                className="w-full h-12 border border-border bg-background px-4 text-sm rounded-[16px] focus:border-primary focus:outline-none transition-colors"
                             >
                                 <option value="">Select Style</option>
                                 {styleOptions.map((item) => (
@@ -1051,7 +1051,7 @@ export default function SellPageClient({
                                         }));
                                     }
                                 }}
-                                className="w-full h-12 border border-border bg-background px-4 text-sm focus:border-primary focus:outline-none transition-colors"
+                                className="w-full h-12 border border-border bg-background px-4 text-sm rounded-[16px] focus:border-primary focus:outline-none transition-colors"
                             >
                                 <option value="">Select Category</option>
                                 {categoryOptions.map((item) => (
@@ -1076,7 +1076,7 @@ export default function SellPageClient({
                                             setTaxonomyErrors((prev) => ({ ...prev, subcategory: undefined, type: undefined }));
                                         }
                                     }}
-                                    className="w-full h-12 border border-border bg-background px-4 text-sm focus:border-primary focus:outline-none transition-colors"
+                                    className="w-full h-12 border border-border bg-background px-4 text-sm rounded-[16px] focus:border-primary focus:outline-none transition-colors"
                                 >
                                     <option value="">Select Subcategory</option>
                                     {subcategoryOptions.map((item) => (
@@ -1107,7 +1107,7 @@ export default function SellPageClient({
                                             setTaxonomyErrors((prev) => ({ ...prev, type: undefined }));
                                         }
                                     }}
-                                    className="w-full h-12 border border-border bg-background px-4 text-sm focus:border-primary focus:outline-none transition-colors"
+                                    className="w-full h-12 border border-border bg-background px-4 text-sm rounded-[16px] focus:border-primary focus:outline-none transition-colors"
                                 >
                                     <option value="">Select Type</option>
                                     {typeOptions.map((item) => (
@@ -1142,7 +1142,7 @@ export default function SellPageClient({
                             required
                             rows={5}
                             placeholder="Describe the texture, fit, and details of this piece..."
-                            className="w-full border border-border bg-background p-4 text-sm focus:border-primary focus:outline-none transition-colors resize-none"
+                            className="w-full border border-border bg-background p-4 text-sm rounded-[16px] focus:border-primary focus:outline-none transition-colors resize-none"
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
                         ></textarea>
@@ -1156,7 +1156,7 @@ export default function SellPageClient({
                                 name="condition"
                                 value={condition}
                                 onChange={(e) => setCondition(e.target.value)}
-                                className="w-full h-12 border border-border bg-background px-4 text-sm focus:border-primary focus:outline-none transition-colors"
+                                className="w-full h-12 border border-border bg-background px-4 text-sm rounded-[16px] focus:border-primary focus:outline-none transition-colors"
                             >
                                 <option value="">Select Condition</option>
                                 {["New with tags", "Like new", "Good", "Fair"].map(cond => (
@@ -1170,7 +1170,7 @@ export default function SellPageClient({
                                 <select
                                     id="size"
                                     name="size"
-                                    className="h-12 w-full border border-border bg-background px-4 text-sm focus:border-primary focus:outline-none transition-colors"
+                                    className="h-12 w-full border border-border bg-background px-4 text-sm rounded-[16px] focus:border-primary focus:outline-none transition-colors"
                                     value={size}
                                     onChange={(e) => setSize(e.target.value)}
                                 >
@@ -1191,7 +1191,7 @@ export default function SellPageClient({
                                     rows={3}
                                     maxLength={MAX_MEASUREMENTS_CHARS}
                                     placeholder="Shoulders, Bust, Waist, Hip, Length"
-                                    className="w-full border border-border bg-background p-4 text-sm focus:border-primary focus:outline-none transition-colors resize-none"
+                                    className="w-full border border-border bg-background p-4 text-sm rounded-[16px] focus:border-primary focus:outline-none transition-colors resize-none"
                                     value={measurements}
                                     onChange={(e) => setMeasurements(e.target.value)}
                                 />
