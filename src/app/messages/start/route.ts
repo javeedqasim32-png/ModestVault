@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
 
   const result = await startConversationWithSeller({ sellerId, listingId });
   if ("error" in result) {
-    return NextResponse.redirect(new URL(`/sellers/${sellerId}`, baseUrl));
+    return NextResponse.redirect(new URL(`/${sellerId}`, baseUrl));
   }
 
   return NextResponse.redirect(new URL(`/messages/${result.conversationId}`, baseUrl));

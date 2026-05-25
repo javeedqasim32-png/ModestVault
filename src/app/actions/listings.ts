@@ -10,6 +10,7 @@ import { stripe } from "@/lib/stripe";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { validateListingTaxonomy } from "@/lib/taxonomyValidation";
+import { getUserSlugMap } from "@/lib/user-slugs";
 
 const MAX_LISTING_IMAGES = 6;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -397,7 +398,10 @@ export async function updateListing(listingId: string, formData: FormData) {
         revalidatePath("/sell");
         revalidatePath("/browse");
         revalidatePath(`/listings/${listingId}`);
-        revalidatePath(`/sellers/${session.user.id}`);
+        const slugMap = await getUserSlugMap();
+        const slug = slugMap.get(session.user.id);
+        revalidatePath(`/${session.user.id}`);
+        if (slug) revalidatePath(`/${slug}`);
         return { success: true };
     } catch (error) {
         console.error("Update listing error:", error);

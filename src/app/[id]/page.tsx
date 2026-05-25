@@ -17,8 +17,8 @@ export const dynamic = "force-dynamic";
 
 const cormorantHeading = localFont({
   src: [
-    { path: "../../../fonts/CormorantGaramond-Regular.ttf", weight: "400", style: "normal" },
-    { path: "../../../fonts/CormorantGaramond-SemiBold.ttf", weight: "600", style: "normal" },
+    { path: "../../fonts/CormorantGaramond-Regular.ttf", weight: "400", style: "normal" },
+    { path: "../../fonts/CormorantGaramond-SemiBold.ttf", weight: "600", style: "normal" },
   ],
   display: "swap",
 });

@@ -75,7 +75,7 @@ export default async function BrowsePage({
         });
         if (exactUserMatch) {
             const slugMap = await getUserSlugMap();
-            redirect(`/sellers/${slugMap.get(exactUserMatch.id) || exactUserMatch.id}`);
+            redirect(`/${slugMap.get(exactUserMatch.id) || exactUserMatch.id}`);
         }
     }
 

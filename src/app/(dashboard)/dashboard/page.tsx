@@ -17,7 +17,7 @@ export default async function ProfileDashboard() {
     const slugMap = await getUserSlugMap();
     const isSeller = dbUser?.seller_enabled || false;
     const isAdmin = (session?.user as { isAdmin?: boolean })?.isAdmin;
-    const profileHref = userId ? `/sellers/${slugMap.get(userId) || userId}` : "/dashboard/settings";
+    const profileHref = userId ? `/${slugMap.get(userId) || userId}` : "/dashboard/settings";
     const favoriteDelegate = (prisma as unknown as {
         favoriteItem?: {
             count: (args: unknown) => Promise<number>;

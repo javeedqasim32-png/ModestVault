@@ -140,7 +140,7 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                         ${Number(listing.price).toLocaleString()}
                     </p>
 
-                    <Link href={`/sellers/${sellerSlug}`} className="mt-4 block rounded-[12px] border border-[#ddd3cb] bg-[#e8ddd1] px-[13px] py-[10px]">
+                    <Link href={`/${sellerSlug}`} className="mt-4 block rounded-[12px] border border-[#ddd3cb] bg-[#e8ddd1] px-[13px] py-[10px]">
                         <div className="flex items-center gap-3">
                             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-[1.5px] border-[#ddd3cb] bg-[#d2baa3] text-[16px] text-[#7a6050]" style={{ fontFamily: "var(--font-serif), serif" }}>
                                 {sellerInitial}
@@ -199,7 +199,7 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                                 <h2 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[#8a7667]">Reviews</h2>
                                 {sellerReviewCount > sellerReviews.length ? (
                                     <Link
-                                        href={`/sellers/${sellerSlug}#reviews`}
+                                        href={`/${sellerSlug}#reviews`}
                                         className="text-[12px] font-medium text-[#8a7667] hover:text-[#2f2925]"
                                     >
                                         View all {sellerReviewCount}

@@ -321,7 +321,7 @@ export default function MobileOrdersClient({ orders, cartCount }: { orders: Mobi
                                     return seller.sellerId ? (
                                         <Link
                                             key={`${seller.sellerId}-${index}`}
-                                            href={`/sellers/${seller.slug}`}
+                                            href={`/${seller.slug}`}
                                             className="flex items-center gap-3 rounded-[1rem] px-1 py-1"
                                         >
                                             {rowContent}

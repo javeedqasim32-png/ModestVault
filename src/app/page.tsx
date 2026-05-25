@@ -393,7 +393,7 @@ export default async function Home() {
                 {featuredSellers.map((seller) => (
                   <Link
                     key={seller.id}
-                    href={`/sellers/${seller.slug}`}
+                    href={`/${seller.slug}`}
                     className="min-w-[110px] rounded-[1.6rem] border border-border/60 bg-[#f6f1ec] px-2 py-5 text-center sm:min-w-[140px]"
                   >
                     <div className="mx-auto mb-2 flex h-[44px] w-[44px] items-center justify-center rounded-full border-[2.5px] border-[#d9cdc3] bg-[#cdb79f] text-[15px] text-[#7b5f4f]">

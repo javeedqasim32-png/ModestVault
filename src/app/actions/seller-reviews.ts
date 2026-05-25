@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { getUserSlugMap } from "@/lib/user-slugs";
 
 export async function upsertSellerReview(input: { sellerId: string; rating: number; text: string }) {
   const session = await auth();
@@ -48,7 +49,10 @@ export async function upsertSellerReview(input: { sellerId: string; rating: numb
     },
   });
 
-  revalidatePath(`/sellers/${sellerId}`);
+  const slugMap = await getUserSlugMap();
+  const slug = slugMap.get(sellerId);
+  revalidatePath(`/${sellerId}`);
+  if (slug) revalidatePath(`/${slug}`);
 
   return {
     ok: true,
