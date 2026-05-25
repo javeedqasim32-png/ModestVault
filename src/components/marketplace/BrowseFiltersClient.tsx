@@ -12,7 +12,7 @@ import {
     toBrowseQueryString,
 } from "@/lib/listingFilters";
 
-type DropdownKey = "style" | "category" | "subcategory" | "type" | "size" | null;
+type DropdownKey = "style" | "category" | "subcategory" | "type" | "size" | "condition" | null;
 
 const PRICE_MIN = 0;
 const PRICE_MAX = 2000;
@@ -118,6 +118,7 @@ export default function BrowseFiltersClient({
         subcategories: Array.isArray(appliedFilters?.subcategories) ? appliedFilters.subcategories : [],
         types: Array.isArray(appliedFilters?.types) ? appliedFilters.types : [],
         sizes: Array.isArray(appliedFilters?.sizes) ? appliedFilters.sizes : [],
+        conditions: Array.isArray(appliedFilters?.conditions) ? appliedFilters.conditions : [],
         minPrice: typeof appliedFilters?.minPrice === "number" ? appliedFilters.minPrice : undefined,
         maxPrice: typeof appliedFilters?.maxPrice === "number" ? appliedFilters.maxPrice : undefined,
     };
@@ -127,6 +128,7 @@ export default function BrowseFiltersClient({
         subcategories: Array.isArray(availableOptions?.subcategories) ? availableOptions.subcategories : [],
         types: Array.isArray(availableOptions?.types) ? availableOptions.types : [],
         sizes: Array.isArray(availableOptions?.sizes) ? availableOptions.sizes : [],
+        conditions: Array.isArray(availableOptions?.conditions) ? availableOptions.conditions : [],
     };
     const [panelOpen, setPanelOpen] = useState(false);
     const [openDropdown, setOpenDropdown] = useState<DropdownKey>(null);
@@ -191,6 +193,7 @@ export default function BrowseFiltersClient({
             subcategories: [],
             types: [],
             sizes: [],
+            conditions: [],
             minPrice: undefined,
             maxPrice: undefined,
         });
@@ -327,6 +330,14 @@ export default function BrowseFiltersClient({
                             open={openDropdown === "size"}
                             onToggle={() => setOpenDropdown((prev) => (prev === "size" ? null : "size"))}
                             onChange={(next) => setDraft((prev) => ({ ...prev, sizes: next }))}
+                        />
+                        <MultiSelectDropdown
+                            label="Condition"
+                            values={normalizedAvailableOptions.conditions}
+                            selected={draft.conditions}
+                            open={openDropdown === "condition"}
+                            onToggle={() => setOpenDropdown((prev) => (prev === "condition" ? null : "condition"))}
+                            onChange={(next) => setDraft((prev) => ({ ...prev, conditions: next }))}
                         />
                     </div>
 

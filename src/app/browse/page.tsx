@@ -100,6 +100,7 @@ export default async function BrowsePage({
                 subcategory: true,
                 type: true,
                 size: true,
+                condition: true,
             },
         }),
     ]);

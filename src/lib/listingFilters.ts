@@ -8,6 +8,7 @@ export type ListingBrowseFilters = {
     subcategories: string[];
     types: string[];
     sizes: string[];
+    conditions: string[];
     minPrice?: number;
     maxPrice?: number;
 };
@@ -18,6 +19,7 @@ export type ListingFilterOptionSets = {
     subcategories: string[];
     types: string[];
     sizes: string[];
+    conditions: string[];
 };
 
 type ListingMetaForOptions = {
@@ -26,6 +28,7 @@ type ListingMetaForOptions = {
     subcategory: string | null;
     type: string | null;
     size: string | null;
+    condition: string | null;
 };
 
 export const SIZE_ORDER = ["XXS", "XS", "S", "M", "L", "XL", "XXL", "3XL", "4XL"];
@@ -59,6 +62,7 @@ export function parseBrowseFilters(searchParams: Record<string, string | string[
     });
     const types = unique(parseCsvOrMulti(searchParams.types));
     const sizes = unique(parseCsvOrMulti(searchParams.sizes));
+    const conditions = unique(parseCsvOrMulti(searchParams.conditions));
 
     const minPriceRaw = Array.isArray(searchParams.minPrice) ? searchParams.minPrice[0] : searchParams.minPrice;
     const maxPriceRaw = Array.isArray(searchParams.maxPrice) ? searchParams.maxPrice[0] : searchParams.maxPrice;
@@ -75,6 +79,7 @@ export function parseBrowseFilters(searchParams: Record<string, string | string[
         subcategories,
         types,
         sizes,
+        conditions,
         minPrice,
         maxPrice,
     };
@@ -106,6 +111,7 @@ export function buildListingBrowseWhere(filters: ListingBrowseFilters): Prisma.L
         ...(filters.subcategories.length > 0 ? { subcategory: { in: filters.subcategories } } : {}),
         ...(filters.types.length > 0 ? { type: { in: filters.types } } : {}),
         ...(filters.sizes.length > 0 ? { size: { in: filters.sizes, mode: "insensitive" } } : {}),
+        ...(filters.conditions.length > 0 ? { condition: { in: filters.conditions } } : {}),
         ...(hasMinPrice || hasMaxPrice
             ? {
                 price: {
@@ -148,6 +154,9 @@ export function getAvailableFilterOptions(
     const sizesFromInventory = new Set(
         listings.map((item) => item.size).filter((value): value is string => Boolean(value))
     );
+    const conditionsFromInventory = new Set(
+        listings.map((item) => item.condition).filter((value): value is string => Boolean(value))
+    );
 
     const styleOptions = getStyles().filter((style) => stylesFromInventory.has(style));
     const categoryOptions = getCategories().filter((category) => categoriesFromInventory.has(category));
@@ -162,12 +171,15 @@ export function getAvailableFilterOptions(
         : subcategoryOptions.flatMap((subcategory) => getTypes(subcategory));
     const typeOptions = alpha(unique(typeTaxonomyPool)).filter((type) => typesFromInventory.has(type));
 
+    const conditionOptions = ["New with tags", "Like new", "Good", "Fair"].filter((cond) => conditionsFromInventory.has(cond));
+
     return {
         styles: styleOptions,
         categories: categoryOptions,
         subcategories: subcategoryOptions,
         types: typeOptions,
         sizes: orderSizes([...sizesFromInventory]),
+        conditions: conditionOptions,
     };
 }
 
@@ -179,6 +191,7 @@ export function hasActiveBrowseFilters(filters: ListingBrowseFilters) {
         filters.subcategories.length ||
         filters.types.length ||
         filters.sizes.length ||
+        filters.conditions.length ||
         typeof filters.minPrice === "number" ||
         typeof filters.maxPrice === "number"
     );
@@ -192,6 +205,7 @@ export function toBrowseQueryString(filters: ListingBrowseFilters) {
     if (filters.subcategories.length > 0) params.set("subcategories", filters.subcategories.join(","));
     if (filters.types.length > 0) params.set("types", filters.types.join(","));
     if (filters.sizes.length > 0) params.set("sizes", filters.sizes.join(","));
+    if (filters.conditions.length > 0) params.set("conditions", filters.conditions.join(","));
     if (typeof filters.minPrice === "number") params.set("minPrice", String(filters.minPrice));
     if (typeof filters.maxPrice === "number") params.set("maxPrice", String(filters.maxPrice));
     return params.toString();
