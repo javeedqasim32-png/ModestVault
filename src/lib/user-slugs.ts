@@ -1,6 +1,19 @@
 import { prisma } from "./prisma";
 
+// Global cache variables to persist between requests in Node.js server memory
+let cachedSlugMap: Map<string, string> | null = null;
+let cachedReverseMap: Map<string, string> | null = null;
+let cacheTimestamp = 0;
+const CACHE_DURATION_MS = 10000; // Cache duration (10 seconds) for real-time freshness with database safety
+
 export async function getUserSlugMap(): Promise<Map<string, string>> {
+    const now = Date.now();
+    
+    // Serve from cache instantly if valid
+    if (cachedSlugMap && (now - cacheTimestamp < CACHE_DURATION_MS)) {
+        return cachedSlugMap;
+    }
+
     const users = await prisma.user.findMany({
         select: {
             id: true,
@@ -43,14 +56,25 @@ export async function getUserSlugMap(): Promise<Map<string, string>> {
         }
     }
 
+    // Update caches
+    cachedSlugMap = slugMap;
+    cacheTimestamp = now;
+    cachedReverseMap = null; // Clear reverse map to force recalculation
+
     return slugMap;
 }
 
 export async function getSlugToUserMap(): Promise<Map<string, string>> {
-    const slugMap = await getUserSlugMap();
-    const reverseMap = new Map<string, string>(); // slug -> userId
-    for (const [userId, slug] of slugMap.entries()) {
-        reverseMap.set(slug, userId);
+    if (cachedReverseMap) {
+        return cachedReverseMap;
     }
+
+    const slugMap = await getUserSlugMap();
+    const reverseMap = new Map<string, string>(); // slug.toLowerCase() -> userId
+    for (const [userId, slug] of slugMap.entries()) {
+        reverseMap.set(slug.toLowerCase(), userId);
+    }
+    
+    cachedReverseMap = reverseMap;
     return reverseMap;
 }
