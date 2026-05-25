@@ -233,7 +233,7 @@ export default async function Home() {
                     />
                   </div>
                 )}
-                <p className="mx-auto max-w-[7ch] text-sm font-medium leading-tight text-foreground sm:max-w-[8ch] sm:text-base lg:max-w-[9ch]">{category.name}</p>
+                <p className="mx-auto max-w-[12ch] text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.09em] leading-tight text-[#5c4a3c] transition-colors group-hover:text-primary">{category.name}</p>
               </Link>
             ))}
           </div>
