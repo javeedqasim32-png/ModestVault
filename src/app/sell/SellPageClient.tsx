@@ -857,14 +857,14 @@ export default function SellPageClient({
                                                     )}
                                                 </div>
                                                 
-                                                <h4 className="text-[13px] font-semibold text-[#2f2925] leading-tight">
+                                                <h4 className="text-[14px] font-semibold text-[#2f2925] leading-tight">
                                                     {slot.label}
                                                     {slot.optional && (
-                                                        <span className="ml-1 text-[10px] font-normal text-[#8a7667]">(optional)</span>
+                                                        <span className="ml-1 text-[10.5px] font-normal text-[#8a7667]">(optional)</span>
                                                     )}
                                                 </h4>
                                                 
-                                                <p className="mt-1 text-[10px] text-[#8a7667] leading-tight max-w-[130px] mx-auto">
+                                                <p className="mt-1 text-[11px] text-[#8a7667] leading-snug max-w-[130px] mx-auto">
                                                     {slot.subtitle}
                                                 </p>
                                             </button>
