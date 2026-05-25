@@ -61,14 +61,13 @@ const mobileTabs: { key: SellTab; label: string }[] = [
 const styleOptions = getStyles();
 const categoryOptions = getCategories();
 const MAX_IMAGES = 6;
-type SlotRole = "fullOutfit" | "top" | "bottom" | "dupatta" | "closeup" | "extra";
+type SlotRole = "fullOutfit" | "top" | "bottom" | "dupatta" | "closeup";
 const SLOTS: Array<{ key: SlotRole; label: string; optional?: boolean; subtitle?: string }> = [
     { key: "fullOutfit", label: "Full Outfit", subtitle: "Show the complete look clearly." },
     { key: "top", label: "Top", optional: true, subtitle: "Show the top or upper part." },
     { key: "bottom", label: "Bottom", optional: true, subtitle: "Show the bottom or lower part." },
     { key: "dupatta", label: "Accessories", optional: true, subtitle: "Add scarves, dupatta, purse, belt, jewelry or any add-ons." },
     { key: "closeup", label: "Close-Up", optional: true, subtitle: "Show fabric texture, embellishments or stitching." },
-    { key: "extra", label: "Add More Photos", optional: true, subtitle: "Add as many additional photos as needed." },
 ];
 const orderedSlotFiles = (slots: Partial<Record<SlotRole, File>>): File[] =>
     SLOTS.map((s) => slots[s.key]).filter((f): f is File => Boolean(f));
@@ -856,11 +855,6 @@ export default function SellPageClient({
                                                             <path d="M8 8h8M8 12h8M8 16h8M10 6v12M14 6v12" strokeWidth="0.8" opacity="0.6" strokeLinecap="round"/>
                                                         </svg>
                                                     )}
-                                                    {slot.key === "extra" && (
-                                                        <svg viewBox="0 0 24 24" className="w-5 h-5 text-[#7a6050]" fill="none" stroke="currentColor" strokeWidth="1.5">
-                                                            <path d="M12 5v14M5 12h14" strokeLinecap="round" strokeLinejoin="round"/>
-                                                        </svg>
-                                                    )}
                                                 </div>
                                                 
                                                 <h4 className="text-[12px] font-semibold text-[#2f2925] leading-tight">
@@ -880,17 +874,9 @@ export default function SellPageClient({
                             })}
                         </div>
 
-                        {/* Sparkling tip banner */}
-                        <div className="mt-5 flex items-center gap-3 rounded-[16px] bg-[#fbf8f5] px-4 py-3 text-[#7a6050] border border-[#f5eee6]">
-                            <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 text-[#cfb79f]" fill="none" stroke="currentColor" strokeWidth="1.5">
-                                <path d="M12 3v4M12 17v4M3 12h4M17 12h4M6.3 6.3l2.8 2.8M14.9 14.9l2.8 2.8M6.3 17.7l2.8-2.8M14.9 9.1l2.8-2.8" strokeLinecap="round"/>
-                            </svg>
-                            <span className="text-[12px] font-medium text-[#7a6050]">You can add multiple photos in any category.</span>
-                        </div>
-
                         <div className="mt-3 flex items-center justify-between gap-2">
                             <p className="text-xs text-muted-foreground">
-                                {orderedSlotFiles(slotFiles).length} photos uploaded · No limit
+                                {orderedSlotFiles(slotFiles).length} photos uploaded · up to 5
                             </p>
                         </div>
 
