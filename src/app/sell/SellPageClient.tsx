@@ -854,7 +854,7 @@ export default function SellPageClient({
                                     <p className="text-xs text-muted-foreground">
                                         {generatedImageUrls.length > 0 
                                             ? "AI cover photo generated! Limit: 1 generated cover per listing." 
-                                            : "Creates a studio-quality cover from your uploaded photos. Limit: 1 generated cover per listing."}
+                                            : "Creates a studio-quality cover from your uploaded photos (takes 2-4 minutes). Limit: 1 generated cover per listing."}
                                     </p>
                                 </div>
                             </div>
