@@ -25,49 +25,96 @@ function formatMemberSince(date: Date) {
   return `Member since ${date.toLocaleDateString("en-US", { month: "short", year: "numeric" })}`;
 }
 
-export default async function SellerProfilePage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const session = await auth();
-  const isOwnProfile = session?.user?.id === id;
-
-  const seller = await prisma.user.findUnique({
-    where: { id },
+const sellerSelect = {
+  id: true,
+  first_name: true,
+  last_name: true,
+  created_at: true,
+  listings: {
+    where: { moderation_status: "APPROVED" as const },
+    orderBy: { created_at: "desc" as const },
+    include: {
+      images: {
+        orderBy: { imageOrder: "asc" as const },
+        take: 1,
+        select: { imageUrl: true, thumbUrl: true, mediumUrl: true, imageOrder: true },
+      },
+    },
+  },
+  reviewsReceived: {
+    orderBy: { created_at: "desc" as const },
     select: {
       id: true,
-      first_name: true,
-      last_name: true,
+      seller_id: true,
+      rating: true,
+      text: true,
       created_at: true,
-      listings: {
-        where: { moderation_status: "APPROVED" },
-        orderBy: { created_at: "desc" },
-        include: {
-          images: {
-            orderBy: { imageOrder: "asc" },
-            take: 1,
-            select: { imageUrl: true, thumbUrl: true, mediumUrl: true, imageOrder: true },
-          },
-        },
-      },
-      reviewsReceived: {
-        orderBy: { created_at: "desc" },
+      reviewer: {
         select: {
-          id: true,
-          seller_id: true,
-          rating: true,
-          text: true,
-          created_at: true,
-          reviewer: {
-            select: {
-              first_name: true,
-              last_name: true,
-            },
-          },
+          first_name: true,
+          last_name: true,
         },
       },
     },
-  });
+  },
+};
+
+export default async function SellerProfilePage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const session = await auth();
+
+  let seller = null;
+
+  // 1. Try direct ID lookup if ID looks like UUID
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (uuidRegex.test(id)) {
+    seller = await prisma.user.findUnique({
+      where: { id },
+      select: sellerSelect
+    });
+  }
+
+  // 2. Try match by short ID at the end of the slug
+  if (!seller) {
+    const parts = id.split("-");
+    const shortId = parts[parts.length - 1];
+    if (shortId && shortId.length === 5) {
+      const match = await prisma.user.findFirst({
+        where: { id: { startsWith: shortId, mode: "insensitive" } },
+        select: { id: true }
+      });
+      if (match) {
+        seller = await prisma.user.findUnique({
+          where: { id: match.id },
+          select: sellerSelect
+        });
+      }
+    }
+  }
+
+  // 3. Try name match fallback
+  if (!seller) {
+    const parts = id.split("-");
+    const firstName = parts[0];
+    const lastName = parts.slice(1).join(" ");
+    const match = await prisma.user.findFirst({
+      where: {
+        first_name: { equals: firstName, mode: "insensitive" },
+        last_name: { equals: lastName, mode: "insensitive" }
+      },
+      select: { id: true }
+    });
+    if (match) {
+      seller = await prisma.user.findUnique({
+        where: { id: match.id },
+        select: sellerSelect
+      });
+    }
+  }
 
   if (!seller) notFound();
+
+  const isOwnProfile = session?.user?.id === seller.id;
 
   const listings = seller.listings.map((listing) => ({
     ...serializeListing(listing),

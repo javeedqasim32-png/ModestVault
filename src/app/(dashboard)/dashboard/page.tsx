@@ -3,18 +3,20 @@ import { prisma } from "@/lib/prisma";
 import { ChevronRight, CircleHelp, FileText, ShieldCheck, ShoppingBag, Tag, TrendingUp, UserRound, Wallet } from "lucide-react";
 import Link from "next/link";
 
+import { getUserProfileSlug } from "@/lib/serialization";
+
 export default async function ProfileDashboard() {
     const session = await auth();
     const userId = session?.user?.id;
 
     const dbUser = userId ? await prisma.user.findUnique({
         where: { id: userId },
-        select: { seller_enabled: true }
+        select: { seller_enabled: true, first_name: true, last_name: true }
     }) : null;
 
     const isSeller = dbUser?.seller_enabled || false;
     const isAdmin = (session?.user as { isAdmin?: boolean })?.isAdmin;
-    const profileHref = userId ? `/sellers/${userId}` : "/dashboard/settings";
+    const profileHref = dbUser ? `/sellers/${getUserProfileSlug({ ...dbUser, id: userId })}` : "/dashboard/settings";
     const favoriteDelegate = (prisma as unknown as {
         favoriteItem?: {
             count: (args: unknown) => Promise<number>;

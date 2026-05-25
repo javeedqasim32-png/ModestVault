@@ -5,6 +5,7 @@ import Link from "next/link";
 import localFont from "next/font/local";
 import { useMemo, useState } from "react";
 import { ChevronRight, ShoppingBag } from "lucide-react";
+import { getUserProfileSlug } from "@/lib/serialization";
 
 type MobileOrderItem = {
     id: string;
@@ -159,12 +160,13 @@ export default function MobileOrdersClient({ orders, cartCount }: { orders: Mobi
 
         const maxCategoryValue = categoryRows.length > 0 ? Math.max(...categoryRows.map((item) => item.value)) : 0;
 
-        const bySeller = new Map<string, { sellerId: string | null; name: string; orders: number; total: number }>();
+        const bySeller = new Map<string, { sellerId: string | null; name: string; slug: string; orders: number; total: number }>();
         for (const order of orders) {
             const first = (order.listing.user.first_name || "").trim();
             const last = (order.listing.user.last_name || "").trim();
             const sellerName = `${first} ${last}`.trim() || "Unknown Seller";
             const sellerId = order.listing.user.id ?? null;
+            const slug = getUserProfileSlug({ first_name: first, last_name: last, id: sellerId });
             const key = sellerId || sellerName.toLowerCase();
             const existing = bySeller.get(key);
             if (existing) {
@@ -174,6 +176,7 @@ export default function MobileOrdersClient({ orders, cartCount }: { orders: Mobi
                 bySeller.set(key, {
                     sellerId,
                     name: sellerName,
+                    slug,
                     orders: 1,
                     total: Number(order.amount || 0),
                 });
@@ -318,7 +321,7 @@ export default function MobileOrdersClient({ orders, cartCount }: { orders: Mobi
                                     return seller.sellerId ? (
                                         <Link
                                             key={`${seller.sellerId}-${index}`}
-                                            href={`/sellers/${seller.sellerId}`}
+                                            href={`/sellers/${seller.slug}`}
                                             className="flex items-center gap-3 rounded-[1rem] px-1 py-1"
                                         >
                                             {rowContent}

@@ -52,3 +52,20 @@ export function serializePurchase(purchase: any) {
         } : undefined,
     };
 }
+
+export function getUserProfileSlug(user?: { first_name?: string | null; last_name?: string | null; id?: string | null } | null): string {
+    if (!user) return "";
+    const first = (user.first_name || "").trim();
+    const last = (user.last_name || "").trim();
+    const id = user.id || "";
+    
+    const namePart = `${first} ${last}`
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "");
+    
+    const shortId = id.slice(0, 5);
+    return namePart ? `${namePart}-${shortId}` : id;
+}

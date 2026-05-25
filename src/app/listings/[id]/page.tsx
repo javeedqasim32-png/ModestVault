@@ -11,6 +11,8 @@ import FavoriteButton from "@/components/marketplace/FavoriteButton";
 import ListingImageGallery from "@/components/marketplace/ListingImageGallery";
 import ShareListingButton from "@/components/marketplace/ShareListingButton";
 
+import { getUserProfileSlug } from "@/lib/serialization";
+
 export const dynamic = "force-dynamic";
 
 const MEASUREMENTS_MARKER = "\n\nMeasurements:\n";
@@ -86,6 +88,11 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
     const orderedImages = getOrderedListingGallery(listing);
     const favoriteListingIds = new Set(await getFavoriteListingIdsForSessionUser([listing.id]));
     const sellerFullName = `${listing.user.first_name} ${listing.user.last_name}`.trim();
+    const sellerSlug = getUserProfileSlug({
+        first_name: listing.user.first_name,
+        last_name: listing.user.last_name,
+        id: listing.user_id,
+    });
     const sellerInitial = (listing.user.first_name?.[0] || "M").toUpperCase();
     const sellerReviewCount = listing.user.reviewsReceived.length;
     const sellerRatingAverage = sellerReviewCount
@@ -136,7 +143,7 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                         ${Number(listing.price).toLocaleString()}
                     </p>
 
-                    <Link href={`/sellers/${listing.user_id}`} className="mt-4 block rounded-[12px] border border-[#ddd3cb] bg-[#e8ddd1] px-[13px] py-[10px]">
+                    <Link href={`/sellers/${sellerSlug}`} className="mt-4 block rounded-[12px] border border-[#ddd3cb] bg-[#e8ddd1] px-[13px] py-[10px]">
                         <div className="flex items-center gap-3">
                             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-[1.5px] border-[#ddd3cb] bg-[#d2baa3] text-[16px] text-[#7a6050]" style={{ fontFamily: "var(--font-serif), serif" }}>
                                 {sellerInitial}
@@ -195,7 +202,7 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                                 <h2 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[#8a7667]">Reviews</h2>
                                 {sellerReviewCount > sellerReviews.length ? (
                                     <Link
-                                        href={`/sellers/${listing.user_id}#reviews`}
+                                        href={`/sellers/${sellerSlug}#reviews`}
                                         className="text-[12px] font-medium text-[#8a7667] hover:text-[#2f2925]"
                                     >
                                         View all {sellerReviewCount}

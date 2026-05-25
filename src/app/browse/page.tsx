@@ -4,7 +4,7 @@ import Image from "next/image";
 import { Package } from "lucide-react";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { serializeListing } from "@/lib/serialization";
+import { serializeListing, getUserProfileSlug } from "@/lib/serialization";
 import { getPrimaryListingImage } from "@/lib/listing-images";
 import BrowseFiltersClient from "@/components/marketplace/BrowseFiltersClient";
 import FavoriteButton from "@/components/marketplace/FavoriteButton";
@@ -70,10 +70,10 @@ export default async function BrowsePage({
                     ]
                 }))
             },
-            select: { id: true }
+            select: { id: true, first_name: true, last_name: true }
         });
         if (exactUserMatch) {
-            redirect(`/sellers/${exactUserMatch.id}`);
+            redirect(`/sellers/${getUserProfileSlug(exactUserMatch)}`);
         }
     }
 

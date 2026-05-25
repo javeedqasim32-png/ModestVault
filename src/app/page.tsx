@@ -12,6 +12,7 @@ import { cookies } from "next/headers";
 import { auth } from "@/auth";
 import { getRecentlyViewedCookieName, parseRecentlyViewedCookie } from "@/lib/recently-viewed";
 import { revalidatePath } from "next/cache";
+import { getUserProfileSlug } from "@/lib/serialization";
 
 const categories = [
   {
@@ -151,10 +152,11 @@ export default async function Home() {
         id: user.id,
         name: displayName,
         initials,
+        slug: getUserProfileSlug(user),
         soldCount: item._count._all,
       };
     })
-    .filter((seller): seller is { id: string; name: string; initials: string; soldCount: number } => seller !== null);
+    .filter((seller): seller is { id: string; name: string; initials: string; slug: string; soldCount: number } => seller !== null);
 
   const recentlyViewedListings = recentViewedIds.length
     ? await prisma.listing.findMany({
@@ -390,7 +392,7 @@ export default async function Home() {
                 {featuredSellers.map((seller) => (
                   <Link
                     key={seller.id}
-                    href={`/sellers/${seller.id}`}
+                    href={`/sellers/${seller.slug}`}
                     className="min-w-[110px] rounded-[1.6rem] border border-border/60 bg-[#f6f1ec] px-2 py-5 text-center sm:min-w-[140px]"
                   >
                     <div className="mx-auto mb-2 flex h-[44px] w-[44px] items-center justify-center rounded-full border-[2.5px] border-[#d9cdc3] bg-[#cdb79f] text-[15px] text-[#7b5f4f]">
