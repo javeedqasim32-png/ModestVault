@@ -238,7 +238,8 @@ MODEL APPEARANCE:
 
 FRAMING:
 - Full-body vertical portrait, model centered
-- Head-to-toe with no cropping at the feet or head
+- IMPORTANT: Scale down the model slightly (to approximately 80-85% of the frame height) to leave safe, generous empty vertical margin (breathing room/air space) both above the top of the hair/head and below the bottom of the feet/shoes.
+- Ensure that both the model's head and feet/shoes are fully visible inside the image boundary, far away from the top and bottom edges, so that they will never get cut off when rendered in standard 3:4 aspect ratio crops.
 - Soft cinematic studio lighting with realistic shadows
 
 AVOID:
@@ -325,7 +326,7 @@ The final result should resemble a real luxury Pakistani lawn brand campaign pho
     let finalImageUrl: string;
     try {
       const imageId = randomUUID();
-      const outKey = `ai-generated/${userId}/${imageId}.png`;
+      const outKey = `listings/ai-generated/${userId}/${imageId}.png`;
       await uploadFile(imageBuffer, outKey, "image/png", bucket);
       finalImageUrl = buildS3ImageUrl(outKey, bucket);
     } catch (err) {

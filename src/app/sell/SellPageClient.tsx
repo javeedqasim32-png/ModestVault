@@ -219,6 +219,13 @@ export default function SellPageClient({
     const [savingEdit, setSavingEdit] = useState(false);
     const [editFiles, setEditFiles] = useState<File[]>([]);
     const [editPreviewUrls, setEditPreviewUrls] = useState<string[]>([]);
+    const [title, setTitle] = useState("");
+    const [price, setPrice] = useState("");
+    const [brand, setBrand] = useState("");
+    const [description, setDescription] = useState("");
+    const [condition, setCondition] = useState("");
+    const [size, setSize] = useState("");
+    const [measurements, setMeasurements] = useState("");
     const [style, setStyle] = useState("");
     const [category, setCategory] = useState("");
     const [subcategory, setSubcategory] = useState("");
@@ -295,6 +302,79 @@ export default function SellPageClient({
             setViewedSoldListingIds(new Set());
         }
     }, [soldViewedStorageKey]);
+
+    useEffect(() => {
+        try {
+            const draft = window.localStorage.getItem(`modaire_listing_draft:${currentUserId}`);
+            if (draft) {
+                const parsed = JSON.parse(draft);
+                if (parsed.title) setTitle(parsed.title);
+                if (parsed.style) setStyle(parsed.style);
+                if (parsed.category) setCategory(parsed.category);
+                if (parsed.subcategory) setSubcategory(parsed.subcategory);
+                if (parsed.listingType) setListingType(parsed.listingType);
+                if (parsed.price) setPrice(parsed.price);
+                if (parsed.brand) setBrand(parsed.brand);
+                if (parsed.description) setDescription(parsed.description);
+                if (parsed.condition) setCondition(parsed.condition);
+                if (parsed.size) setSize(parsed.size);
+                if (parsed.measurements) setMeasurements(parsed.measurements);
+                if (Array.isArray(parsed.generatedImageUrls)) setGeneratedImageUrls(parsed.generatedImageUrls);
+            }
+        } catch (e) {
+            console.error("Failed to load draft listing", e);
+        }
+    }, [currentUserId]);
+
+    useEffect(() => {
+        const draft = {
+            title,
+            style,
+            category,
+            subcategory,
+            listingType,
+            price,
+            brand,
+            description,
+            condition,
+            size,
+            measurements,
+            generatedImageUrls,
+        };
+        const hasData = Object.keys(draft)
+            .filter(k => k !== "generatedImageUrls")
+            .some(k => (draft as any)[k] && (draft as any)[k].trim().length > 0) || generatedImageUrls.length > 0;
+            
+        if (hasData) {
+            window.localStorage.setItem(`modaire_listing_draft:${currentUserId}`, JSON.stringify(draft));
+        } else {
+            window.localStorage.removeItem(`modaire_listing_draft:${currentUserId}`);
+        }
+    }, [title, style, category, subcategory, listingType, price, brand, description, condition, size, measurements, generatedImageUrls, currentUserId]);
+
+    useEffect(() => {
+        if (typeof window !== "undefined") {
+            if (showCreateForm) {
+                window.history.replaceState(null, "", "?create=1");
+            } else {
+                window.history.replaceState(null, "", "/sell");
+            }
+        }
+    }, [showCreateForm]);
+
+    useEffect(() => {
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            if (isGenerating || loading) {
+                e.preventDefault();
+                e.returnValue = "Your listing or AI cover photo is currently being created. Are you sure you want to leave?";
+                return e.returnValue;
+            }
+        };
+        window.addEventListener("beforeunload", handleBeforeUnload);
+        return () => {
+            window.removeEventListener("beforeunload", handleBeforeUnload);
+        };
+    }, [isGenerating, loading]);
 
     const markSoldListingsViewed = (listingIds: string[]) => {
         if (listingIds.length === 0) return;
@@ -581,7 +661,8 @@ export default function SellPageClient({
                     <button
                         type="button"
                         onClick={() => setShowCreateForm(false)}
-                        className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm text-foreground"
+                        disabled={isGenerating}
+                        className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         Back
                     </button>
@@ -645,7 +726,15 @@ export default function SellPageClient({
                         setCategory("");
                         setSubcategory("");
                         setListingType("");
+                        setTitle("");
+                        setPrice("");
+                        setBrand("");
+                        setDescription("");
+                        setCondition("");
+                        setSize("");
+                        setMeasurements("");
                         setTaxonomyErrors({});
+                        window.localStorage.removeItem(`modaire_listing_draft:${currentUserId}`);
                         router.refresh();
                     }
                 } catch (err) {
@@ -671,7 +760,7 @@ export default function SellPageClient({
                                         <img
                                             src={url}
                                             alt={`AI cover ${index + 1}`}
-                                            className="aspect-[3/4] w-full rounded-md object-cover"
+                                            className="aspect-[2/3] w-full rounded-md object-cover"
                                         />
                                         <button
                                             type="button"
@@ -843,10 +932,12 @@ export default function SellPageClient({
                         )}
 
                         {isGenerating && (
-                            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-white/70 backdrop-blur-[2px]">
-                                <div className="h-10 w-10 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
-                                <p className="mt-3 text-sm font-medium text-foreground">Generating AI cover image…</p>
-                                <p className="mt-1 text-[10px] text-muted-foreground italic">This usually takes 2-3 minutes, hang tight</p>
+                            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-white/85 backdrop-blur-[2px] p-6 text-center">
+                                <div className="h-10 w-10 animate-spin rounded-full border-3 border-primary/20 border-t-primary" />
+                                <p className="mt-3 text-sm font-semibold text-foreground">AI Studio active...</p>
+                                <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed max-w-[240px] mx-auto">
+                                    Generating cover photo. Feel free to fill in the item details below!
+                                </p>
                             </div>
                         )}
 
@@ -872,7 +963,7 @@ export default function SellPageClient({
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <div className="space-y-2">
                             <Label htmlFor="title">Title</Label>
-                            <Input id="title" name="title" required placeholder="e.g., Silk Floral Abaya" className="h-12" />
+                            <Input id="title" name="title" required placeholder="e.g., Silk Floral Abaya" className="h-12" value={title} onChange={(e) => setTitle(e.target.value)} />
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="style">Style</Label>
@@ -995,11 +1086,11 @@ export default function SellPageClient({
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <div className="space-y-2">
                             <Label htmlFor="price">Price ($)</Label>
-                            <Input id="price" name="price" type="number" step="0.01" min="0.50" required placeholder="0.00" className="h-12" />
+                            <Input id="price" name="price" type="number" step="0.01" min="0.50" required placeholder="0.00" className="h-12" value={price} onChange={(e) => setPrice(e.target.value)} />
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="brand">Brand</Label>
-                            <Input id="brand" name="brand" placeholder="e.g., Luxury Modest" className="h-12" />
+                            <Input id="brand" name="brand" placeholder="e.g., Luxury Modest" className="h-12" value={brand} onChange={(e) => setBrand(e.target.value)} />
                         </div>
                     </div>
 
@@ -1012,6 +1103,8 @@ export default function SellPageClient({
                             rows={5}
                             placeholder="Describe the texture, fit, and details of this piece..."
                             className="w-full border border-border bg-background p-4 text-sm focus:border-primary focus:outline-none transition-colors resize-none"
+                            value={description}
+                            onChange={(e) => setDescription(e.target.value)}
                         ></textarea>
                     </div>
 
@@ -1021,6 +1114,8 @@ export default function SellPageClient({
                             <select
                                 id="condition"
                                 name="condition"
+                                value={condition}
+                                onChange={(e) => setCondition(e.target.value)}
                                 className="w-full h-12 border border-border bg-background px-4 text-sm focus:border-primary focus:outline-none transition-colors"
                             >
                                 <option value="">Select Condition</option>
@@ -1036,9 +1131,10 @@ export default function SellPageClient({
                                     id="size"
                                     name="size"
                                     className="h-12 w-full border border-border bg-background px-4 text-sm focus:border-primary focus:outline-none transition-colors"
-                                    defaultValue=""
+                                    value={size}
+                                    onChange={(e) => setSize(e.target.value)}
                                 >
-                                    <option value="" disabled>Select Size</option>
+                                    <option value="">Select Size</option>
                                     <option value="X-Small">X-Small</option>
                                     <option value="Small">Small</option>
                                     <option value="Medium">Medium</option>
@@ -1056,6 +1152,8 @@ export default function SellPageClient({
                                     maxLength={MAX_MEASUREMENTS_CHARS}
                                     placeholder="Shoulders, Bust, Waist, Hip, Length"
                                     className="w-full border border-border bg-background p-4 text-sm focus:border-primary focus:outline-none transition-colors resize-none"
+                                    value={measurements}
+                                    onChange={(e) => setMeasurements(e.target.value)}
                                 />
                             </div>
                         </div>
@@ -1070,7 +1168,7 @@ export default function SellPageClient({
                         type="submit"
                         isLoading={loading}
                         size="lg"
-                        disabled={!taxonomyValidation.ok || loading}
+                        disabled={!taxonomyValidation.ok || loading || isGenerating}
                         className="px-12 w-full sm:w-auto"
                     >
                         Publish Listing
@@ -1863,6 +1961,42 @@ export default function SellPageClient({
                     </div>
                 </div>
             </div>
+
+            {isGenerating && (
+                <>
+                    {/* Top Header Blocker */}
+                    <div 
+                        className="fixed top-0 left-0 right-0 h-24 z-[9999] cursor-not-allowed bg-black/5 backdrop-blur-[2px] flex items-center justify-center border-b border-border/40"
+                        title="Please wait for AI cover generation to complete before leaving"
+                    >
+                        <span className="bg-background/95 border border-border px-3 py-1 rounded-full text-[10px] font-semibold text-primary shadow-sm tracking-wider uppercase">
+                            AI Cover Studio Active • Navigation Blocked
+                        </span>
+                    </div>
+
+                    {/* Bottom Tab Bar Blocker */}
+                    <div 
+                        className="fixed bottom-0 left-0 right-0 h-24 z-[9999] cursor-not-allowed bg-black/5 backdrop-blur-[2px] flex items-center justify-center border-t border-border/40"
+                        title="Please wait for AI cover generation to complete before leaving"
+                    >
+                        <span className="bg-background/95 border border-border px-3 py-1 rounded-full text-[10px] font-semibold text-primary shadow-sm tracking-wider uppercase">
+                            AI Cover Studio Active • Navigation Blocked
+                        </span>
+                    </div>
+                </>
+            )}
+
+            {loading && (
+                <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black/60 backdrop-blur-[4px]">
+                    <div className="max-w-xs w-[80%] bg-background border border-border p-6 rounded-xl shadow-2xl text-center space-y-4 animate-in fade-in zoom-in duration-200">
+                        <div className="h-10 w-10 animate-spin rounded-full border-3 border-primary/20 border-t-primary mx-auto" />
+                        <div className="space-y-1">
+                            <h3 className="font-semibold text-foreground">Publishing Listing...</h3>
+                            <p className="text-xs text-muted-foreground">Uploading images and securing your database record.</p>
+                        </div>
+                    </div>
+                </div>
+            )}
         </>
     );
 }
