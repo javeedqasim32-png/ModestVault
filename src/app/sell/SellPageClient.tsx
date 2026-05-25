@@ -851,7 +851,11 @@ export default function SellPageClient({
                                 <Sparkles className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
                                 <div>
                                     <p className="text-sm font-medium text-foreground">Generate an AI cover photo</p>
-                                    <p className="text-xs text-muted-foreground">Creates a studio-quality cover from your uploaded photos. Usually takes 2-3 minutes.</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        {generatedImageUrls.length > 0 
+                                            ? "AI cover photo generated! Limit: 1 generated cover per listing." 
+                                            : "Creates a studio-quality cover from your uploaded photos. Limit: 1 generated cover per listing."}
+                                    </p>
                                 </div>
                             </div>
                             <Button
@@ -859,6 +863,10 @@ export default function SellPageClient({
                                 variant="primary"
                                 size="md"
                                 onClick={async () => {
+                                    if (generatedImageUrls.length > 0) {
+                                        setError("You have already generated an AI cover photo for this listing.");
+                                        return;
+                                    }
                                     const filledSlots = SLOTS.filter((s) => slotFiles[s.key]);
                                     if (filledSlots.length === 0) {
                                         setError("Please upload at least one product photo first before generating a cover.");
@@ -916,7 +924,7 @@ export default function SellPageClient({
                                         setIsGenerating(false);
                                     }
                                 }}
-                                disabled={isGenerating || orderedSlotFiles(slotFiles).length === 0}
+                                disabled={isGenerating || orderedSlotFiles(slotFiles).length === 0 || generatedImageUrls.length > 0}
                                 isLoading={isGenerating}
                                 className="w-full sm:w-auto"
                             >
