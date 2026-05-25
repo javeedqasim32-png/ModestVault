@@ -11,6 +11,8 @@ import localFont from "next/font/local";
 import SellerReviewsSection from "@/components/marketplace/SellerReviewsSection";
 import { auth } from "@/auth";
 
+import { getSlugToUserMap } from "@/lib/user-slugs";
+
 export const dynamic = "force-dynamic";
 
 const cormorantHeading = localFont({
@@ -63,54 +65,14 @@ export default async function SellerProfilePage({ params }: { params: Promise<{ 
   const { id } = await params;
   const session = await auth();
 
-  let seller = null;
-
-  // 1. Try direct ID lookup if ID looks like UUID
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (uuidRegex.test(id)) {
-    seller = await prisma.user.findUnique({
-      where: { id },
-      select: sellerSelect
-    });
-  }
+  const slugToUserMap = await getSlugToUserMap();
+  const userId = slugToUserMap.get(id.toLowerCase()) || (uuidRegex.test(id) ? id : null);
 
-  // 2. Try match by short ID at the end of the slug
-  if (!seller) {
-    const parts = id.split("-");
-    const shortId = parts[parts.length - 1];
-    if (shortId && shortId.length === 5) {
-      const match = await prisma.user.findFirst({
-        where: { id: { startsWith: shortId, mode: "insensitive" } },
-        select: { id: true }
-      });
-      if (match) {
-        seller = await prisma.user.findUnique({
-          where: { id: match.id },
-          select: sellerSelect
-        });
-      }
-    }
-  }
-
-  // 3. Try name match fallback
-  if (!seller) {
-    const parts = id.split("-");
-    const firstName = parts[0];
-    const lastName = parts.slice(1).join(" ");
-    const match = await prisma.user.findFirst({
-      where: {
-        first_name: { equals: firstName, mode: "insensitive" },
-        last_name: { equals: lastName, mode: "insensitive" }
-      },
-      select: { id: true }
-    });
-    if (match) {
-      seller = await prisma.user.findUnique({
-        where: { id: match.id },
-        select: sellerSelect
-      });
-    }
-  }
+  const seller = userId ? await prisma.user.findUnique({
+    where: { id: userId },
+    select: sellerSelect
+  }) : null;
 
   if (!seller) notFound();
 

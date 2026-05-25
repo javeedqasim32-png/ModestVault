@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/Button";
 import ListingCard from "@/components/marketplace/ListingCard";
 import MobileOrdersClient from "./MobileOrdersClient";
 
+import { getUserSlugMap } from "@/lib/user-slugs";
+
 export const dynamic = "force-dynamic";
 
 export default async function PurchasesPage() {
@@ -61,6 +63,7 @@ export default async function PurchasesPage() {
         );
     }
 
+    const slugMap = await getUserSlugMap();
     const mobileOrders = purchases.map((purchase) => {
         const orderStatus = purchase.order?.shipping_status || "PROCESSING";
 
@@ -89,6 +92,7 @@ export default async function PurchasesPage() {
                     id: purchase.listing.user.id,
                     first_name: purchase.listing.user.first_name,
                     last_name: purchase.listing.user.last_name,
+                    slug: slugMap.get(purchase.listing.user.id) || purchase.listing.user.id,
                 },
             },
         };

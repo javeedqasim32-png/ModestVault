@@ -12,7 +12,7 @@ import { cookies } from "next/headers";
 import { auth } from "@/auth";
 import { getRecentlyViewedCookieName, parseRecentlyViewedCookie } from "@/lib/recently-viewed";
 import { revalidatePath } from "next/cache";
-import { getUserProfileSlug } from "@/lib/serialization";
+import { getUserSlugMap } from "@/lib/user-slugs";
 
 const categories = [
   {
@@ -139,6 +139,7 @@ export default async function Home() {
       })
     : [];
 
+  const slugMap = await getUserSlugMap();
   const topSellerUserById = new Map(topSellerUsers.map((user) => [user.id, user]));
   const featuredSellers = topSellerStats
     .map((item) => {
@@ -152,7 +153,7 @@ export default async function Home() {
         id: user.id,
         name: displayName,
         initials,
-        slug: getUserProfileSlug(user),
+        slug: slugMap.get(user.id) || user.id,
         soldCount: item._count._all,
       };
     })

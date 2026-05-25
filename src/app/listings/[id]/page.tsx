@@ -11,7 +11,7 @@ import FavoriteButton from "@/components/marketplace/FavoriteButton";
 import ListingImageGallery from "@/components/marketplace/ListingImageGallery";
 import ShareListingButton from "@/components/marketplace/ShareListingButton";
 
-import { getUserProfileSlug } from "@/lib/serialization";
+import { getUserSlugMap } from "@/lib/user-slugs";
 
 export const dynamic = "force-dynamic";
 
@@ -88,11 +88,8 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
     const orderedImages = getOrderedListingGallery(listing);
     const favoriteListingIds = new Set(await getFavoriteListingIdsForSessionUser([listing.id]));
     const sellerFullName = `${listing.user.first_name} ${listing.user.last_name}`.trim();
-    const sellerSlug = getUserProfileSlug({
-        first_name: listing.user.first_name,
-        last_name: listing.user.last_name,
-        id: listing.user_id,
-    });
+    const slugMap = await getUserSlugMap();
+    const sellerSlug = slugMap.get(listing.user_id) || listing.user_id;
     const sellerInitial = (listing.user.first_name?.[0] || "M").toUpperCase();
     const sellerReviewCount = listing.user.reviewsReceived.length;
     const sellerRatingAverage = sellerReviewCount

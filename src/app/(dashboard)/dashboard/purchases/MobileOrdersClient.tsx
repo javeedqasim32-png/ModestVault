@@ -5,7 +5,6 @@ import Link from "next/link";
 import localFont from "next/font/local";
 import { useMemo, useState } from "react";
 import { ChevronRight, ShoppingBag } from "lucide-react";
-import { getUserProfileSlug } from "@/lib/serialization";
 
 type MobileOrderItem = {
     id: string;
@@ -28,6 +27,7 @@ type MobileOrderItem = {
             id?: string;
             first_name: string;
             last_name: string;
+            slug?: string;
         };
     };
 };
@@ -166,7 +166,7 @@ export default function MobileOrdersClient({ orders, cartCount }: { orders: Mobi
             const last = (order.listing.user.last_name || "").trim();
             const sellerName = `${first} ${last}`.trim() || "Unknown Seller";
             const sellerId = order.listing.user.id ?? null;
-            const slug = getUserProfileSlug({ first_name: first, last_name: last, id: sellerId });
+            const slug = order.listing.user.slug || sellerId || "";
             const key = sellerId || sellerName.toLowerCase();
             const existing = bySeller.get(key);
             if (existing) {
