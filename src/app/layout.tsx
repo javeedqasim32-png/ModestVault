@@ -34,6 +34,9 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
     title: "Modaire",
   },
+  icons: {
+    apple: "/apple-touch-icon.png",
+  },
   openGraph: {
     title: "Modaire Modest Fashion Marketplace",
     description: "Shop the latest modest fashion — curated collections, premium quality, and global community.",
