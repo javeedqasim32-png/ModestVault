@@ -791,7 +791,7 @@ export default function SellPageClient({
                                 return (
                                     <div key={slot.key}>
                                         {file && previewUrl ? (
-                                            <div className="relative aspect-[3/4] overflow-hidden rounded-[20px] border border-[#f2e7de] bg-[#fbf9f6] transition-all hover:shadow-sm">
+                                            <div className="relative aspect-[3/4] overflow-hidden rounded-[28px] border border-[#f2e7de] bg-[#fbf9f6] transition-all hover:shadow-sm">
                                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                                 <img
                                                     src={previewUrl}
@@ -821,7 +821,7 @@ export default function SellPageClient({
                                                     setActiveUploadSlot(slot.key);
                                                     fileInputRef.current?.click();
                                                 }}
-                                                className="flex aspect-[3/4] w-full flex-col items-center justify-center px-4 py-6 rounded-[20px] border border-[#f2e7de] bg-[#fbf9f6] text-center transition-all hover:bg-[#f6efe7] hover:border-[#ebdccf]"
+                                                className="flex aspect-[3/4] w-full flex-col items-center justify-center px-4 py-6 rounded-[28px] border border-[#f2e7de] bg-[#fbf9f6] text-center transition-all hover:bg-[#f6efe7] hover:border-[#ebdccf]"
                                             >
                                                 <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-full border border-[#f2e7de] bg-white shrink-0">
                                                     {slot.key === "fullOutfit" && (
