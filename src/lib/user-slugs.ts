@@ -6,6 +6,12 @@ let cachedReverseMap: Map<string, string> | null = null;
 let cacheTimestamp = 0;
 const CACHE_DURATION_MS = 10000; // Cache duration (10 seconds) for real-time freshness with database safety
 
+const RESERVED = new Set([
+  "api", "_next", "sell", "browse", "dashboard", "listings",
+  "messages", "admin", "login", "signup", "logout", "favicon",
+  "policies", "support", "settings", "sellers"
+]);
+
 export async function getUserSlugMap(): Promise<Map<string, string>> {
     const now = Date.now();
     
@@ -43,6 +49,10 @@ export async function getUserSlugMap(): Promise<Map<string, string>> {
         let baseSlug = `${first}-${last}`.replace(/^-|-$/g, "");
         if (!baseSlug) {
             baseSlug = "User";
+        }
+
+        if (RESERVED.has(baseSlug.toLowerCase())) {
+            baseSlug = `${baseSlug}-1`;
         }
 
         const currentCount = slugCounts.get(baseSlug) || 0;
