@@ -29,6 +29,11 @@ const cormorantLocal = localFont({
 export const metadata: Metadata = {
   title: "Modaire Modest Fashion Marketplace",
   description: "Shop the latest modest fashion — curated collections, premium quality, and global community.",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Modaire",
+  },
   openGraph: {
     title: "Modaire Modest Fashion Marketplace",
     description: "Shop the latest modest fashion — curated collections, premium quality, and global community.",
