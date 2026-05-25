@@ -959,7 +959,7 @@ export default function SellPageClient({
                                 }}
                                 disabled={isGenerating || orderedSlotFiles(slotFiles).length === 0 || generatedImageUrls.length > 0}
                                 isLoading={isGenerating}
-                                className="w-full bg-white hover:bg-[#faf6f0] border-[#cfb79f] text-[#7a6050] hover:text-[#4a3328]"
+                                className="w-full bg-white hover:bg-[#faf6f0] border-[#cfb79f] text-[#7a6050] hover:text-[#4a3328] rounded-[28px]"
                             >
                                 {isGenerating ? "Generating…" : "Generate Cover"}
                             </Button>
@@ -1209,7 +1209,7 @@ export default function SellPageClient({
                         isLoading={loading}
                         size="lg"
                         disabled={!taxonomyValidation.ok || loading || isGenerating}
-                        className="px-12 w-full sm:w-auto"
+                        className="px-12 w-full sm:w-auto rounded-[28px]"
                     >
                         Publish Listing
                     </Button>
