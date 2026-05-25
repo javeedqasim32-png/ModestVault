@@ -18,12 +18,18 @@ export async function getUserSlugMap(): Promise<Map<string, string>> {
     const slugCounts = new Map<string, number>(); // baseSlug -> count
 
     for (const u of users) {
-        const first = (u.first_name || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
-        const last = (u.last_name || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+        const cap = (s: string) => {
+            const cleaned = s.trim().replace(/[^a-zA-Z0-9]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+            if (!cleaned) return "";
+            return cleaned.split("-").map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join("-");
+        };
+
+        const first = cap(u.first_name || "");
+        const last = cap(u.last_name || "");
         
         let baseSlug = `${first}-${last}`.replace(/^-|-$/g, "");
         if (!baseSlug) {
-            baseSlug = "user";
+            baseSlug = "User";
         }
 
         const currentCount = slugCounts.get(baseSlug) || 0;
