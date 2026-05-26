@@ -6,7 +6,7 @@ import localFont from "next/font/local";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createListing, deleteListing, replaceListingImages, updateListing } from "../actions/listings";
 import { onboardSellerAction } from "../actions/stripe";
-import { Tag, UploadCloud, ChevronLeft, ChevronRight, Heart, PackagePlus, X, Printer, TrendingUp, Users, ShieldCheck, CreditCard, Sparkles } from "lucide-react";
+import { Tag, UploadCloud, ChevronLeft, ChevronRight, Heart, PackagePlus, X, Printer, TrendingUp, Users, ShieldCheck, CreditCard, Sparkles, Plus } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
 import { useRouter } from "next/navigation";
@@ -807,8 +807,8 @@ export default function SellPageClient({
                     </div>
 
                     <div className="relative">
-                        {/* Large, beautiful multi-image dropzone if selectedFiles.length < 6 */}
-                        {selectedFiles.length < 6 && (
+                        {/* 1. Large, gorgeous full-width dropzone ONLY when no photos are uploaded yet */}
+                        {previewUrls.length === 0 && (
                             <button
                                 type="button"
                                 onClick={() => fileInputRef.current?.click()}
@@ -826,7 +826,7 @@ export default function SellPageClient({
                             </button>
                         )}
 
-                        {/* Horizontal rearrangeable thumbnail grid */}
+                        {/* 2. Premium unified grid containing both thumbnails and compact plus-card */}
                         {previewUrls.length > 0 && (
                             <div className="grid grid-cols-2 gap-4 sm:grid-cols-6 mb-6">
                                 {previewUrls.map((url, index) => (
@@ -887,6 +887,21 @@ export default function SellPageClient({
                                         </div>
                                     </div>
                                 ))}
+
+                                {/* Beautiful 'Add Photo' slot card integrated directly inside the grid if under the 6 images limit */}
+                                {previewUrls.length < 6 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => fileInputRef.current?.click()}
+                                        className="flex aspect-[3/4] flex-col items-center justify-center rounded-[24px] border border-dashed border-[#cfb79f] bg-[#fbf9f6] hover:bg-[#f6efe7] hover:border-[#ebdccf] transition-all text-center cursor-pointer p-3"
+                                    >
+                                        <div className="flex h-11 w-11 items-center justify-center rounded-full border border-[#f2e7de] bg-white text-[#7a6050] mb-2 shrink-0 shadow-sm">
+                                            <Plus className="h-5 w-5" />
+                                        </div>
+                                        <span className="text-[13px] font-semibold text-[#2f2925]">Add Photo</span>
+                                        <span className="text-[10px] text-[#8a7667] mt-0.5">({6 - previewUrls.length} left)</span>
+                                    </button>
+                                )}
                             </div>
                         )}
 
