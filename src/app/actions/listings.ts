@@ -14,7 +14,7 @@ import { getUserSlugMap } from "@/lib/user-slugs";
 
 const MAX_LISTING_IMAGES = 6;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-const MAX_TOTAL_IMAGE_BYTES = 18 * 1024 * 1024;
+const MAX_TOTAL_IMAGE_BYTES = 36 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
 function logCreateListingReject(reason: string, details?: Record<string, unknown>) {

@@ -72,8 +72,8 @@ const SLOTS: Array<{ key: SlotRole; label: string; optional?: boolean; subtitle?
 const orderedSlotFiles = (slots: Partial<Record<SlotRole, File>>): File[] =>
     SLOTS.map((s) => slots[s.key]).filter((f): f is File => Boolean(f));
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-const MAX_TOTAL_IMAGE_BYTES = 18 * 1024 * 1024;
-const COMPRESSIBLE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MAX_TOTAL_IMAGE_BYTES = 36 * 1024 * 1024;
+const COMPRESSIBLE_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
 const MAX_OPTIMIZED_DIMENSION = 2000;
 const MAX_MEASUREMENTS_CHARS = 300;
 const MEASUREMENTS_MARKER = "\n\nMeasurements:\n";
@@ -136,11 +136,20 @@ async function loadImageFromFile(file: File): Promise<HTMLImageElement> {
 }
 
 async function canvasToWebpBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
-    const blob = await new Promise<Blob | null>((resolve) => {
+    // 1. Attempt standard modern WebP format
+    let blob = await new Promise<Blob | null>((resolve) => {
         canvas.toBlob((output) => resolve(output), "image/webp", quality);
     });
+
+    // 2. Universal fallback to JPEG if WebP canvas encoding is unsupported (e.g. Safari on some iOS/macOS versions)
+    if (!blob || blob.type !== "image/webp") {
+        blob = await new Promise<Blob | null>((resolve) => {
+            canvas.toBlob((output) => resolve(output), "image/jpeg", quality);
+        });
+    }
+
     if (!blob) {
-        throw new Error("Failed to encode image.");
+        throw new Error("Failed to encode image canvas.");
     }
     return blob;
 }
@@ -183,10 +192,13 @@ async function optimizeImageFile(file: File): Promise<File> {
             return file;
         }
 
+        const finalMime = bestBlob.type || "image/jpeg";
+        const finalExt = finalMime === "image/jpeg" ? "jpg" : "webp";
+
         return new File(
             [bestBlob],
-            replaceFileExtension(file.name || "upload", "webp"),
-            { type: "image/webp", lastModified: Date.now() }
+            replaceFileExtension(file.name || "upload", finalExt),
+            { type: finalMime, lastModified: Date.now() }
         );
     } catch (error) {
         console.warn("Image optimization skipped:", error);
