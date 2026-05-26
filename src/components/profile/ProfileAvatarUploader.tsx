@@ -2,7 +2,7 @@
 
 import React, { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, Loader2 } from "lucide-react";
+import { Camera, Loader2, Pencil } from "lucide-react";
 import { updateUserProfilePicture } from "@/app/actions/auth";
 
 interface ProfileAvatarUploaderProps {
@@ -69,36 +69,50 @@ export default function ProfileAvatarUploader({
 
     return (
         <div className="flex flex-col items-center">
-            <div
-                onClick={handleAvatarClick}
-                className={`relative mb-3 flex h-[80px] w-[80px] min-h-[80px] min-w-[80px] items-center justify-center rounded-full border-[3px] border-[#ddd3cb] bg-[#cfb79f] text-[30px] text-[#7a6050] select-none overflow-hidden transition-all duration-300 ${
-                    isOwnProfile && !isUploading ? "cursor-pointer hover:border-[#cfb79f] hover:brightness-95 active:scale-95" : ""
-                }`}
-                style={{ fontFamily: "var(--font-serif), serif" }}
-            >
-                {/* 1. Render image if exists, else initials */}
-                {profileImage ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                        src={profileImage}
-                        alt="Profile Avatar"
-                        className="h-full w-full object-cover rounded-full select-none"
-                    />
-                ) : (
-                    <span>{initials}</span>
-                )}
+            {/* Interactive container with group for synchronized hover scale states */}
+            <div className="relative mb-3 group">
+                {/* 1. Main Avatar Circle */}
+                <div
+                    onClick={handleAvatarClick}
+                    className={`relative flex h-[80px] w-[80px] min-h-[80px] min-w-[80px] items-center justify-center rounded-full border-[3px] border-[#ddd3cb] bg-[#cfb79f] text-[30px] text-[#7a6050] select-none overflow-hidden transition-all duration-300 ${
+                        isOwnProfile && !isUploading ? "cursor-pointer hover:border-[#cfb79f] hover:brightness-95 active:scale-95" : ""
+                    }`}
+                    style={{ fontFamily: "var(--font-serif), serif" }}
+                >
+                    {profileImage ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                            src={profileImage}
+                            alt="Profile Avatar"
+                            className="h-full w-full object-cover rounded-full select-none"
+                        />
+                    ) : (
+                        <span>{initials}</span>
+                    )}
 
-                {/* 2. Interactive hover overlay for owner */}
+                    {/* Interactive hover overlay for owner */}
+                    {isOwnProfile && !isUploading && (
+                        <div className="absolute inset-0 bg-black/35 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                            <Camera className="h-5 w-5 text-white" />
+                        </div>
+                    )}
+
+                    {/* Uploading spinner overlay */}
+                    {isUploading && (
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                            <Loader2 className="h-6 w-6 text-white animate-spin" />
+                        </div>
+                    )}
+                </div>
+
+                {/* 2. Sleek bottom-right edit pencil badge for owner */}
                 {isOwnProfile && !isUploading && (
-                    <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity duration-200">
-                        <Camera className="h-5 w-5 text-white" />
-                    </div>
-                )}
-
-                {/* 3. Uploading spinner overlay */}
-                {isUploading && (
-                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                        <Loader2 className="h-6 w-6 text-white animate-spin" />
+                    <div
+                        onClick={handleAvatarClick}
+                        className="absolute bottom-0 right-0 flex h-6 w-6 items-center justify-center rounded-full border border-[#ddd3cb] bg-white text-[#7a6050] shadow-[0_2px_4px_rgba(0,0,0,0.08)] transition-all duration-200 group-hover:scale-110 active:scale-95 cursor-pointer hover:bg-[#faf6f0] hover:text-[#cfb79f] z-20"
+                        title="Change profile picture"
+                    >
+                        <Pencil className="h-3.5 w-3.5" />
                     </div>
                 )}
             </div>
