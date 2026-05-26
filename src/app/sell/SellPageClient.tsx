@@ -917,7 +917,7 @@ export default function SellPageClient({
                                     Upload Photos
                                 </h4>
                                 <p className="mt-1.5 text-xs text-[#8a7667] max-w-[280px]">
-                                    Select up to 5 photos of your item. The first photo will be used as the primary cover photo.
+                                    Select up to 5 photos of your item. Drag and drop photos to rearrange their order.
                                 </p>
                             </button>
                         )}
@@ -941,7 +941,7 @@ export default function SellPageClient({
                                             onTouchMove={(e) => handleTouchMove(e, index)}
                                             onTouchEnd={handleTouchEnd}
                                             onTouchCancel={handleTouchEnd}
-                                            className={`relative aspect-[3/4] rounded-[24px] border p-1.5 flex flex-col justify-between transition-all bg-[#fbf9f6] select-none ${
+                                            className={`group relative aspect-[3/4] rounded-[24px] border p-1.5 flex flex-col justify-between transition-all bg-[#fbf9f6] select-none ${
                                                 isDraggingThis ? "opacity-30 scale-95 duration-100" : ""
                                             } ${
                                                 isDragOverThis ? "border-[#cfb79f] bg-[#f6efe7] scale-[1.02] duration-200" : index === 0 ? "border-[#cfb79f] ring-1 ring-[#cfb79f]/20" : "border-[#f2e7de]"
@@ -950,11 +950,11 @@ export default function SellPageClient({
                                         >
                                             {/* Centered Top Grab Handle Badge */}
                                             <div 
-                                                className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-white border border-[#e8ded5] rounded-md h-6 w-9 flex items-center justify-center shadow-[0_2px_4px_rgba(0,0,0,0.06)] cursor-grab active:cursor-grabbing z-20 hover:scale-105 active:scale-95 transition-all"
+                                                className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-white border border-[#e8ded5] group-hover:border-[#cfb79f] rounded-md h-6 w-9 flex items-center justify-center shadow-[0_2px_4px_rgba(0,0,0,0.06)] cursor-grab active:cursor-grabbing z-20 group-hover:scale-110 active:scale-95 transition-all duration-200"
                                                 title="Drag to reorder"
                                                 style={{ touchAction: "none", WebkitTouchCallout: "none" }}
                                             >
-                                                <GripHorizontal className="h-3.5 w-3.5 text-[#8a7667]" />
+                                                <GripHorizontal className="h-3.5 w-3.5 text-[#8a7667] group-hover:text-[#cfb79f] transition-colors duration-200" />
                                             </div>
 
                                             {/* Delete button placed on top layer with stopPropagation to avoid touch drag conflicts */}
@@ -1034,8 +1034,9 @@ export default function SellPageClient({
                         )}
 
                         <div className="mt-3 flex items-center justify-between gap-2">
-                            <p className="text-xs text-muted-foreground">
-                                {selectedFiles.length} photos uploaded · up to 5
+                            <p className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium text-[#7a6050]">
+                                <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                {selectedFiles.length} photos uploaded · Drag photos to rearrange
                             </p>
                         </div>
 
