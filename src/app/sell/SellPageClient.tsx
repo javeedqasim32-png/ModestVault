@@ -6,7 +6,7 @@ import localFont from "next/font/local";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createListing, deleteListing, replaceListingImages, updateListing } from "../actions/listings";
 import { onboardSellerAction } from "../actions/stripe";
-import { Tag, UploadCloud, ChevronLeft, ChevronRight, Heart, PackagePlus, X, Printer, TrendingUp, Users, ShieldCheck, CreditCard, Sparkles, Plus } from "lucide-react";
+import { Tag, UploadCloud, ChevronLeft, ChevronRight, Heart, PackagePlus, X, Printer, TrendingUp, Users, ShieldCheck, CreditCard, Sparkles, Plus, GripHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
 import { useRouter } from "next/navigation";
@@ -222,6 +222,8 @@ export default function SellPageClient({
     const [previewUrls, setPreviewUrls] = useState<string[]>([]);
     const [generatedImageUrls, setGeneratedImageUrls] = useState<string[]>([]);
     const [isGenerating, setIsGenerating] = useState(false);
+    const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+    const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
     const [mobileTab, setMobileTab] = useState<SellTab>("LISTINGS");
     const [showCreateForm, setShowCreateForm] = useState(openCreateInitially);
     const [editingListing, setEditingListing] = useState<ListingItem | null>(null);
@@ -552,6 +554,37 @@ export default function SellPageClient({
         });
     };
 
+    const handleDragStart = (e: React.DragEvent, index: number) => {
+        setDraggedIndex(index);
+        e.dataTransfer.effectAllowed = "move";
+    };
+
+    const handleDragOver = (e: React.DragEvent, index: number) => {
+        e.preventDefault();
+        if (draggedIndex === null || draggedIndex === index) return;
+        setDragOverIndex(index);
+    };
+
+    const handleDragEnd = () => {
+        setDraggedIndex(null);
+        setDragOverIndex(null);
+    };
+
+    const handleDrop = (e: React.DragEvent, index: number) => {
+        e.preventDefault();
+        if (draggedIndex === null || draggedIndex === index) return;
+
+        setSelectedFiles((prev) => {
+            const updated = [...prev];
+            const [draggedItem] = updated.splice(draggedIndex, 1);
+            updated.splice(index, 0, draggedItem);
+            return updated;
+        });
+
+        setDraggedIndex(null);
+        setDragOverIndex(null);
+    };
+
     const removeGeneratedImage = (indexToRemove: number) => {
         setGeneratedImageUrls((prev) => prev.filter((_, index) => index !== indexToRemove));
     };
@@ -829,83 +862,82 @@ export default function SellPageClient({
                         {/* 2. Premium unified grid containing both thumbnails and compact plus-card */}
                         {previewUrls.length > 0 && (
                             <div className="grid grid-cols-2 gap-4 sm:grid-cols-5 mb-6">
-                                {previewUrls.map((url, index) => (
-                                    <div 
-                                        key={`${url}-${index}`} 
-                                        className={`relative aspect-[3/4] rounded-[24px] overflow-hidden border p-1.5 flex flex-col justify-between transition-all bg-[#fbf9f6] ${index === 0 ? "border-[#cfb79f] ring-1 ring-[#cfb79f]/20" : "border-[#f2e7de]"}`}
-                                    >
-                                        <div className="relative w-full h-full rounded-[18px] overflow-hidden">
-                                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                                            <img
-                                                src={url}
-                                                alt={`Preview ${index + 1}`}
-                                                className="h-full w-full object-cover"
-                                            />
-                                            {/* Dynamic Role Badges based on index selection order */}
-                                            {index === 0 && (
-                                                <span className="absolute left-2.5 top-2.5 bg-[#cfb79f] text-[#4a3328] text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
-                                                    {generatedImageUrls.length > 0 ? "Full Outfit" : "Cover · Full Outfit"}
-                                                </span>
-                                            )}
-                                            {index === 1 && (
-                                                <span className="absolute left-2.5 top-2.5 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
-                                                    Top
-                                                </span>
-                                            )}
-                                            {index === 2 && (
-                                                <span className="absolute left-2.5 top-2.5 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
-                                                    Bottom
-                                                </span>
-                                            )}
-                                            {index === 3 && (
-                                                <span className="absolute left-2.5 top-2.5 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
-                                                    Accessories
-                                                </span>
-                                            )}
-                                            {index === 4 && (
-                                                <span className="absolute left-2.5 top-2.5 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
-                                                    Close-up
-                                                </span>
-                                            )}
-                                            {index >= 5 && (
-                                                <span className="absolute left-2.5 top-2.5 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
-                                                    Additional
-                                                </span>
-                                            )}
-                                            {/* Delete button */}
-                                            <button
-                                                type="button"
-                                                onClick={() => removeImage(index)}
-                                                aria-label="Remove image"
-                                                className="absolute right-2.5 top-2.5 inline-flex h-6.5 w-6.5 items-center justify-center rounded-full bg-black/60 text-white shadow-sm hover:scale-105 active:scale-95 transition-transform"
+                                {previewUrls.map((url, index) => {
+                                    const isDraggingThis = draggedIndex === index;
+                                    const isDragOverThis = dragOverIndex === index;
+                                    return (
+                                        <div 
+                                            key={`${url}-${index}`} 
+                                            draggable
+                                            onDragStart={(e) => handleDragStart(e, index)}
+                                            onDragOver={(e) => handleDragOver(e, index)}
+                                            onDragEnd={handleDragEnd}
+                                            onDrop={(e) => handleDrop(e, index)}
+                                            className={`relative aspect-[3/4] rounded-[24px] border p-1.5 flex flex-col justify-between transition-all bg-[#fbf9f6] select-none ${
+                                                isDraggingThis ? "opacity-30 scale-95 duration-100" : ""
+                                            } ${
+                                                isDragOverThis ? "border-[#cfb79f] bg-[#f6efe7] scale-[1.02] duration-200" : index === 0 ? "border-[#cfb79f] ring-1 ring-[#cfb79f]/20" : "border-[#f2e7de]"
+                                            }`}
+                                        >
+                                            {/* Centered Top Grab Handle Badge */}
+                                            <div 
+                                                className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-white border border-[#e8ded5] rounded-md h-6 w-9 flex items-center justify-center shadow-[0_2px_4px_rgba(0,0,0,0.06)] cursor-grab active:cursor-grabbing z-20 hover:scale-105 active:scale-95 transition-all"
+                                                title="Drag to reorder"
                                             >
-                                                <X className="h-3.5 w-3.5" />
-                                            </button>
-                                        </div>
+                                                <GripHorizontal className="h-3.5 w-3.5 text-[#8a7667]" />
+                                            </div>
 
-                                        {/* Shift / Set First Controls */}
-                                        <div className="mt-2 flex gap-1 justify-center w-full">
-                                            <button
-                                                type="button"
-                                                disabled={index === 0}
-                                                onClick={() => moveImage(index, 'left')}
-                                                className="flex-1 py-1 rounded-lg bg-white border border-[#f2e7de] hover:bg-[#f6efe7] text-[#7a6050] disabled:opacity-30 disabled:pointer-events-none text-xs font-semibold"
-                                                aria-label="Move left"
-                                            >
-                                                ◀
-                                            </button>
-                                            <button
-                                                type="button"
-                                                disabled={index === previewUrls.length - 1}
-                                                onClick={() => moveImage(index, 'right')}
-                                                className="flex-1 py-1 rounded-lg bg-white border border-[#f2e7de] hover:bg-[#f6efe7] text-[#7a6050] disabled:opacity-30 disabled:pointer-events-none text-xs font-semibold"
-                                                aria-label="Move right"
-                                            >
-                                                ▶
-                                            </button>
+                                            <div className="relative w-full h-full rounded-[18px] overflow-hidden">
+                                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                <img
+                                                    src={url}
+                                                    alt={`Preview ${index + 1}`}
+                                                    className="h-full w-full object-cover pointer-events-none"
+                                                />
+                                                {/* Dynamic Role Badges based on index selection order */}
+                                                {index === 0 && (
+                                                    <span className="absolute left-2 top-2 bg-[#cfb79f] text-[#4a3328] text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
+                                                        {generatedImageUrls.length > 0 ? "Full Outfit" : "Cover · Full Outfit"}
+                                                    </span>
+                                                )}
+                                                {index === 1 && (
+                                                    <span className="absolute left-2 top-2 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
+                                                        Top
+                                                    </span>
+                                                )}
+                                                {index === 2 && (
+                                                    <span className="absolute left-2 top-2 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
+                                                        Bottom
+                                                    </span>
+                                                )}
+                                                {index === 3 && (
+                                                    <span className="absolute left-2 top-2 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
+                                                        Accessories
+                                                    </span>
+                                                )}
+                                                {index === 4 && (
+                                                    <span className="absolute left-2 top-2 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
+                                                        Close-up
+                                                    </span>
+                                                )}
+                                                {index >= 5 && (
+                                                    <span className="absolute left-2 top-2 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
+                                                        Additional
+                                                    </span>
+                                                )}
+                                                {/* Delete button */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removeImage(index)}
+                                                    aria-label="Remove image"
+                                                    className="absolute right-2 top-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white shadow-sm hover:scale-105 active:scale-95 transition-transform z-10"
+                                                >
+                                                    <X className="h-3 w-3" />
+                                                </button>
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
 
                                 {/* Beautiful 'Add Photo' slot card integrated directly inside the grid if under the 5 images limit */}
                                 {previewUrls.length < 5 && (
