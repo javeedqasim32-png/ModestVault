@@ -832,7 +832,7 @@ export default function SellPageClient({
                                             {/* Cover Tag badge */}
                                             {index === 0 && (
                                                 <span className="absolute left-2.5 top-2.5 bg-[#cfb79f] text-[#4a3328] text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
-                                                    Cover
+                                                    {generatedImageUrls.length > 0 ? "Photo 1" : "Cover"}
                                                 </span>
                                             )}
                                             {/* Order indicator */}
