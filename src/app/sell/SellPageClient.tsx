@@ -594,6 +594,18 @@ export default function SellPageClient({
     const handleTouchStart = (index: number) => {
         setDraggedIndex(index);
         draggedIndexRef.current = index;
+
+        // Register global window listeners to guarantee state cleanup on iOS Safari
+        const cleanupTouch = () => {
+            setDraggedIndex(null);
+            setDragOverIndex(null);
+            draggedIndexRef.current = null;
+            window.removeEventListener("touchend", cleanupTouch);
+            window.removeEventListener("touchcancel", cleanupTouch);
+        };
+
+        window.addEventListener("touchend", cleanupTouch, { passive: true });
+        window.addEventListener("touchcancel", cleanupTouch, { passive: true });
     };
 
     const handleTouchMove = (e: React.TouchEvent, index: number) => {
