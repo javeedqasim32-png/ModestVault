@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { sendVerificationEmail } from "@/lib/email";
 import { hasCarrierPhoneLength, normalizeUsPhoneInput } from "@/lib/phone";
+import { buildS3ImageUrl, getS3BucketName, uploadFile } from "@/lib/s3";
 
 // Helper to generate a 6 digit code
 function generateVerificationCode(): string {
@@ -304,5 +305,33 @@ export async function updateUserProfile(userId: string, data: any) {
     } catch (error) {
         console.error("Profile update error:", error);
         return { error: "Failed to update profile." };
+    }
+}
+
+/**
+ * Step 6: Update User Profile Picture
+ */
+export async function updateUserProfilePicture(userId: string, imageBase64: string, mimeType: string) {
+    if (!userId) return { error: "User ID is required." };
+    try {
+        const buffer = Buffer.from(imageBase64.split(",")[1] || imageBase64, "base64");
+        const extension = mimeType.split("/")[1] || "jpg";
+        const key = `profiles/${userId}/${Date.now()}.${extension}`;
+        const bucket = getS3BucketName() || "modestvault-uploads";
+        
+        await uploadFile(buffer, key, mimeType, bucket);
+        const imageUrl = buildS3ImageUrl(key, bucket);
+        
+        await prisma.user.update({
+            where: { id: userId },
+            data: {
+                profile_image: imageUrl
+            }
+        });
+        
+        return { success: true, imageUrl };
+    } catch (error: any) {
+        console.error("Profile image update error:", error);
+        return { error: `Failed to update profile picture: ${error.message}` };
     }
 }

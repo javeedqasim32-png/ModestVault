@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { MessageCircle, Pencil, Plus } from "lucide-react";
+import ProfileAvatarUploader from "@/components/profile/ProfileAvatarUploader";
 import { prisma } from "@/lib/prisma";
 import { getPrimaryListingImage } from "@/lib/listing-images";
 import { serializeListing } from "@/lib/serialization";
@@ -32,6 +33,7 @@ const sellerSelect = {
   id: true,
   first_name: true,
   last_name: true,
+  profile_image: true,
   created_at: true,
   listings: {
     where: { moderation_status: "APPROVED" as const },
@@ -107,12 +109,12 @@ export default async function SellerProfilePage({ params }: { params: Promise<{ 
       <div className="mx-auto w-full max-w-[820px]">
         <section className="border-y border-[#ddd3cb] bg-[#ece5dc] px-4 py-6">
           <div className="mx-auto flex w-full max-w-[520px] flex-col items-center text-center">
-            <div
-              className="mb-3 flex h-[68px] w-[68px] min-h-[68px] min-w-[68px] items-center justify-center rounded-full border-[3px] border-[#ddd3cb] bg-[#cfb79f] text-[26px] text-[#7a6050]"
-              style={{ fontFamily: "var(--font-serif), serif" }}
-            >
-              {sellerInitial}
-            </div>
+            <ProfileAvatarUploader
+              sellerId={seller.id}
+              initials={sellerInitial}
+              isOwnProfile={isOwnProfile}
+              initialProfileImage={seller.profile_image}
+            />
             <h1 className="text-[22px] leading-[1.1] text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif", fontWeight: 600 }}>
               {sellerDisplayName}
             </h1>

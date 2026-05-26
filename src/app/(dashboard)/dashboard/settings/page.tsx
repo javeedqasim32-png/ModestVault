@@ -2,6 +2,7 @@ import { getUserProfile } from "@/app/actions/auth";
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { AddressSettingsForm } from "@/components/dashboard/AddressSettingsForm";
+import ProfileAvatarUploader from "@/components/profile/ProfileAvatarUploader";
 
 export default async function SettingsPage() {
     const session = await auth();
@@ -19,7 +20,12 @@ export default async function SettingsPage() {
     return (
         <div className="profile-scroll">
             <div className="profile-inner py-6 sm:py-8">
-                <div className="profile-avatar">{initials}</div>
+                <ProfileAvatarUploader
+                    sellerId={res.user.id}
+                    initials={initials}
+                    isOwnProfile={true}
+                    initialProfileImage={res.user.profile_image}
+                />
                 <h1 className="profile-section-title mt-4 text-center !px-0">Profile Settings</h1>
                 <AddressSettingsForm userId={session.user.id} initialData={res.user} />
             </div>
