@@ -206,10 +206,8 @@ export default function SellPageClient({
     const [isSeller] = useState(isSellerInitially);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
-    const [slotFiles, setSlotFiles] = useState<Partial<Record<SlotRole, File>>>({});
-    const [slotPreviewUrls, setSlotPreviewUrls] = useState<Partial<Record<SlotRole, string>>>({});
-    const [activeUploadSlot, setActiveUploadSlot] = useState<SlotRole | null>(null);
-    const [isUploadAreaExpanded, setIsUploadAreaExpanded] = useState(false);
+    const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+    const [previewUrls, setPreviewUrls] = useState<string[]>([]);
     const [generatedImageUrls, setGeneratedImageUrls] = useState<string[]>([]);
     const [isGenerating, setIsGenerating] = useState(false);
     const [mobileTab, setMobileTab] = useState<SellTab>("LISTINGS");
@@ -477,49 +475,67 @@ export default function SellPageClient({
     const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files ?? []);
         setError("");
-        const targetSlot = activeUploadSlot;
-        if (files.length === 0 || !targetSlot) {
+        if (files.length === 0) return;
+
+        // Check if we already have 5 images
+        if (selectedFiles.length >= 5) {
+            setError("You can only upload up to 5 photos.");
             e.target.value = "";
-            setActiveUploadSlot(null);
             return;
         }
 
-        const rawFile = files[0];
-
         setIsOptimizing(true);
         try {
-            const file = await optimizeImageFile(rawFile);
-            if (!COMPRESSIBLE_TYPES.has(file.type) && file.size > MAX_IMAGE_BYTES) {
-                setError(`"${rawFile.name}" is larger than 10MB. Please choose a smaller file.`);
-                return;
-            }
-            if (file.size > MAX_IMAGE_BYTES) {
-                setError(`"${rawFile.name}" is still larger than 10MB after optimization.`);
-                return;
+            const newlyOptimized: File[] = [];
+            for (const rawFile of files) {
+                if (selectedFiles.length + newlyOptimized.length >= 5) {
+                    setError("Maximum 5 photos allowed. Some files were skipped.");
+                    break;
+                }
+
+                const file = await optimizeImageFile(rawFile);
+                if (!COMPRESSIBLE_TYPES.has(file.type) && file.size > MAX_IMAGE_BYTES) {
+                    setError(`"${rawFile.name}" is larger than 10MB. Please choose a smaller file.`);
+                    continue;
+                }
+                if (file.size > MAX_IMAGE_BYTES) {
+                    setError(`"${rawFile.name}" is still larger than 10MB after optimization.`);
+                    continue;
+                }
+                newlyOptimized.push(file);
             }
 
-            const candidateSlots = { ...slotFiles, [targetSlot]: file };
-            const totalBytes = orderedSlotFiles(candidateSlots).reduce((sum, f) => sum + f.size, 0);
+            const candidateFiles = [...selectedFiles, ...newlyOptimized];
+            const totalBytes = candidateFiles.reduce((sum, f) => sum + f.size, 0);
             if (totalBytes > MAX_TOTAL_IMAGE_BYTES) {
                 setError("Total image upload size is too large. Please keep all images under 18MB combined.");
+                setIsOptimizing(false);
+                e.target.value = "";
                 return;
             }
 
-            setSlotFiles(candidateSlots);
+            setSelectedFiles(candidateFiles);
         } catch (err) {
             console.error("Optimization error:", err);
             setError("Failed to process images.");
         } finally {
             setIsOptimizing(false);
-            setActiveUploadSlot(null);
             e.target.value = "";
         }
     };
 
-    const removeSlot = (slot: SlotRole) => {
-        setSlotFiles((prev) => {
-            const next = { ...prev };
-            delete next[slot];
+    const removeImage = (indexToRemove: number) => {
+        setSelectedFiles((prev) => prev.filter((_, idx) => idx !== indexToRemove));
+    };
+
+    const moveImage = (index: number, direction: "left" | "right") => {
+        const newIndex = direction === "left" ? index - 1 : index + 1;
+        if (newIndex < 0 || newIndex >= selectedFiles.length) return;
+        setSelectedFiles((prev) => {
+            const next = [...prev];
+            const temp = next[index];
+            next[index] = next[newIndex];
+            next[newIndex] = temp;
             return next;
         });
     };
@@ -529,16 +545,12 @@ export default function SellPageClient({
     };
 
     useEffect(() => {
-        const urls: Partial<Record<SlotRole, string>> = {};
-        for (const slot of SLOTS) {
-            const file = slotFiles[slot.key];
-            if (file) urls[slot.key] = URL.createObjectURL(file);
-        }
-        setSlotPreviewUrls(urls);
+        const urls = selectedFiles.map((file) => URL.createObjectURL(file));
+        setPreviewUrls(urls);
         return () => {
-            Object.values(urls).forEach((url) => url && URL.revokeObjectURL(url));
+            urls.forEach((url) => URL.revokeObjectURL(url));
         };
-    }, [slotFiles]);
+    }, [selectedFiles]);
 
     useEffect(() => {
         const urls = editFiles.map((file) => URL.createObjectURL(file));
@@ -706,7 +718,7 @@ export default function SellPageClient({
                     formData.set("category", taxonomyValidation.normalized.category);
                     formData.set("subcategory", taxonomyValidation.normalized.subcategory || "");
                     formData.set("type", taxonomyValidation.normalized.type || "");
-                    const submissionFiles = orderedSlotFiles(slotFiles);
+                    const submissionFiles = selectedFiles;
                     if (submissionFiles.length === 0) {
                         setError("Please upload at least one image.");
                         setLoading(false);
@@ -719,9 +731,8 @@ export default function SellPageClient({
                     } else if (res?.success) {
                         // Successfully created! Close form and refresh listings
                         setShowCreateForm(false);
-                        setSlotFiles({});
+                        setSelectedFiles([]);
                         setGeneratedImageUrls([]);
-                        setIsUploadAreaExpanded(false);
                         setStyle("");
                         setCategory("");
                         setSubcategory("");
@@ -784,99 +795,92 @@ export default function SellPageClient({
                     </div>
 
                     <div className="relative">
-                        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-                            {SLOTS.map((slot) => {
-                                const file = slotFiles[slot.key];
-                                const previewUrl = slotPreviewUrls[slot.key];
-                                return (
-                                    <div key={slot.key}>
-                                        {file && previewUrl ? (
-                                            <div className="relative aspect-[3/4] overflow-hidden rounded-[28px] border border-[#f2e7de] bg-[#fbf9f6] transition-all hover:shadow-sm">
-                                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                <img
-                                                    src={previewUrl}
-                                                    alt={slot.label}
-                                                    className="h-full w-full object-cover"
-                                                />
-                                                <div className="absolute inset-0 bg-black/5" />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => removeSlot(slot.key)}
-                                                    aria-label={`Remove ${slot.label}`}
-                                                    className="absolute right-2.5 top-2.5 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#fbf9f6]/95 text-[#4a3328] shadow-sm backdrop-blur-[2px] transition-transform hover:scale-105 active:scale-95"
-                                                >
-                                                    <X className="h-4 w-4" />
-                                                </button>
-                                                
-                                                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-2.5 pt-6">
-                                                    <p className="text-center text-[10px] font-semibold text-white uppercase tracking-wider">
-                                                        {slot.label}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        ) : (
+                        {/* Large, beautiful multi-image dropzone if selectedFiles.length < 5 */}
+                        {selectedFiles.length < 5 && (
+                            <button
+                                type="button"
+                                onClick={() => fileInputRef.current?.click()}
+                                className="flex w-full flex-col items-center justify-center p-8 rounded-[28px] border border-dashed border-[#cfb79f] bg-[#fbf9f6] text-center transition-all hover:bg-[#f6efe7] hover:border-[#ebdccf] mb-6 cursor-pointer"
+                            >
+                                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-[#f2e7de] bg-white text-[#7a6050]">
+                                    <UploadCloud className="h-6 w-6" />
+                                </div>
+                                <h4 className="text-[15px] font-semibold text-[#2f2925]">
+                                    Upload Photos
+                                </h4>
+                                <p className="mt-1.5 text-xs text-[#8a7667] max-w-[280px]">
+                                    Select up to 5 photos of your item. The first photo will be used as the primary cover photo.
+                                </p>
+                            </button>
+                        )}
+
+                        {/* Horizontal rearrangeable thumbnail grid */}
+                        {previewUrls.length > 0 && (
+                            <div className="grid grid-cols-2 gap-4 sm:grid-cols-5 mb-6">
+                                {previewUrls.map((url, index) => (
+                                    <div 
+                                        key={`${url}-${index}`} 
+                                        className={`relative aspect-[3/4] rounded-[24px] overflow-hidden border p-1.5 flex flex-col justify-between transition-all bg-[#fbf9f6] ${index === 0 ? "border-[#cfb79f] ring-1 ring-[#cfb79f]/20" : "border-[#f2e7de]"}`}
+                                    >
+                                        <div className="relative w-full h-full rounded-[18px] overflow-hidden">
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                            <img
+                                                src={url}
+                                                alt={`Preview ${index + 1}`}
+                                                className="h-full w-full object-cover"
+                                            />
+                                            {/* Cover Tag badge */}
+                                            {index === 0 && (
+                                                <span className="absolute left-2.5 top-2.5 bg-[#cfb79f] text-[#4a3328] text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
+                                                    Cover
+                                                </span>
+                                            )}
+                                            {/* Order indicator */}
+                                            {index > 0 && (
+                                                <span className="absolute left-2.5 top-2.5 bg-black/60 text-white text-[9px] font-bold h-5 w-5 flex items-center justify-center rounded-full shadow-sm">
+                                                    {index + 1}
+                                                </span>
+                                            )}
+                                            {/* Delete button */}
                                             <button
                                                 type="button"
-                                                onClick={() => {
-                                                    setActiveUploadSlot(slot.key);
-                                                    fileInputRef.current?.click();
-                                                }}
-                                                className="flex aspect-[3/4] w-full flex-col items-center justify-center px-4 py-6 rounded-[28px] border border-[#f2e7de] bg-[#fbf9f6] text-center transition-all hover:bg-[#f6efe7] hover:border-[#ebdccf]"
+                                                onClick={() => removeImage(index)}
+                                                aria-label="Remove image"
+                                                className="absolute right-2.5 top-2.5 inline-flex h-6.5 w-6.5 items-center justify-center rounded-full bg-black/60 text-white shadow-sm hover:scale-105 active:scale-95 transition-transform"
                                             >
-                                                <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-full border border-[#f2e7de] bg-white shrink-0">
-                                                    {slot.key === "fullOutfit" && (
-                                                        <svg viewBox="0 0 24 24" className="w-8 h-8 text-[#7a6050]" fill="none" stroke="currentColor" strokeWidth="1.2">
-                                                            <path d="M12 2a2 2 0 0 1 2 2c0 .6-.3 1.1-.7 1.3L16 7H8l2.7-1.7C10.3 5.1 10 4.6 10 4a2 2 0 0 1 2-2z" strokeLinecap="round" strokeLinejoin="round"/>
-                                                            <path d="M8 7l1.5 5.5L7 21h10l-2.5-8.5L16 7H8z" strokeLinecap="round" strokeLinejoin="round"/>
-                                                            <path d="M9.5 12.5h5" strokeLinecap="round"/>
-                                                        </svg>
-                                                    )}
-                                                    {slot.key === "top" && (
-                                                        <svg viewBox="0 0 24 24" className="w-8 h-8 text-[#7a6050]" fill="none" stroke="currentColor" strokeWidth="1.2">
-                                                            <path d="M9 4a3 3 0 0 1 6 0h4v4l-2.5 1.5L17 19H7l.5-9.5L5 8V4h4z" strokeLinecap="round" strokeLinejoin="round"/>
-                                                        </svg>
-                                                    )}
-                                                    {slot.key === "bottom" && (
-                                                        <svg viewBox="0 0 24 24" className="w-8 h-8 text-[#7a6050]" fill="none" stroke="currentColor" strokeWidth="1.2">
-                                                            <path d="M6 3h12l1 6-2 11h-3.5L12 9.5 10.5 20H7L5 9l1-6z" strokeLinecap="round" strokeLinejoin="round"/>
-                                                            <path d="M7 6c.5.5 1 .5 1.5 0M15.5 6c.5.5 1 .5 1.5 0" strokeLinecap="round"/>
-                                                        </svg>
-                                                    )}
-                                                    {slot.key === "dupatta" && (
-                                                        <svg viewBox="0 0 24 24" className="w-8 h-8 text-[#7a6050]" fill="none" stroke="currentColor" strokeWidth="1.2">
-                                                            <path d="M9 7a3 3 0 0 1 6 0" strokeLinecap="round" strokeLinejoin="round"/>
-                                                            <rect x="5" y="7" width="14" height="11" rx="3" strokeLinecap="round" strokeLinejoin="round"/>
-                                                            <path d="M11 11h2v2h-2z" strokeLinecap="round" strokeLinejoin="round"/>
-                                                        </svg>
-                                                    )}
-                                                    {slot.key === "closeup" && (
-                                                        <svg viewBox="0 0 24 24" className="w-8 h-8 text-[#7a6050]" fill="none" stroke="currentColor" strokeWidth="1.2">
-                                                            <path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6z" strokeDasharray="3 2" strokeLinecap="round" strokeLinejoin="round"/>
-                                                            <path d="M8 8h8M8 12h8M8 16h8M10 6v12M14 6v12" strokeWidth="0.8" opacity="0.6" strokeLinecap="round"/>
-                                                        </svg>
-                                                    )}
-                                                </div>
-                                                
-                                                <h4 className="text-[14px] font-semibold text-[#2f2925] leading-tight">
-                                                    {slot.label}
-                                                    {slot.optional && (
-                                                        <span className="ml-1 text-[10.5px] font-normal text-[#8a7667]">(optional)</span>
-                                                    )}
-                                                </h4>
-                                                
-                                                <p className="mt-1 text-[11px] text-[#8a7667] leading-snug max-w-[130px] mx-auto">
-                                                    {slot.subtitle}
-                                                </p>
+                                                <X className="h-3.5 w-3.5" />
                                             </button>
-                                        )}
+                                        </div>
+
+                                        {/* Shift / Set First Controls */}
+                                        <div className="mt-2 flex gap-1 justify-center w-full">
+                                            <button
+                                                type="button"
+                                                disabled={index === 0}
+                                                onClick={() => moveImage(index, 'left')}
+                                                className="flex-1 py-1 rounded-lg bg-white border border-[#f2e7de] hover:bg-[#f6efe7] text-[#7a6050] disabled:opacity-30 disabled:pointer-events-none text-xs font-semibold"
+                                                aria-label="Move left"
+                                            >
+                                                ◀
+                                            </button>
+                                            <button
+                                                type="button"
+                                                disabled={index === previewUrls.length - 1}
+                                                onClick={() => moveImage(index, 'right')}
+                                                className="flex-1 py-1 rounded-lg bg-white border border-[#f2e7de] hover:bg-[#f6efe7] text-[#7a6050] disabled:opacity-30 disabled:pointer-events-none text-xs font-semibold"
+                                                aria-label="Move right"
+                                            >
+                                                ▶
+                                            </button>
+                                        </div>
                                     </div>
-                                );
-                            })}
-                        </div>
+                                ))}
+                            </div>
+                        )}
 
                         <div className="mt-3 flex items-center justify-between gap-2">
                             <p className="text-xs text-muted-foreground">
-                                {orderedSlotFiles(slotFiles).length} photos uploaded · up to 5
+                                {selectedFiles.length} photos uploaded · up to 5
                             </p>
                         </div>
 
@@ -900,8 +904,7 @@ export default function SellPageClient({
                                         setError("You have already generated an AI cover photo for this listing.");
                                         return;
                                     }
-                                    const filledSlots = SLOTS.filter((s) => slotFiles[s.key]);
-                                    if (filledSlots.length === 0) {
+                                    if (selectedFiles.length === 0) {
                                         setError("Please upload at least one product photo first before generating a cover.");
                                         return;
                                     }
@@ -909,8 +912,12 @@ export default function SellPageClient({
                                         setIsGenerating(true);
                                         setError("");
                                         const apiFormData = new FormData();
-                                        filledSlots.forEach((slot) => {
-                                            apiFormData.append(`reference_${slot.key}`, slotFiles[slot.key]!);
+                                        // Map the selectedFiles to sequential slots in order
+                                        const mockSlots: SlotRole[] = ["fullOutfit", "top", "bottom", "dupatta", "closeup"];
+                                        selectedFiles.forEach((file, index) => {
+                                            if (index < mockSlots.length) {
+                                                apiFormData.append(`reference_${mockSlots[index]}`, file);
+                                            }
                                         });
 
                                         const res = await fetch("/api/ai/generate-cover", {
@@ -957,7 +964,7 @@ export default function SellPageClient({
                                         setIsGenerating(false);
                                     }
                                 }}
-                                disabled={isGenerating || orderedSlotFiles(slotFiles).length === 0 || generatedImageUrls.length > 0}
+                                disabled={isGenerating || selectedFiles.length === 0 || generatedImageUrls.length > 0}
                                 isLoading={isGenerating}
                                 className="w-full bg-white hover:bg-[#faf6f0] border-[#cfb79f] text-[#7a6050] hover:text-[#4a3328] rounded-[28px]"
                             >
@@ -986,6 +993,7 @@ export default function SellPageClient({
                             ref={fileInputRef}
                             type="file"
                             accept="image/*"
+                            multiple
                             onChange={handleImageChange}
                             className="absolute w-0 h-0 opacity-0 pointer-events-none"
                         />
