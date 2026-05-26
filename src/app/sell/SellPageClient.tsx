@@ -841,16 +841,35 @@ export default function SellPageClient({
                                                 alt={`Preview ${index + 1}`}
                                                 className="h-full w-full object-cover"
                                             />
-                                            {/* Cover Tag badge */}
+                                            {/* Dynamic Role Badges based on index selection order */}
                                             {index === 0 && (
                                                 <span className="absolute left-2.5 top-2.5 bg-[#cfb79f] text-[#4a3328] text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
-                                                    {generatedImageUrls.length > 0 ? "Photo 1" : "Cover"}
+                                                    {generatedImageUrls.length > 0 ? "Full Outfit" : "Cover · Full Outfit"}
                                                 </span>
                                             )}
-                                            {/* Order indicator */}
-                                            {index > 0 && (
-                                                <span className="absolute left-2.5 top-2.5 bg-black/60 text-white text-[9px] font-bold h-5 w-5 flex items-center justify-center rounded-full shadow-sm">
-                                                    {index + 1}
+                                            {index === 1 && (
+                                                <span className="absolute left-2.5 top-2.5 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
+                                                    Top
+                                                </span>
+                                            )}
+                                            {index === 2 && (
+                                                <span className="absolute left-2.5 top-2.5 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
+                                                    Bottom
+                                                </span>
+                                            )}
+                                            {index === 3 && (
+                                                <span className="absolute left-2.5 top-2.5 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
+                                                    Accessories
+                                                </span>
+                                            )}
+                                            {index === 4 && (
+                                                <span className="absolute left-2.5 top-2.5 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
+                                                    Close-up
+                                                </span>
+                                            )}
+                                            {index >= 5 && (
+                                                <span className="absolute left-2.5 top-2.5 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
+                                                    Additional
                                                 </span>
                                             )}
                                             {/* Delete button */}
