@@ -224,6 +224,7 @@ export default function SellPageClient({
     const [isGenerating, setIsGenerating] = useState(false);
     const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
     const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+    const draggedIndexRef = useRef<number | null>(null);
     const [mobileTab, setMobileTab] = useState<SellTab>("LISTINGS");
     const [showCreateForm, setShowCreateForm] = useState(openCreateInitially);
     const [editingListing, setEditingListing] = useState<ListingItem | null>(null);
@@ -592,6 +593,7 @@ export default function SellPageClient({
 
     const handleTouchStart = (index: number) => {
         setDraggedIndex(index);
+        draggedIndexRef.current = index;
     };
 
     const handleTouchMove = (e: React.TouchEvent, index: number) => {
@@ -611,22 +613,27 @@ export default function SellPageClient({
         if (targetIndexAttr === null) return;
 
         const targetIndex = parseInt(targetIndexAttr, 10);
-        if (isNaN(targetIndex) || targetIndex === index) return;
+        
+        // Use live synchronous index from ref to prevent React stale state closure bugs!
+        const currentIndex = draggedIndexRef.current;
+        if (currentIndex === null || isNaN(targetIndex) || targetIndex === currentIndex) return;
 
         setSelectedFiles((prev) => {
             const updated = [...prev];
-            const temp = updated[index];
-            updated[index] = updated[targetIndex];
+            const temp = updated[currentIndex];
+            updated[currentIndex] = updated[targetIndex];
             updated[targetIndex] = temp;
             return updated;
         });
 
         setDraggedIndex(targetIndex);
+        draggedIndexRef.current = targetIndex;
     };
 
     const handleTouchEnd = () => {
         setDraggedIndex(null);
         setDragOverIndex(null);
+        draggedIndexRef.current = null;
     };
 
     const removeGeneratedImage = (indexToRemove: number) => {
@@ -911,7 +918,7 @@ export default function SellPageClient({
                                     const isDragOverThis = dragOverIndex === index;
                                     return (
                                         <div 
-                                            key={`${url}-${index}`} 
+                                            key={url} 
                                             data-index={index}
                                             draggable
                                             onDragStart={(e) => handleDragStart(e, index)}
@@ -921,26 +928,30 @@ export default function SellPageClient({
                                             onTouchStart={() => handleTouchStart(index)}
                                             onTouchMove={(e) => handleTouchMove(e, index)}
                                             onTouchEnd={handleTouchEnd}
+                                            onTouchCancel={handleTouchEnd}
                                             className={`relative aspect-[3/4] rounded-[24px] border p-1.5 flex flex-col justify-between transition-all bg-[#fbf9f6] select-none ${
                                                 isDraggingThis ? "opacity-30 scale-95 duration-100" : ""
                                             } ${
                                                 isDragOverThis ? "border-[#cfb79f] bg-[#f6efe7] scale-[1.02] duration-200" : index === 0 ? "border-[#cfb79f] ring-1 ring-[#cfb79f]/20" : "border-[#f2e7de]"
                                             }`}
+                                            style={{ touchAction: "none", WebkitTouchCallout: "none" }}
                                         >
                                             {/* Centered Top Grab Handle Badge */}
                                             <div 
                                                 className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-white border border-[#e8ded5] rounded-md h-6 w-9 flex items-center justify-center shadow-[0_2px_4px_rgba(0,0,0,0.06)] cursor-grab active:cursor-grabbing z-20 hover:scale-105 active:scale-95 transition-all"
                                                 title="Drag to reorder"
+                                                style={{ touchAction: "none", WebkitTouchCallout: "none" }}
                                             >
                                                 <GripHorizontal className="h-3.5 w-3.5 text-[#8a7667]" />
                                             </div>
 
-                                            <div className="relative w-full h-full rounded-[18px] overflow-hidden">
+                                            <div className="relative w-full h-full rounded-[18px] overflow-hidden pointer-events-none select-none">
                                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                                 <img
                                                     src={url}
                                                     alt={`Preview ${index + 1}`}
-                                                    className="h-full w-full object-cover pointer-events-none"
+                                                    className="h-full w-full object-cover pointer-events-none select-none"
+                                                    style={{ WebkitTouchCallout: "none" }}
                                                 />
                                                 {/* Dynamic Role Badges based on index selection order */}
                                                 {index === 0 && (
