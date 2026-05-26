@@ -557,6 +557,11 @@ export default function SellPageClient({
     const handleDragStart = (e: React.DragEvent, index: number) => {
         setDraggedIndex(index);
         e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", index.toString());
+        // Enable drag representation in some browsers
+        try {
+            e.dataTransfer.setData("text/html", "");
+        } catch (err) {}
     };
 
     const handleDragOver = (e: React.DragEvent, index: number) => {
@@ -581,6 +586,45 @@ export default function SellPageClient({
             return updated;
         });
 
+        setDraggedIndex(null);
+        setDragOverIndex(null);
+    };
+
+    const handleTouchStart = (index: number) => {
+        setDraggedIndex(index);
+    };
+
+    const handleTouchMove = (e: React.TouchEvent, index: number) => {
+        // Prevent default window scrolling behavior during active drag reorder
+        if (e.cancelable) {
+            e.preventDefault();
+        }
+        
+        const touch = e.touches[0];
+        const targetElement = document.elementFromPoint(touch.clientX, touch.clientY);
+        if (!targetElement) return;
+
+        const card = targetElement.closest("[data-index]");
+        if (!card) return;
+
+        const targetIndexAttr = card.getAttribute("data-index");
+        if (targetIndexAttr === null) return;
+
+        const targetIndex = parseInt(targetIndexAttr, 10);
+        if (isNaN(targetIndex) || targetIndex === index) return;
+
+        setSelectedFiles((prev) => {
+            const updated = [...prev];
+            const temp = updated[index];
+            updated[index] = updated[targetIndex];
+            updated[targetIndex] = temp;
+            return updated;
+        });
+
+        setDraggedIndex(targetIndex);
+    };
+
+    const handleTouchEnd = () => {
         setDraggedIndex(null);
         setDragOverIndex(null);
     };
@@ -868,11 +912,15 @@ export default function SellPageClient({
                                     return (
                                         <div 
                                             key={`${url}-${index}`} 
+                                            data-index={index}
                                             draggable
                                             onDragStart={(e) => handleDragStart(e, index)}
                                             onDragOver={(e) => handleDragOver(e, index)}
                                             onDragEnd={handleDragEnd}
                                             onDrop={(e) => handleDrop(e, index)}
+                                            onTouchStart={() => handleTouchStart(index)}
+                                            onTouchMove={(e) => handleTouchMove(e, index)}
+                                            onTouchEnd={handleTouchEnd}
                                             className={`relative aspect-[3/4] rounded-[24px] border p-1.5 flex flex-col justify-between transition-all bg-[#fbf9f6] select-none ${
                                                 isDraggingThis ? "opacity-30 scale-95 duration-100" : ""
                                             } ${
