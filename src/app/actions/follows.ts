@@ -57,9 +57,9 @@ export async function toggleFollowUser(targetUserId: string) {
     // Revalidate target user's profile path
     revalidatePath(`/${targetUserId}`);
     return { success: true, followed };
-  } catch (error) {
+  } catch (error: any) {
     console.error("toggleFollowUser error:", error);
-    return { error: "An unexpected error occurred while processing your request." };
+    return { error: `Failed to toggle follow: ${error?.message || "Unknown error"}` };
   }
 }
 
