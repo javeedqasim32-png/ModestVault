@@ -945,6 +945,21 @@ export default function SellPageClient({
                                                 <GripHorizontal className="h-3.5 w-3.5 text-[#8a7667]" />
                                             </div>
 
+                                            {/* Delete button placed on top layer with stopPropagation to avoid touch drag conflicts */}
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    removeImage(index);
+                                                }}
+                                                onTouchStart={(e) => e.stopPropagation()}
+                                                onMouseDown={(e) => e.stopPropagation()}
+                                                aria-label="Remove image"
+                                                className="absolute right-2.5 top-2.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white shadow-sm hover:scale-105 active:scale-95 transition-transform z-30 cursor-pointer"
+                                            >
+                                                <X className="h-3 w-3" />
+                                            </button>
+
                                             <div className="relative w-full h-full rounded-[18px] overflow-hidden pointer-events-none select-none">
                                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                                 <img
@@ -984,15 +999,6 @@ export default function SellPageClient({
                                                         Additional
                                                     </span>
                                                 )}
-                                                {/* Delete button */}
-                                                <button
-                                                    type="button"
-                                                    onClick={() => removeImage(index)}
-                                                    aria-label="Remove image"
-                                                    className="absolute right-2 top-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white shadow-sm hover:scale-105 active:scale-95 transition-transform z-10"
-                                                >
-                                                    <X className="h-3 w-3" />
-                                                </button>
                                             </div>
                                         </div>
                                     );
