@@ -311,15 +311,22 @@ export async function updateUserProfile(userId: string, data: any) {
 /**
  * Step 6: Update User Profile Picture
  */
-export async function updateUserProfilePicture(userId: string, imageBase64: string, mimeType: string) {
-    if (!userId) return { error: "User ID is required." };
+export async function updateUserProfilePicture(formData: FormData) {
     try {
-        const buffer = Buffer.from(imageBase64.split(",")[1] || imageBase64, "base64");
-        const extension = mimeType.split("/")[1] || "jpg";
+        const userId = formData.get("userId") as string;
+        const file = formData.get("file") as File;
+
+        if (!userId) return { error: "User ID is required." };
+        if (!file) return { error: "No file was uploaded." };
+
+        const arrayBuffer = await file.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+
+        const extension = file.name.split(".").pop() || "jpg";
         const key = `profiles/${userId}/${Date.now()}.${extension}`;
         const bucket = getS3BucketName() || "modestvault-uploads";
         
-        await uploadFile(buffer, key, mimeType, bucket);
+        await uploadFile(buffer, key, file.type, bucket);
         const imageUrl = buildS3ImageUrl(key, bucket);
         
         await prisma.user.update({

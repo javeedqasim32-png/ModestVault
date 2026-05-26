@@ -49,30 +49,20 @@ export default function ProfileAvatarUploader({
         setError(null);
 
         try {
-            const reader = new FileReader();
-            reader.onload = async () => {
-                try {
-                    const base64 = reader.result as string;
-                    const res = await updateUserProfilePicture(sellerId, base64, file.type);
-                    if (res.error) {
-                        setError(res.error);
-                    } else if (res.imageUrl) {
-                        setProfileImage(res.imageUrl);
-                        router.refresh();
-                    }
-                } catch (err: any) {
-                    setError(err.message || "Failed to upload image.");
-                } finally {
-                    setIsUploading(false);
-                }
-            };
-            reader.onerror = () => {
-                setError("Failed to read the file.");
-                setIsUploading(false);
-            };
-            reader.readAsDataURL(file);
+            const formData = new FormData();
+            formData.append("userId", sellerId);
+            formData.append("file", file);
+
+            const res = await updateUserProfilePicture(formData);
+            if (res.error) {
+                setError(res.error);
+            } else if (res.imageUrl) {
+                setProfileImage(res.imageUrl);
+                router.refresh();
+            }
         } catch (err: any) {
             setError(err.message || "Failed to upload image.");
+        } finally {
             setIsUploading(false);
         }
     };
