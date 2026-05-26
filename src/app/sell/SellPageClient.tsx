@@ -169,12 +169,12 @@ async function optimizeImageFile(file: File): Promise<File> {
         context.imageSmoothingQuality = "high";
         context.drawImage(image, 0, 0, width, height);
 
-        const qualitySteps = [0.88, 0.82, 0.76, 0.7];
+        const qualitySteps = [0.85, 0.75, 0.65, 0.55];
         let bestBlob: Blob | null = null;
         for (const quality of qualitySteps) {
             const attempt = await canvasToWebpBlob(canvas, quality);
             bestBlob = attempt;
-            if (attempt.size <= MAX_IMAGE_BYTES) {
+            if (attempt.size <= 2.5 * 1024 * 1024) {
                 break;
             }
         }
@@ -477,9 +477,9 @@ export default function SellPageClient({
         setError("");
         if (files.length === 0) return;
 
-        // Check if we already have 5 images
-        if (selectedFiles.length >= 5) {
-            setError("You can only upload up to 5 photos.");
+        // Check if we already have 6 images
+        if (selectedFiles.length >= 6) {
+            setError("You can only upload up to 6 photos.");
             e.target.value = "";
             return;
         }
@@ -488,8 +488,8 @@ export default function SellPageClient({
         try {
             const newlyOptimized: File[] = [];
             for (const rawFile of files) {
-                if (selectedFiles.length + newlyOptimized.length >= 5) {
-                    setError("Maximum 5 photos allowed. Some files were skipped.");
+                if (selectedFiles.length + newlyOptimized.length >= 6) {
+                    setError("Maximum 6 photos allowed. Some files were skipped.");
                     break;
                 }
 
@@ -795,8 +795,8 @@ export default function SellPageClient({
                     </div>
 
                     <div className="relative">
-                        {/* Large, beautiful multi-image dropzone if selectedFiles.length < 5 */}
-                        {selectedFiles.length < 5 && (
+                        {/* Large, beautiful multi-image dropzone if selectedFiles.length < 6 */}
+                        {selectedFiles.length < 6 && (
                             <button
                                 type="button"
                                 onClick={() => fileInputRef.current?.click()}
@@ -809,14 +809,14 @@ export default function SellPageClient({
                                     Upload Photos
                                 </h4>
                                 <p className="mt-1.5 text-xs text-[#8a7667] max-w-[280px]">
-                                    Select up to 5 photos of your item. The first photo will be used as the primary cover photo.
+                                    Select up to 6 photos of your item. The first photo will be used as the primary cover photo.
                                 </p>
                             </button>
                         )}
 
                         {/* Horizontal rearrangeable thumbnail grid */}
                         {previewUrls.length > 0 && (
-                            <div className="grid grid-cols-2 gap-4 sm:grid-cols-5 mb-6">
+                            <div className="grid grid-cols-2 gap-4 sm:grid-cols-6 mb-6">
                                 {previewUrls.map((url, index) => (
                                     <div 
                                         key={`${url}-${index}`} 
@@ -880,7 +880,7 @@ export default function SellPageClient({
 
                         <div className="mt-3 flex items-center justify-between gap-2">
                             <p className="text-xs text-muted-foreground">
-                                {selectedFiles.length} photos uploaded · up to 5
+                                {selectedFiles.length} photos uploaded · up to 6
                             </p>
                         </div>
 
