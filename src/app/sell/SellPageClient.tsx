@@ -980,34 +980,34 @@ export default function SellPageClient({
                                                     className="h-full w-full object-cover pointer-events-none select-none"
                                                     style={{ WebkitTouchCallout: "none" }}
                                                 />
-                                                {/* Dynamic Role Badges based on index selection order */}
+                                                {/* Dynamic Role Badges based on index selection order shifted to bottom corner to preserve model faces */}
                                                 {index === 0 && (
-                                                    <span className="absolute left-2 top-2 bg-[#cfb79f] text-[#4a3328] text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
+                                                    <span className="absolute left-2.5 bottom-2.5 bg-[#cfb79f] text-[#4a3328] text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
                                                         {generatedImageUrls.length > 0 ? "Full Outfit" : "Cover · Full Outfit"}
                                                     </span>
                                                 )}
                                                 {index === 1 && (
-                                                    <span className="absolute left-2 top-2 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
+                                                    <span className="absolute left-2.5 bottom-2.5 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
                                                         Top
                                                     </span>
                                                 )}
                                                 {index === 2 && (
-                                                    <span className="absolute left-2 top-2 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
+                                                    <span className="absolute left-2.5 bottom-2.5 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
                                                         Bottom
                                                     </span>
                                                 )}
                                                 {index === 3 && (
-                                                    <span className="absolute left-2 top-2 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
+                                                    <span className="absolute left-2.5 bottom-2.5 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
                                                         Accessories
                                                     </span>
                                                 )}
                                                 {index === 4 && (
-                                                    <span className="absolute left-2 top-2 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
+                                                    <span className="absolute left-2.5 bottom-2.5 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
                                                         Close-up
                                                     </span>
                                                 )}
                                                 {index >= 5 && (
-                                                    <span className="absolute left-2 top-2 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
+                                                    <span className="absolute left-2.5 bottom-2.5 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
                                                         Additional
                                                     </span>
                                                 )}
