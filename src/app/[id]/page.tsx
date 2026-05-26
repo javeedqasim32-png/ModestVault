@@ -121,15 +121,15 @@ export default async function SellerProfilePage({ params }: { params: Promise<{ 
             <div className="mt-4 grid w-full max-w-[360px] grid-cols-3 gap-6 text-center">
               <div>
                 <p className="text-[17px] leading-none text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif", fontWeight: 600 }}>
-                  {followersCount}
-                </p>
-                <p className="mt-1 text-[10px] uppercase tracking-[0.08em] text-[#8a7667]">Followers</p>
-              </div>
-              <div>
-                <p className="text-[17px] leading-none text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif", fontWeight: 600 }}>
                   {salesCount}
                 </p>
                 <p className="mt-1 text-[10px] uppercase tracking-[0.08em] text-[#8a7667]">Sales</p>
+              </div>
+              <div>
+                <p className="text-[17px] leading-none text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif", fontWeight: 600 }}>
+                  {followersCount}
+                </p>
+                <p className="mt-1 text-[10px] uppercase tracking-[0.08em] text-[#8a7667]">Followers</p>
               </div>
               <div>
                 <p className="text-[17px] leading-none text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif", fontWeight: 600 }}>
