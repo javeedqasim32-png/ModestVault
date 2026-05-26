@@ -38,6 +38,8 @@ model User {
   buyerConversations Conversation[] @relation("ConversationBuyer")
   sellerConversations Conversation[] @relation("ConversationSeller")
   sentConversationMessages ConversationMessage[] @relation("ConversationMessageSender")
+  followers          Follow[] @relation("UserFollowing")
+  following          Follow[] @relation("UserFollowers")
 }
 
 model Listing {
@@ -225,4 +227,17 @@ model ConversationMessage {
   @@index([conversation_id, created_at])
   @@index([sender_id, created_at])
   @@index([conversation_id, read_at])
+}
+
+model Follow {
+  id           String   @id @default(uuid())
+  follower_id  String
+  following_id String
+  follower     User     @relation("UserFollowers", fields: [follower_id], references: [id], onDelete: Cascade)
+  following    User     @relation("UserFollowing", fields: [following_id], references: [id], onDelete: Cascade)
+  created_at   DateTime @default(now())
+
+  @@unique([follower_id, following_id])
+  @@index([follower_id])
+  @@index([following_id])
 }

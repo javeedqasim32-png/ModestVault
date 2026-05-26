@@ -9,9 +9,10 @@ import FavoriteButton from "@/components/marketplace/FavoriteButton";
 import { getFavoriteListingIdsForSessionUser } from "@/app/actions/favorites";
 import localFont from "next/font/local";
 import SellerReviewsSection from "@/components/marketplace/SellerReviewsSection";
-import { auth } from "@/auth";
-
 import { getSlugToUserMap } from "@/lib/user-slugs";
+import { auth } from "@/auth";
+import FollowButton from "@/components/marketplace/FollowButton";
+import { getFollowCounts, checkIsFollowing } from "@/app/actions/follows";
 
 export const dynamic = "force-dynamic";
 
@@ -84,7 +85,8 @@ export default async function SellerProfilePage({ params }: { params: Promise<{ 
   }));
 
   const favoriteListingIds = new Set(await getFavoriteListingIdsForSessionUser(listings.map((listing) => listing.id)));
-  const listingsCount = listings.length;
+  const { followersCount } = await getFollowCounts(seller.id);
+  const isFollowing = isOwnProfile ? false : await checkIsFollowing(seller.id);
   const salesCount = seller.listings.filter((listing) => listing.status === "SOLD").length;
   const rating = seller.reviewsReceived.length
     ? Number((seller.reviewsReceived.reduce((sum, review) => sum + review.rating, 0) / seller.reviewsReceived.length).toFixed(1))
@@ -119,9 +121,9 @@ export default async function SellerProfilePage({ params }: { params: Promise<{ 
             <div className="mt-4 grid w-full max-w-[360px] grid-cols-3 gap-6 text-center">
               <div>
                 <p className="text-[17px] leading-none text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif", fontWeight: 600 }}>
-                  {listingsCount}
+                  {followersCount}
                 </p>
-                <p className="mt-1 text-[10px] uppercase tracking-[0.08em] text-[#8a7667]">Listings</p>
+                <p className="mt-1 text-[10px] uppercase tracking-[0.08em] text-[#8a7667]">Followers</p>
               </div>
               <div>
                 <p className="text-[17px] leading-none text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif", fontWeight: 600 }}>
@@ -164,12 +166,7 @@ export default async function SellerProfilePage({ params }: { params: Promise<{ 
                   Edit Listings
                 </Link>
               ) : (
-                <button
-                  type="button"
-                  className="inline-flex min-h-[42px] min-w-[130px] items-center justify-center rounded-full border border-[#ddd3cb] bg-[#fbf8f5] px-6 text-[13px] font-medium text-[#2f2925]"
-                >
-                  Follow
-                </button>
+                <FollowButton targetUserId={seller.id} initialIsFollowing={isFollowing} />
               )}
             </div>
           </div>
