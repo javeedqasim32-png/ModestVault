@@ -489,9 +489,9 @@ export default function SellPageClient({
         setError("");
         if (files.length === 0) return;
 
-        // Check if we already have 6 images
-        if (selectedFiles.length >= 6) {
-            setError("You can only upload up to 6 photos.");
+        // Check if we already have 5 images
+        if (selectedFiles.length >= 5) {
+            setError("You can only upload up to 5 photos.");
             e.target.value = "";
             return;
         }
@@ -500,8 +500,8 @@ export default function SellPageClient({
         try {
             const newlyOptimized: File[] = [];
             for (const rawFile of files) {
-                if (selectedFiles.length + newlyOptimized.length >= 6) {
-                    setError("Maximum 6 photos allowed. Some files were skipped.");
+                if (selectedFiles.length + newlyOptimized.length >= 5) {
+                    setError("Maximum 5 photos allowed. Some files were skipped.");
                     break;
                 }
 
@@ -821,14 +821,14 @@ export default function SellPageClient({
                                     Upload Photos
                                 </h4>
                                 <p className="mt-1.5 text-xs text-[#8a7667] max-w-[280px]">
-                                    Select up to 6 photos of your item. The first photo will be used as the primary cover photo.
+                                    Select up to 5 photos of your item. The first photo will be used as the primary cover photo.
                                 </p>
                             </button>
                         )}
 
                         {/* 2. Premium unified grid containing both thumbnails and compact plus-card */}
                         {previewUrls.length > 0 && (
-                            <div className="grid grid-cols-2 gap-4 sm:grid-cols-6 mb-6">
+                            <div className="grid grid-cols-2 gap-4 sm:grid-cols-5 mb-6">
                                 {previewUrls.map((url, index) => (
                                     <div 
                                         key={`${url}-${index}`} 
@@ -907,8 +907,8 @@ export default function SellPageClient({
                                     </div>
                                 ))}
 
-                                {/* Beautiful 'Add Photo' slot card integrated directly inside the grid if under the 6 images limit */}
-                                {previewUrls.length < 6 && (
+                                {/* Beautiful 'Add Photo' slot card integrated directly inside the grid if under the 5 images limit */}
+                                {previewUrls.length < 5 && (
                                     <button
                                         type="button"
                                         onClick={() => fileInputRef.current?.click()}
@@ -918,7 +918,7 @@ export default function SellPageClient({
                                             <Plus className="h-5 w-5" />
                                         </div>
                                         <span className="text-[13px] font-semibold text-[#2f2925]">Add Photo</span>
-                                        <span className="text-[10px] text-[#8a7667] mt-0.5">({6 - previewUrls.length} left)</span>
+                                        <span className="text-[10px] text-[#8a7667] mt-0.5">({5 - previewUrls.length} left)</span>
                                     </button>
                                 )}
                             </div>
@@ -926,7 +926,7 @@ export default function SellPageClient({
 
                         <div className="mt-3 flex items-center justify-between gap-2">
                             <p className="text-xs text-muted-foreground">
-                                {selectedFiles.length} photos uploaded · up to 6
+                                {selectedFiles.length} photos uploaded · up to 5
                             </p>
                         </div>
 
