@@ -1030,7 +1030,7 @@ export default function SellPageClient({
                                 <div className="h-10 w-10 animate-spin rounded-full border-3 border-[#cfb79f]/20 border-t-[#cfb79f]" />
                                 <p className="mt-3 text-sm font-semibold text-foreground">AI Studio active...</p>
                                 <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed max-w-[240px] mx-auto">
-                                    Generating cover photo. Feel free to fill in the item details below!
+                                    Generating cover photo (takes 2-4 minutes). Feel free to fill in the item details below!
                                 </p>
                             </div>
                         )}
