@@ -119,3 +119,44 @@ export async function updateOrderShipping(
     revalidatePath("/dashboard/purchases");
     return { success: true };
 }
+
+/**
+ * Updates the imageOrder field for multiple listing images in a safe transaction.
+ */
+export async function updateListingImagesOrder(
+    listingId: string,
+    imageIdsInNewOrder: string[]
+) {
+    await requireAdmin();
+
+    // Perform database updates inside a safe transaction to avoid unique constraint violations
+    await prisma.$transaction(async (tx) => {
+        // 1. Temporarily move all of this listing's images to negative orders (no unique conflict)
+        const images = await tx.listingImage.findMany({
+            where: { listingId },
+            select: { id: true },
+        });
+
+        for (let i = 0; i < images.length; i++) {
+            await tx.listingImage.update({
+                where: { id: images[i].id },
+                data: { imageOrder: -(i + 1) },
+            });
+        }
+
+        // 2. Set the new positive orders based on the ordered array
+        for (let idx = 0; idx < imageIdsInNewOrder.length; idx++) {
+            await tx.listingImage.update({
+                where: { id: imageIdsInNewOrder[idx] },
+                data: { imageOrder: idx },
+            });
+        }
+    });
+
+    revalidatePath("/admin/listings");
+    revalidatePath(`/listings/${listingId}`);
+    revalidatePath("/");
+    revalidatePath("/browse");
+    
+    return { success: true };
+}

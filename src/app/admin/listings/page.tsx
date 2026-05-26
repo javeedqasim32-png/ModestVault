@@ -16,8 +16,7 @@ export default async function AdminListingsPage() {
             },
             images: {
                 orderBy: { imageOrder: "asc" },
-                take: 1,
-                select: { imageUrl: true, thumbUrl: true, mediumUrl: true }
+                select: { id: true, imageUrl: true, thumbUrl: true, mediumUrl: true, imageOrder: true }
             }
         },
         orderBy: { created_at: "desc" }
@@ -29,6 +28,7 @@ export default async function AdminListingsPage() {
             ...serialized,
             image_url: listing.images[0]?.mediumUrl || listing.images[0]?.imageUrl || "/placeholder.svg",
             sellerName: `${listing.user.first_name} ${listing.user.last_name}`,
+            images: listing.images,
         };
     });
 
