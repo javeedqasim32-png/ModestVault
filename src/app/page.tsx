@@ -46,7 +46,7 @@ const categories = [
 // Replace these placeholders with your provided branded assets later.
 const HOME_EDITORIAL_MEDIA = {
   category: "/home-placeholders/editorial-placeholder.svg",
-  hero: "/hero-elegance.jpg",
+  hero: "/hero-elegance.jpg?v=2",
   trending: "/home-placeholders/editorial-placeholder.svg",
 } as const;
 
