@@ -125,7 +125,10 @@ export default async function Home() {
 
   const topSellerStats = await prisma.listing.groupBy({
     by: ["user_id"],
-    where: { moderation_status: "APPROVED" },
+    where: { 
+      status: "AVAILABLE",
+      moderation_status: "APPROVED" 
+    },
     _count: { _all: true },
     orderBy: { _count: { user_id: "desc" } },
     take: 5,
@@ -154,10 +157,10 @@ export default async function Home() {
         name: displayName,
         initials,
         slug: slugMap.get(user.id) || user.id,
-        soldCount: item._count._all,
+        activeCount: item._count._all,
       };
     })
-    .filter((seller): seller is { id: string; name: string; initials: string; slug: string; soldCount: number } => seller !== null);
+    .filter((seller): seller is { id: string; name: string; initials: string; slug: string; activeCount: number } => seller !== null);
 
   const recentlyViewedListings = recentViewedIds.length
     ? await prisma.listing.findMany({
@@ -403,7 +406,7 @@ export default async function Home() {
                       {seller.name}
                     </p>
                     <p className="mt-1 text-[10px] text-[#8a7667]">
-                      {seller.soldCount} {seller.soldCount === 1 ? "sale" : "sales"}
+                      {seller.activeCount} {seller.activeCount === 1 ? "listing" : "listings"}
                     </p>
                   </Link>
                 ))}
