@@ -174,3 +174,58 @@ export async function sendPasswordResetEmail(email: string, token: string): Prom
     }
 }
 
+export async function sendListingApprovedEmail(email: string, listingTitle: string): Promise<void> {
+    try {
+        const mailOptions = {
+            from: `"Modaire" <${process.env.EMAIL_USER}>`,
+            to: email,
+            subject: 'Approved! Your listing is now live on Modaire',
+            html: `
+                <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 600px; margin: auto; border: 1px solid #eee; border-radius: 10px;">
+                    <h2 style="color: #4a3328;">Your listing is live!</h2>
+                    <p>Good news! Your listing <strong>${listingTitle}</strong> has been approved by our moderation team and is now live for buyers on Modaire.</p>
+                    <div style="text-align: center; margin: 30px 0;">
+                        <a href="${process.env.NEXT_PUBLIC_APP_URL}/sell" style="display: inline-block; background: #a07c61; color: white; padding: 12px 25px; text-decoration: none; border-radius: 25px; font-weight: bold;">Go to Dashboard</a>
+                    </div>
+                    <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;" />
+                    <p style="font-size: 12px; color: #b0a89e;">Thank you for selling on Modaire.</p>
+                </div>
+            `
+        };
+        await transporter.sendMail(mailOptions);
+        console.log(`✉️ LISTING APPROVED EMAIL SENT to ${email}`);
+    } catch (error) {
+        console.error("❌ Failed to send listing approved email:", error);
+    }
+}
+
+export async function sendListingRejectedEmail(email: string, listingTitle: string, reason: string): Promise<void> {
+    try {
+        const mailOptions = {
+            from: `"Modaire" <${process.env.EMAIL_USER}>`,
+            to: email,
+            subject: 'Action Needed: Your Modaire listing requires edits',
+            html: `
+                <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 600px; margin: auto; border: 1px solid #eee; border-radius: 10px;">
+                    <h2 style="color: #d32f2f;">Listing Edits Required</h2>
+                    <p>Thank you for submitting <strong>${listingTitle}</strong>. Our moderation team reviewed your listing and determined it requires a few edits before it can go live.</p>
+                    <div style="background: #ffebee; border-left: 4px solid #f44336; padding: 15px; border-radius: 4px; margin: 20px 0;">
+                        <p style="margin: 0 0 5px 0; font-weight: bold; color: #c62828;">Feedback from Moderation:</p>
+                        <p style="margin: 0; color: #333; font-style: italic;">"${reason}"</p>
+                    </div>
+                    <p>You can easily update your listing, fix these items, and resubmit it from your Sell dashboard.</p>
+                    <div style="text-align: center; margin: 30px 0;">
+                        <a href="${process.env.NEXT_PUBLIC_APP_URL}/sell" style="display: inline-block; background: #a07c61; color: white; padding: 12px 25px; text-decoration: none; border-radius: 25px; font-weight: bold;">Edit Your Listing</a>
+                    </div>
+                    <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;" />
+                    <p style="font-size: 12px; color: #b0a89e;">Thank you for selling on Modaire.</p>
+                </div>
+            `
+        };
+        await transporter.sendMail(mailOptions);
+        console.log(`✉️ LISTING REJECTED EMAIL SENT to ${email}`);
+    } catch (error) {
+        console.error("❌ Failed to send listing rejected email:", error);
+    }
+}
+

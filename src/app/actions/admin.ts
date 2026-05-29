@@ -3,6 +3,7 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { sendListingApprovedEmail, sendListingRejectedEmail } from "@/lib/email";
 
 /**
  * Verifies the current user is an admin. Throws if not.
@@ -33,13 +34,10 @@ function getHoldUntilDate(from: Date) {
     return holdUntil;
 }
 
-/**
- * Approves a listing for public visibility.
- */
 export async function approveListing(listingId: string) {
     const admin = await requireAdmin();
 
-    await prisma.listing.update({
+    const updated = await prisma.listing.update({
         where: { id: listingId },
         data: {
             moderation_status: "APPROVED",
@@ -48,7 +46,17 @@ export async function approveListing(listingId: string) {
             reviewed_by_id: admin.id,
             rejection_reason: null,
         },
+        select: {
+            title: true,
+            user: {
+                select: { email: true }
+            }
+        }
     });
+
+    if (updated.user?.email) {
+        void sendListingApprovedEmail(updated.user.email, updated.title);
+    }
 
     revalidatePath("/admin/listings");
     revalidatePath("/browse");
@@ -62,7 +70,7 @@ export async function approveListing(listingId: string) {
 export async function rejectListing(listingId: string, reason?: string) {
     const admin = await requireAdmin();
 
-    await prisma.listing.update({
+    const updated = await prisma.listing.update({
         where: { id: listingId },
         data: {
             moderation_status: "REJECTED",
@@ -70,7 +78,17 @@ export async function rejectListing(listingId: string, reason?: string) {
             reviewed_by_id: admin.id,
             rejection_reason: reason || null,
         },
+        select: {
+            title: true,
+            user: {
+                select: { email: true }
+            }
+        }
     });
+
+    if (updated.user?.email && reason) {
+        void sendListingRejectedEmail(updated.user.email, updated.title, reason);
+    }
 
     revalidatePath("/admin/listings");
     revalidatePath("/browse");
