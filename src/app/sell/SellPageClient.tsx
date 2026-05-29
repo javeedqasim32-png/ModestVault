@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import localFont from "next/font/local";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createListing, deleteListing, replaceListingImages, updateListing } from "../actions/listings";
+import { createListing, deleteListing, replaceListingImages, updateListing, getListingImages } from "../actions/listings";
 import { onboardSellerAction } from "../actions/stripe";
 import { Tag, UploadCloud, ChevronLeft, ChevronRight, Heart, PackagePlus, X, Printer, TrendingUp, Users, ShieldCheck, CreditCard, Sparkles, Plus, GripHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -236,6 +236,7 @@ export default function SellPageClient({
     const [savingEdit, setSavingEdit] = useState(false);
     const [editFiles, setEditFiles] = useState<File[]>([]);
     const [editPreviewUrls, setEditPreviewUrls] = useState<string[]>([]);
+    const [existingImages, setExistingImages] = useState<{ id: string; imageUrl: string; thumbUrl?: string | null; mediumUrl?: string | null; imageOrder: number }[]>([]);
     const [title, setTitle] = useState("");
     const [price, setPrice] = useState("");
     const [brand, setBrand] = useState("");
@@ -706,7 +707,7 @@ export default function SellPageClient({
                 return;
             }
             merged.push(file);
-            if (merged.length > MAX_IMAGES) {
+            if (existingImages.length + merged.length > MAX_IMAGES) {
                 setError("You can upload a maximum of 6 images.");
                 e.target.value = "";
                 return;
@@ -726,6 +727,9 @@ export default function SellPageClient({
 
     const removeEditImage = (indexToRemove: number) => {
         setEditFiles((prev) => prev.filter((_, index) => index !== indexToRemove));
+    };
+    const removeExistingImage = (idToRemove: string) => {
+        setExistingImages((prev) => prev.filter((img) => img.id !== idToRemove));
     };
     const moveEditImage = (fromIndex: number, toIndex: number) => {
         setEditFiles((prev) => {
@@ -757,20 +761,29 @@ export default function SellPageClient({
         }
     };
 
-    const startEditListing = (listing: ListingItem) => {
+    const startEditListing = async (listing: ListingItem) => {
         setEditingListing(listing);
         setEditFiles([]);
+        setExistingImages([]);
         setError("");
         setEditStyle(listing.style || "");
         setEditCategory(listing.category || "");
         setEditSubcategory(listing.subcategory || "");
         setEditListingType(listing.type || "");
         setEditTaxonomyErrors({});
+
+        try {
+            const images = await getListingImages(listing.id);
+            setExistingImages(images);
+        } catch (err) {
+            console.error("Failed to load listing images:", err);
+        }
     };
 
     const closeEditListing = () => {
         setEditingListing(null);
         setEditFiles([]);
+        setExistingImages([]);
         setEditStyle("");
         setEditCategory("");
         setEditSubcategory("");
@@ -1542,14 +1555,14 @@ export default function SellPageClient({
                                         return;
                                     }
 
-                                    if (editFiles.length > 0) {
-                                        const imageData = new FormData();
-                                        editFiles.forEach((file) => imageData.append("images", file));
-                                        const imageResult = await replaceListingImages(editingListing.id, imageData);
-                                        if (imageResult?.error) {
-                                            setError(imageResult.error);
-                                            return;
-                                        }
+                                    const imageData = new FormData();
+                                    imageData.append("keptImages", JSON.stringify(existingImages));
+                                    editFiles.forEach((file) => imageData.append("images", file));
+                                    
+                                    const imageResult = await replaceListingImages(editingListing.id, imageData);
+                                    if (imageResult?.error) {
+                                        setError(imageResult.error);
+                                        return;
                                     }
 
                                     closeEditListing();
@@ -1742,7 +1755,7 @@ export default function SellPageClient({
                             </div>
 
                             <div className="space-y-2">
-                                <Label htmlFor="edit-images">Replace Photos (optional)</Label>
+                                <Label htmlFor="edit-images">Listing Photos (max 6)</Label>
                                 <input
                                     id="edit-images"
                                     type="file"
@@ -1750,10 +1763,32 @@ export default function SellPageClient({
                                     multiple
                                     onChange={handleEditImageChange}
                                     className="block w-full rounded-[0.75rem] border border-border bg-background p-2 text-sm"
+                                    disabled={existingImages.length + editFiles.length >= 6}
                                 />
-                                {editPreviewUrls.length > 0 ? (
+                                {(existingImages.length > 0 || editPreviewUrls.length > 0) ? (
                                     <>
                                         <div className="grid grid-cols-3 gap-2">
+                                            {/* Existing S3 Images */}
+                                            {existingImages.map((img, index) => (
+                                                <div key={img.id} className="rounded-lg border border-border bg-card p-1.5">
+                                                    <div className="relative overflow-hidden rounded-md">
+                                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                        <img src={img.imageUrl} alt={`Existing image ${index + 1}`} className="aspect-square w-full object-cover" />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeExistingImage(img.id)}
+                                                            className="absolute right-1 top-1 z-10 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-white hover:bg-black transition"
+                                                        >
+                                                            <X className="h-3.5 w-3.5" />
+                                                        </button>
+                                                        <div className="absolute left-1 top-1 rounded-full bg-[#725643] px-2 py-0.5 text-[9px] font-medium text-white shadow-sm">
+                                                            Existing
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+
+                                            {/* Newly Uploaded local Images */}
                                             {editPreviewUrls.map((url, index) => (
                                                 <div key={`${url}-${index}`} className="rounded-lg border border-border bg-card p-1.5">
                                                     <div className="relative overflow-hidden rounded-md">
@@ -1762,15 +1797,15 @@ export default function SellPageClient({
                                                         <button
                                                             type="button"
                                                             onClick={() => removeEditImage(index)}
-                                                            className="absolute right-1 top-1 z-10 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-white"
+                                                            className="absolute right-1 top-1 z-10 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-white hover:bg-black transition"
                                                         >
                                                             <X className="h-3.5 w-3.5" />
                                                         </button>
-                                                        <div className="absolute left-1 top-1 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-medium text-white">
-                                                            {index + 1}
+                                                        <div className="absolute left-1 top-1 rounded-full bg-[#10b981] px-2 py-0.5 text-[9px] font-medium text-white shadow-sm">
+                                                            New
                                                         </div>
                                                     </div>
-                                                    <div className="mt-1.5 grid grid-cols-3 gap-1">
+                                                    <div className="mt-1.5 grid grid-cols-2 gap-1">
                                                         <button
                                                             type="button"
                                                             onClick={() => moveEditImage(index, index - 1)}
@@ -1778,14 +1813,6 @@ export default function SellPageClient({
                                                             className="inline-flex h-6 items-center justify-center rounded-md border border-border text-foreground disabled:opacity-40"
                                                         >
                                                             <ChevronLeft className="h-3.5 w-3.5" />
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => moveEditImage(index, 0)}
-                                                            disabled={index === 0}
-                                                            className="inline-flex h-6 items-center justify-center rounded-md border border-border px-1 text-[10px] text-foreground disabled:opacity-40"
-                                                        >
-                                                            Set First
                                                         </button>
                                                         <button
                                                             type="button"
@@ -1799,7 +1826,7 @@ export default function SellPageClient({
                                                 </div>
                                             ))}
                                         </div>
-                                        <p className="mt-2 text-xs text-muted-foreground">Image 1 appears first on listing.</p>
+                                        <p className="mt-2 text-xs text-muted-foreground">The first image in the grid will be the main cover photo.</p>
                                     </>
                                 ) : null}
                             </div>

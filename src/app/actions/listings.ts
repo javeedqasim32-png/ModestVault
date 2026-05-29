@@ -422,23 +422,33 @@ export async function replaceListingImages(listingId: string, formData: FormData
         return { error: "Listing ID is required." };
     }
 
+    // Parse kept existing images
+    const keptImagesRaw = formData.get("keptImages") as string;
+    const keptImages = keptImagesRaw ? JSON.parse(keptImagesRaw) : [];
+
+    // Parse newly uploaded images
     const images = extractImagesFromFormData(formData);
-    if (images.length === 0) {
+
+    const totalImagesCount = keptImages.length + images.length;
+    if (totalImagesCount === 0) {
         return { error: "At least one image is required." };
     }
-    if (images.length > MAX_LISTING_IMAGES) {
+    if (totalImagesCount > MAX_LISTING_IMAGES) {
         return { error: "You can upload a maximum of 6 images per listing." };
     }
-    const totalImageBytes = images.reduce((total, image) => total + image.size, 0);
-    if (totalImageBytes > MAX_TOTAL_IMAGE_BYTES) {
-        return { error: "Total image upload size is too large. Please keep all images under 18MB combined." };
-    }
-    for (const image of images) {
-        if (!ALLOWED_IMAGE_TYPES.has(image.type)) {
-            return { error: "Only JPEG, PNG, WEBP, and GIF images are allowed." };
+
+    if (images.length > 0) {
+        const totalImageBytes = images.reduce((total, image) => total + image.size, 0);
+        if (totalImageBytes > MAX_TOTAL_IMAGE_BYTES) {
+            return { error: "Total image upload size is too large. Please keep all images under 18MB combined." };
         }
-        if (image.size > MAX_IMAGE_BYTES) {
-            return { error: "One or more images are larger than 10MB." };
+        for (const image of images) {
+            if (!ALLOWED_IMAGE_TYPES.has(image.type)) {
+                return { error: "Only JPEG, PNG, WEBP, and GIF images are allowed." };
+            }
+            if (image.size > MAX_IMAGE_BYTES) {
+                return { error: "One or more images are larger than 10MB." };
+            }
         }
     }
 
@@ -457,24 +467,60 @@ export async function replaceListingImages(listingId: string, formData: FormData
     }
 
     try {
-        const uploadedImages = await uploadImagesForListing({ listingId, images, bucket });
-        const coverImage = uploadedImages[0]?.imageUrl;
+        // Upload new images to S3 if there are any
+        const uploadedImages = images.length > 0 
+            ? await uploadImagesForListing({ listingId, images, bucket })
+            : [];
+
+        // Build combined data array
+        const combinedData: {
+            id: string;
+            listingId: string;
+            imageUrl: string;
+            thumbUrl: string | null;
+            mediumUrl: string | null;
+            imageOrder: number;
+        }[] = [];
+
+        // 1. Add kept existing images
+        keptImages.forEach((img: any, idx: number) => {
+            combinedData.push({
+                id: img.id,
+                listingId,
+                imageUrl: img.imageUrl,
+                thumbUrl: img.thumbUrl || null,
+                mediumUrl: img.mediumUrl || null,
+                imageOrder: idx,
+            });
+        });
+
+        // 2. Add newly uploaded S3 images
+        uploadedImages.forEach((img: any, idx: number) => {
+            combinedData.push({
+                id: img.id,
+                listingId,
+                imageUrl: img.imageUrl,
+                thumbUrl: img.thumbUrl || null,
+                mediumUrl: img.mediumUrl || null,
+                imageOrder: keptImages.length + idx,
+            });
+        });
+
+        const coverImage = combinedData[0]?.imageUrl;
         if (!coverImage) {
-            return { error: "No valid image was uploaded." };
+            return { error: "No valid image was provided." };
         }
 
         await prisma.$transaction(async (tx) => {
+            // Delete all previous image links in the DB
             await tx.listingImage.deleteMany({ where: { listingId } });
+            
+            // Create fresh records for the combined image set
             await tx.listingImage.createMany({
-                data: uploadedImages.map((image) => ({
-                    id: image.id,
-                    listingId,
-                    imageUrl: image.imageUrl,
-                    thumbUrl: image.thumbUrl,
-                    mediumUrl: image.mediumUrl,
-                    imageOrder: image.imageOrder,
-                })),
+                data: combinedData,
             });
+
+            // Update cover image URL and set status to PENDING
             await tx.listing.update({
                 where: { id: listingId },
                 data: {
@@ -567,3 +613,18 @@ export async function deleteListing(listingId: string) {
         return { error: "An unexpected error occurred while deleting the listing." };
     }
 }
+
+export async function getListingImages(listingId: string) {
+    try {
+        const images = await prisma.listingImage.findMany({
+            where: { listingId },
+            orderBy: { imageOrder: "asc" },
+            select: { id: true, imageUrl: true, thumbUrl: true, mediumUrl: true, imageOrder: true }
+        });
+        return images;
+    } catch (error) {
+        console.error("Failed to get listing images:", error);
+        return [];
+    }
+}
+
