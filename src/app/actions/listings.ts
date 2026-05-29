@@ -391,7 +391,6 @@ export async function updateListing(listingId: string, formData: FormData) {
                 condition: condition || null,
                 brand: brand || null,
                 size: size || null,
-                moderation_status: "PENDING",
             },
         });
 
@@ -478,7 +477,10 @@ export async function replaceListingImages(listingId: string, formData: FormData
             });
             await tx.listing.update({
                 where: { id: listingId },
-                data: { image_url: coverImage },
+                data: {
+                    image_url: coverImage,
+                    moderation_status: "PENDING"
+                },
             });
         });
 
