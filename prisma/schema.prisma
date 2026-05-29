@@ -26,6 +26,8 @@ model User {
   is_admin           Boolean  @default(false)
   is_disabled        Boolean  @default(false)
   email_verified     Boolean   @default(true)
+  reset_token        String?   @unique
+  reset_token_expiry DateTime?
   created_at         DateTime  @default(now())
   updated_at         DateTime  @updatedAt
   listings           Listing[]

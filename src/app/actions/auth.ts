@@ -2,7 +2,8 @@
 
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
-import { sendVerificationEmail } from "@/lib/email";
+import crypto from "crypto";
+import { sendVerificationEmail, sendPasswordResetEmail } from "@/lib/email";
 import { hasCarrierPhoneLength, normalizeUsPhoneInput } from "@/lib/phone";
 import { buildS3ImageUrl, getS3BucketName, uploadFile } from "@/lib/s3";
 
@@ -342,3 +343,89 @@ export async function updateUserProfilePicture(formData: FormData) {
         return { error: `Failed to update profile picture: ${error.message}` };
     }
 }
+
+/**
+ * Request Password Reset (Forgot Password)
+ */
+export async function requestPasswordReset(formData: FormData) {
+    try {
+        const email = (formData.get("email") as string)?.trim().toLowerCase();
+        if (!email) {
+            return { error: "Email address is required." };
+        }
+
+        const user = await prisma.user.findUnique({
+            where: { email }
+        });
+
+        // Always return success even if user doesn't exist for security reasons (prevents email harvesting)
+        if (!user) {
+            return { success: true };
+        }
+
+        // Generate secure random token
+        const token = crypto.randomBytes(32).toString("hex");
+        const expiry = new Date(Date.now() + 3600000); // 1 hour from now
+
+        await prisma.user.update({
+            where: { email },
+            data: {
+                reset_token: token,
+                reset_token_expiry: expiry
+            }
+        });
+
+        await sendPasswordResetEmail(email, token);
+        return { success: true };
+    } catch (error: any) {
+        console.error("Forgot password request error:", error);
+        return { error: "An unexpected error occurred. Please try again." };
+    }
+}
+
+/**
+ * Reset Password with token
+ */
+export async function resetPassword(formData: FormData) {
+    try {
+        const token = formData.get("token") as string;
+        const newPassword = formData.get("password") as string;
+
+        if (!token) return { error: "Invalid or missing token." };
+        if (!newPassword || newPassword.length < 6) {
+            return { error: "Password must be at least 6 characters long." };
+        }
+
+        const user = await prisma.user.findFirst({
+            where: {
+                reset_token: token,
+                reset_token_expiry: {
+                    gte: new Date()
+                }
+            }
+        });
+
+        if (!user) {
+            return { error: "Invalid or expired password reset link." };
+        }
+
+        // Hash new password
+        const salt = await bcrypt.genSalt(10);
+        const password_hash = await bcrypt.hash(newPassword, salt);
+
+        await prisma.user.update({
+            where: { id: user.id },
+            data: {
+                password_hash,
+                reset_token: null,
+                reset_token_expiry: null
+            }
+        });
+
+        return { success: true };
+    } catch (error: any) {
+        console.error("Reset password error:", error);
+        return { error: "An unexpected error occurred. Please try again." };
+    }
+}
+

@@ -144,3 +144,33 @@ export async function sendDeliveryNotificationEmail(buyerEmail: string, sellerEm
         console.error("❌ Failed to send delivery notification emails:", error);
     }
 }
+
+export async function sendPasswordResetEmail(email: string, token: string): Promise<void> {
+    try {
+        const resetLink = `${process.env.NEXT_PUBLIC_APP_URL}/reset-password?token=${token}`;
+        const mailOptions = {
+            from: `"Modaire" <${process.env.EMAIL_USER}>`,
+            to: email,
+            subject: 'Reset your Modaire Password',
+            html: `
+                <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 600px; margin: auto; border: 1px solid #eee; border-radius: 10px;">
+                    <h2 style="color: #4a3328;">Reset Your Password</h2>
+                    <p>We received a request to reset the password for your Modaire account.</p>
+                    <p>Click the button below to choose a new password. This link is only valid for <strong>1 hour</strong>.</p>
+                    <div style="text-align: center; margin: 30px 0;">
+                        <a href="${resetLink}" style="display: inline-block; background: #a07c61; color: white; padding: 12px 25px; text-decoration: none; border-radius: 25px; font-weight: bold;">Reset Password</a>
+                    </div>
+                    <p style="font-size: 12px; color: #8a7667; line-height: 1.5;">If the button above doesn't work, copy and paste this URL into your browser:</p>
+                    <p style="font-size: 12px; color: #a07c61; word-break: break-all; font-family: monospace;">${resetLink}</p>
+                    <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;" />
+                    <p style="font-size: 12px; color: #b0a89e;">If you did not request a password reset, you can safely ignore this email. Your password will remain unchanged.</p>
+                </div>
+            `
+        };
+        await transporter.sendMail(mailOptions);
+        console.log(`✉️ PASSWORD RESET EMAIL SENT to ${email}`);
+    } catch (error) {
+        console.error("❌ Failed to send password reset email:", error);
+    }
+}
+
