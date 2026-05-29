@@ -337,7 +337,7 @@ export async function updateListing(listingId: string, formData: FormData) {
 
     const listing = await prisma.listing.findUnique({
         where: { id: listingId },
-        select: { id: true, user_id: true, status: true },
+        select: { id: true, user_id: true, status: true, moderation_status: true },
     });
 
     if (!listing || listing.user_id !== session.user.id) {
@@ -378,6 +378,8 @@ export async function updateListing(listingId: string, formData: FormData) {
     }
 
     try {
+        const isRejected = listing.moderation_status === "REJECTED";
+
         await prisma.listing.update({
             where: { id: listingId },
             data: {
@@ -391,6 +393,7 @@ export async function updateListing(listingId: string, formData: FormData) {
                 condition: condition || null,
                 brand: brand || null,
                 size: size || null,
+                ...(isRejected ? { moderation_status: "PENDING", rejection_reason: null } : {}),
             },
         });
 

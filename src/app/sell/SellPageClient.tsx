@@ -2188,6 +2188,9 @@ export default function SellPageClient({
                                                     </a>
                                                 ) : null}
                                             </div>
+                                            {isRejected && listing.rejection_reason && (
+                                                <p className="mt-3 text-sm text-red-600 font-medium">Rejection Reason: {listing.rejection_reason}</p>
+                                            )}
                                         </article>
                                     );
                                 })
