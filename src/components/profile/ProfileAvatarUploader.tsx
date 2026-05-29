@@ -142,16 +142,6 @@ export default function ProfileAvatarUploader({
                 )}
             </div>
 
-            {profileImage && isOwnProfile && !isUploading && (
-                <button
-                    type="button"
-                    onClick={handleRemoveClick}
-                    className="mb-2 text-[11px] font-medium text-[#7a6050]/70 hover:text-red-500 transition-colors cursor-pointer select-none"
-                >
-                    Remove Photo
-                </button>
-            )}
-
             {/* Hidden Input for upload */}
             {isOwnProfile && (
                 <input
