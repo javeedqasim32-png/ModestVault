@@ -94,9 +94,6 @@ export default async function MessagesInboxPage() {
                     <p className="text-[16px] font-semibold text-[#2f2925]">{name}</p>
                     <span className="text-[12px] text-[#8a7667]">{latest ? formatTime(latest.created_at) : formatTime(conversation.updated_at)}</span>
                   </div>
-                  {conversation.listing?.title ? (
-                    <p className="mt-0.5 truncate text-[12px] text-[#8a7667]">Re: {conversation.listing.title}</p>
-                  ) : null}
                   <p className="mt-1 truncate text-[13px] text-[#6f6054]">{latest?.body || "Open conversation"}</p>
                 </Link>
               );

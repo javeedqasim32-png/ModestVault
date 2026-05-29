@@ -78,9 +78,6 @@ export default async function ConversationPage({ params }: { params: Promise<{ i
 
         <div className="mt-2 rounded-[14px] border border-[#ddd3cb] bg-[#fbf8f5] px-4 py-3">
           <p className="text-[16px] font-semibold text-[#2f2925]">{otherName}</p>
-          {conversation.listing?.title ? (
-            <p className="mt-0.5 text-[12px] text-[#8a7667]">About: {conversation.listing.title}</p>
-          ) : null}
         </div>
 
         <div className="mt-3 space-y-2">
