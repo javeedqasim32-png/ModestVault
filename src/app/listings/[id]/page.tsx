@@ -18,13 +18,16 @@ export const dynamic = "force-dynamic";
 const MEASUREMENTS_MARKER = "\n\nMeasurements:\n";
 
 function splitDescriptionAndMeasurements(description: string) {
-    const markerIndex = description.indexOf(MEASUREMENTS_MARKER);
-    if (markerIndex === -1) {
+    const regex = /(?:\r?\n){2}Measurements:\r?\n/i;
+    const match = description.match(regex);
+    if (!match || match.index === undefined) {
         return { description: description.trim(), measurements: "" };
     }
+    const markerIndex = match.index;
+    const markerLength = match[0].length;
     return {
         description: description.slice(0, markerIndex).trim(),
-        measurements: description.slice(markerIndex + MEASUREMENTS_MARKER.length).trim(),
+        measurements: description.slice(markerIndex + markerLength).trim(),
     };
 }
 

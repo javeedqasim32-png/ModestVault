@@ -92,19 +92,23 @@ function replaceFileExtension(filename: string, nextExt: string) {
 }
 
 function extractMeasurementsFromDescription(description: string) {
-    const markerIndex = description.indexOf(MEASUREMENTS_MARKER);
-    if (markerIndex === -1) {
+    const regex = /(?:\r?\n){2}Measurements:\r?\n/i;
+    const match = description.match(regex);
+    if (!match || match.index === undefined) {
         return "";
     }
-    return description.slice(markerIndex + MEASUREMENTS_MARKER.length).trim();
+    const markerIndex = match.index;
+    const markerLength = match[0].length;
+    return description.slice(markerIndex + markerLength).trim();
 }
 
 function stripMeasurementsFromDescription(description: string) {
-    const markerIndex = description.indexOf(MEASUREMENTS_MARKER);
-    if (markerIndex === -1) {
+    const regex = /(?:\r?\n){2}Measurements:\r?\n/i;
+    const match = description.match(regex);
+    if (!match || match.index === undefined) {
         return description;
     }
-    return description.slice(0, markerIndex).trimEnd();
+    return description.slice(0, match.index).trimEnd();
 }
 
 function composeListingDescription(description: string, measurements: string) {
