@@ -3,7 +3,7 @@
 import React, { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Camera, Loader2, Pencil } from "lucide-react";
-import { updateUserProfilePicture } from "@/app/actions/auth";
+import { updateUserProfilePicture, deleteUserProfilePicture } from "@/app/actions/auth";
 
 interface ProfileAvatarUploaderProps {
     sellerId: string;
@@ -67,10 +67,35 @@ export default function ProfileAvatarUploader({
         }
     };
 
+    const handleRemoveClick = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!isOwnProfile || isUploading) return;
+
+        setIsUploading(true);
+        setError(null);
+
+        try {
+            const res = await deleteUserProfilePicture(sellerId);
+            if (res.error) {
+                setError(res.error);
+            } else {
+                setProfileImage(null);
+                if (fileInputRef.current) {
+                    fileInputRef.current.value = "";
+                }
+                router.refresh();
+            }
+        } catch (err: any) {
+            setError(err.message || "Failed to remove image.");
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
     return (
         <div className="flex flex-col items-center">
             {/* Interactive container with group for synchronized hover scale states */}
-            <div className="relative mb-3 group">
+            <div className="relative mb-2 group">
                 {/* 1. Main Avatar Circle */}
                 <div
                     onClick={handleAvatarClick}
@@ -116,6 +141,16 @@ export default function ProfileAvatarUploader({
                     </div>
                 )}
             </div>
+
+            {profileImage && isOwnProfile && !isUploading && (
+                <button
+                    type="button"
+                    onClick={handleRemoveClick}
+                    className="mb-2 text-[11px] font-medium text-[#7a6050]/70 hover:text-red-500 transition-colors cursor-pointer select-none"
+                >
+                    Remove Photo
+                </button>
+            )}
 
             {/* Hidden Input for upload */}
             {isOwnProfile && (

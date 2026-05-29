@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/auth";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { sendVerificationEmail, sendPasswordResetEmail } from "@/lib/email";
@@ -341,6 +342,30 @@ export async function updateUserProfilePicture(formData: FormData) {
     } catch (error: any) {
         console.error("Profile image update error:", error);
         return { error: `Failed to update profile picture: ${error.message}` };
+    }
+}
+
+/**
+ * Delete User Profile Picture
+ */
+export async function deleteUserProfilePicture(userId: string) {
+    try {
+        const session = await auth();
+        if (!session?.user?.id || session.user.id !== userId) {
+            return { error: "Unauthorized access." };
+        }
+
+        await prisma.user.update({
+            where: { id: userId },
+            data: {
+                profile_image: null
+            }
+        });
+
+        return { success: true };
+    } catch (error: any) {
+        console.error("Profile image delete error:", error);
+        return { error: `Failed to remove profile picture: ${error.message}` };
     }
 }
 
