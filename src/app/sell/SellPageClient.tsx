@@ -2082,121 +2082,196 @@ export default function SellPageClient({
 
             <div className="hidden bg-[#f4efea] px-4 py-6 sm:block sm:px-6 lg:px-8">
                 <div className="mx-auto max-w-6xl space-y-8">
-                    {renderCreateForm(false)}
-
-                    <div className="space-y-6">
-                        <div className="flex items-center justify-between">
-                            <h2
-                                ref={desktopMyListingsRef}
-                                className={`${cormorantHeading.className} text-[23px] font-medium leading-[1.05] text-foreground`}
-                            >
-                                My Listings
-                            </h2>
-                            <Link href="/dashboard/sales">
-                                <Button variant="outline" className="rounded-full">Manage Sales & Labels</Button>
-                            </Link>
+                    {showCreateForm ? (
+                        <div className="space-y-6">
+                            <div className="flex items-center justify-between border-b border-[#ddd3cb] pb-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowCreateForm(false)}
+                                    className="inline-flex items-center gap-2 rounded-full border border-[#ddd3cb] bg-white px-4 py-2 text-sm font-semibold text-[#4a3328] hover:bg-[#fbf8f5]"
+                                >
+                                    ← Back to Listings
+                                </button>
+                                <p className="text-sm text-muted-foreground font-semibold">New Listing Wizard</p>
+                            </div>
+                            {renderCreateForm(false)}
                         </div>
-
-                        <div className="space-y-4">
-                            {listings.length === 0 ? (
-                                <div className="col-span-full rounded-[2rem] border border-dashed border-border py-20 text-center bg-card/40">
-                                    <Tag className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
-                                    <h3 className="text-xl font-serif font-bold text-foreground mb-2">No listings yet</h3>
-                                    <p className="text-muted-foreground max-w-sm mx-auto">
-                                        You haven&apos;t created any items for sale. Start by filling out the form above!
+                    ) : (
+                        <div className="space-y-8">
+                            {/* Analytics Summary Header */}
+                            <div className="grid grid-cols-4 gap-4">
+                                <div className="rounded-[1.6rem] border border-[#e3dbd3] bg-[#fbf8f5] px-6 py-5 shadow-sm">
+                                    <p className="text-xs uppercase tracking-[0.16em] text-[#8a7667] font-semibold">Total Listings</p>
+                                    <p className={`${cormorantHeading.className} mt-2 text-[2.5rem] font-bold leading-none text-[#2f2925]`}>
+                                        {analytics.totalListings}
                                     </p>
+                                    <p className="mt-2 text-xs text-[#8a7667]">All time creations</p>
                                 </div>
-                            ) : (
-                                listings.map((listing) => {
-                                    const modStatus = listing.moderation_status || "PENDING";
-                                    const isApproved = modStatus === "APPROVED";
-                                    const isRejected = modStatus === "REJECTED";
-                                    const statusClass = isApproved
-                                        ? "bg-[#e7ddd3] text-[#4a3328]"
-                                        : isRejected
-                                            ? "bg-red-100 text-red-700"
-                                            : "bg-yellow-100 text-yellow-700";
-                                    const label = isApproved ? (listing.status === "SOLD" ? "Sold" : "Active") : modStatus;
+                                <div className="rounded-[1.6rem] border border-[#e3dbd3] bg-[#fbf8f5] px-6 py-5 shadow-sm">
+                                    <p className="text-xs uppercase tracking-[0.16em] text-[#8a7667] font-semibold">Revenue</p>
+                                    <p className={`${cormorantHeading.className} mt-2 text-[2.5rem] font-bold leading-none text-[#2f2925]`}>
+                                        ${analytics.deliveredRevenue.toFixed(2)}
+                                    </p>
+                                    <p className="mt-2 text-xs text-[#8a7667]">Delivered orders</p>
+                                </div>
+                                <div className="rounded-[1.6rem] border border-[#e3dbd3] bg-[#fbf8f5] px-6 py-5 shadow-sm">
+                                    <p className="text-xs uppercase tracking-[0.16em] text-[#8a7667] font-semibold">Active</p>
+                                    <p className={`${cormorantHeading.className} mt-2 text-[2.5rem] font-bold leading-none text-[#2f2925]`}>
+                                        {analytics.activeListings}
+                                    </p>
+                                    <p className="mt-2 text-xs text-[#8a7667]">Live on marketplace</p>
+                                </div>
+                                <div className="rounded-[1.6rem] border border-[#e3dbd3] bg-[#fbf8f5] px-6 py-5 shadow-sm">
+                                    <p className="text-xs uppercase tracking-[0.16em] text-[#8a7667] font-semibold">Avg Price</p>
+                                    <p className={`${cormorantHeading.className} mt-2 text-[2.5rem] font-bold leading-none text-[#2f2925]`}>
+                                        ${analytics.averagePrice.toFixed(2)}
+                                    </p>
+                                    <p className="mt-2 text-xs text-[#8a7667]">Average pricing</p>
+                                </div>
+                            </div>
 
-                                    return (
-                                        <article key={listing.id} className="rounded-[1.6rem] border border-[#ddd3cb] bg-[#fbf8f5] p-4">
-                                            <Link
-                                                href={`/listings/${listing.id}`}
-                                                className="grid grid-cols-[140px_1fr] gap-4"
-                                                onClick={() => {
-                                                    if (listing.status === "SOLD") markSoldListingsViewed([listing.id]);
-                                                }}
-                                            >
-                                                <div className="relative overflow-hidden rounded-[1.05rem] border border-[#e3d8cf] bg-[#f2ebe4]">
-                                                    <div className="relative aspect-[3/4]">
-                                                        <Image src={listing.image_url} alt={listing.title} fill className="object-contain p-2" sizes="160px" />
-                                                    </div>
-                                                </div>
-                                                <div className="min-w-0">
-                                                    <h3 className="line-clamp-2 text-[1.9rem] leading-[1.12] font-semibold text-[#2f2925]">{listing.title}</h3>
-                                                    <p className="mt-1 truncate text-[1.02rem] text-[#8a7667]">
-                                                        {listing.category || "Fashion"}
-                                                        {listing.type ? ` · ${listing.type}` : ""}
-                                                        {listing.size ? ` · Size ${listing.size}` : ""}
-                                                        {listing.brand ? ` · ${listing.brand}` : ""}
-                                                    </p>
-                                                    <p className="mt-2 text-[2rem] leading-none font-semibold text-[#2f2925]">
-                                                        ${Number(listing.price).toLocaleString()}
-                                                    </p>
-                                                    <div className="mt-3">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className={`inline-flex rounded-full px-3 py-1 text-[0.95rem] font-semibold ${statusClass}`}>
-                                                                {label}
-                                                            </span>
-                                                            {isNewSoldListing(listing) ? (
-                                                                <span className="inline-flex rounded-full bg-[#4a3328] px-2.5 py-1 text-[0.74rem] font-semibold uppercase tracking-[0.08em] text-white">
-                                                                    NEW
-                                                                </span>
-                                                            ) : null}
+                            {/* Header Section */}
+                            <div className="flex items-center justify-between border-b border-[#ddd3cb] pb-5">
+                                <div className="space-y-1">
+                                    <h2 className={`${cormorantHeading.className} text-[32px] font-bold leading-none text-foreground`}>
+                                        My Store Listings
+                                    </h2>
+                                    <p className="text-sm text-[#8a7667]">Manage, edit, or check the status of your listed items.</p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowCreateForm(true)}
+                                        className="inline-flex h-11 items-center gap-2 rounded-full bg-[#5f4437] px-6 text-sm font-semibold text-white hover:bg-[#4e372c] transition-colors shadow-md"
+                                    >
+                                        + List New Item
+                                    </button>
+                                    <Link href="/dashboard/sales">
+                                        <Button variant="outline" className="rounded-full h-11 px-5">Manage Sales & Labels</Button>
+                                    </Link>
+                                </div>
+                            </div>
+
+                            {/* Desktop Tabs */}
+                            <div className="flex border border-[#ddd3cb] bg-[#f7f2ed] p-1 rounded-xl">
+                                {mobileTabs.filter(t => t.key !== "ANALYTICS").map((tab) => (
+                                    <button
+                                        key={tab.key}
+                                        type="button"
+                                        onClick={() => setMobileTab(tab.key)}
+                                        className={`flex-1 py-2.5 text-center text-sm font-semibold rounded-lg transition-all ${
+                                            mobileTab === tab.key
+                                                ? "bg-[#2f2925] text-white shadow-sm"
+                                                : "text-[#8a7667] hover:text-[#2f2925]"
+                                        }`}
+                                    >
+                                        {tab.label}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Listings Grid/List */}
+                            <div className="space-y-4">
+                                {filteredListings.length === 0 ? (
+                                    <div className="col-span-full rounded-[2rem] border border-dashed border-border py-20 text-center bg-card/40">
+                                        <Tag className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
+                                        <h3 className="text-xl font-serif font-bold text-foreground mb-2">No listings in this tab yet</h3>
+                                        <p className="text-muted-foreground max-w-sm mx-auto">
+                                            You haven&apos;t created any items matching this filter. Click the button above to add one!
+                                        </p>
+                                    </div>
+                                ) : (
+                                    filteredListings.map((listing) => {
+                                        const modStatus = listing.moderation_status || "PENDING";
+                                        const isApproved = modStatus === "APPROVED";
+                                        const isRejected = modStatus === "REJECTED";
+                                        const statusClass = isApproved
+                                            ? "bg-[#e7ddd3] text-[#4a3328]"
+                                            : isRejected
+                                                ? "bg-red-100 text-red-700"
+                                                : "bg-yellow-100 text-yellow-700";
+                                        const label = isApproved ? (listing.status === "SOLD" ? "Sold" : "Active") : modStatus;
+
+                                        return (
+                                            <article key={listing.id} className="rounded-[1.6rem] border border-[#ddd3cb] bg-[#fbf8f5] p-4 shadow-sm hover:shadow-md transition-all">
+                                                <Link
+                                                    href={`/listings/${listing.id}`}
+                                                    className="grid grid-cols-[140px_1fr] gap-4"
+                                                    onClick={() => {
+                                                        if (listing.status === "SOLD") markSoldListingsViewed([listing.id]);
+                                                    }}
+                                                >
+                                                    <div className="relative overflow-hidden rounded-[1.05rem] border border-[#e3d8cf] bg-[#f2ebe4]">
+                                                        <div className="relative aspect-[3/4]">
+                                                            <Image src={listing.image_url} alt={listing.title} fill className="object-contain p-2" sizes="160px" />
                                                         </div>
                                                     </div>
-                                                </div>
-                                            </Link>
+                                                    <div className="min-w-0">
+                                                        <h3 className="line-clamp-2 text-[1.9rem] leading-[1.12] font-semibold text-[#2f2925]">{listing.title}</h3>
+                                                        <p className="mt-1 truncate text-[1.02rem] text-[#8a7667]">
+                                                            {listing.category || "Fashion"}
+                                                            {listing.type ? ` · ${listing.type}` : ""}
+                                                            {listing.size ? ` · Size ${listing.size}` : ""}
+                                                            {listing.brand ? ` · ${listing.brand}` : ""}
+                                                        </p>
+                                                        <p className="mt-2 text-[2rem] leading-none font-semibold text-[#2f2925]">
+                                                            ${Number(listing.price).toLocaleString()}
+                                                        </p>
+                                                        <div className="mt-3">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className={`inline-flex rounded-full px-3 py-1 text-[0.95rem] font-semibold ${statusClass}`}>
+                                                                    {label}
+                                                                </span>
+                                                                {isNewSoldListing(listing) ? (
+                                                                    <span className="inline-flex rounded-full bg-[#4a3328] px-2.5 py-1 text-[0.74rem] font-semibold uppercase tracking-[0.08em] text-white">
+                                                                        NEW
+                                                                    </span>
+                                                                ) : null}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </Link>
 
-                                            <div className="mt-3 flex flex-wrap items-center gap-2">
-                                                {listing.status !== "SOLD" ? (
+                                                <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border/40 pt-3">
+                                                    {listing.status !== "SOLD" ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => startEditListing(listing)}
+                                                            className="inline-flex h-10 items-center rounded-full border border-[#ddd3cb] bg-white px-4 text-[0.96rem] text-[#4a3328]"
+                                                        >
+                                                            Edit
+                                                        </button>
+                                                    ) : null}
                                                     <button
                                                         type="button"
-                                                        onClick={() => startEditListing(listing)}
-                                                        className="inline-flex h-10 items-center rounded-full border border-[#ddd3cb] bg-white px-4 text-[0.96rem] text-[#4a3328]"
+                                                        onClick={() => handleDeleteListing(listing.id)}
+                                                        disabled={deletingListingId === listing.id}
+                                                        className="inline-flex h-10 items-center rounded-full border border-[#ddd3cb] bg-white px-4 text-[0.96rem] text-[#4a3328] disabled:opacity-50"
                                                     >
-                                                        Edit
+                                                        {deletingListingId === listing.id ? "Deleting..." : "Delete"}
                                                     </button>
-                                                ) : null}
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleDeleteListing(listing.id)}
-                                                    disabled={deletingListingId === listing.id}
-                                                    className="inline-flex h-10 items-center rounded-full border border-[#ddd3cb] bg-white px-4 text-[0.96rem] text-[#4a3328] disabled:opacity-50"
-                                                >
-                                                    {deletingListingId === listing.id ? "Deleting..." : "Delete"}
-                                                </button>
-                                                {listing.label_url ? (
-                                                    <a
-                                                        href={listing.label_url}
-                                                        target="_blank"
-                                                        rel="noreferrer"
-                                                        className="inline-flex h-10 items-center gap-2 rounded-full border border-[#ddd3cb] bg-white px-4 text-[0.96rem] text-[#4a3328]"
-                                                    >
-                                                        <Printer className="h-4 w-4" />
-                                                        Print Label
-                                                    </a>
-                                                ) : null}
-                                            </div>
-                                            {isRejected && listing.rejection_reason && (
-                                                <p className="mt-3 text-sm text-red-600 font-medium">Rejection Reason: {listing.rejection_reason}</p>
-                                            )}
-                                        </article>
-                                    );
-                                })
-                            )}
+                                                    {listing.label_url ? (
+                                                        <a
+                                                            href={listing.label_url}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                            className="inline-flex h-10 items-center gap-2 rounded-full border border-[#ddd3cb] bg-white px-4 text-[0.96rem] text-[#4a3328]"
+                                                        >
+                                                            <Printer className="h-4 w-4" />
+                                                            Print Label
+                                                        </a>
+                                                    ) : null}
+                                                </div>
+                                                {isRejected && listing.rejection_reason && (
+                                                    <p className="mt-3 text-sm text-red-600 font-medium">Rejection Reason: {listing.rejection_reason}</p>
+                                                )}
+                                            </article>
+                                        );
+                                    })
+                                )}
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </div>
             </div>
 
