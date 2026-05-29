@@ -39,9 +39,9 @@ export default function ProfileAvatarUploader({
             return;
         }
 
-        // Limit size to 5MB
-        if (file.size > 5 * 1024 * 1024) {
-            setError("Image size must be less than 5MB.");
+        // Limit size to 15MB
+        if (file.size > 15 * 1024 * 1024) {
+            setError("Image size must be less than 15MB.");
             return;
         }
 
