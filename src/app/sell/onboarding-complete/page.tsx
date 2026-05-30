@@ -2,6 +2,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { isStripeAccountReady } from "@/lib/stripe-connect";
 import { stripe } from "@/lib/stripe";
+import { releaseSellerPendingTransfers } from "@/lib/seller-transfer-retro-release";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { AlertCircle, CheckCircle2, Home, RefreshCcw } from "lucide-react";
@@ -40,12 +41,23 @@ export default async function OnboardingCompletePage() {
 
     const isReady = isStripeAccountReady(account);
 
+    let retroRelease: Awaited<ReturnType<typeof releaseSellerPendingTransfers>> | null = null;
+
     if (isReady) {
         // Update database only when Stripe confirms FULL readiness
         await prisma.user.update({
             where: { id: session.user.id },
             data: { seller_enabled: true }
         });
+
+        // Now that the seller has a usable Stripe destination, release any
+        // payouts that were parked while they were unconnected. Never block
+        // the success UI on a Stripe transfer failure.
+        try {
+            retroRelease = await releaseSellerPendingTransfers(session.user.id);
+        } catch (err) {
+            console.error("Retro-release failed for seller", session.user.id, err);
+        }
     } else {
         // If they were previously enabled but now fail the strict check, disable them
         await prisma.user.update({
@@ -55,6 +67,7 @@ export default async function OnboardingCompletePage() {
     }
 
     const dueFields = account.requirements?.currently_due ?? [];
+    const releasedDollars = retroRelease ? retroRelease.totalCentsReleased / 100 : 0;
 
     return (
         <div className="px-4 py-6 sm:px-6 lg:px-8">
@@ -71,6 +84,11 @@ export default async function OnboardingCompletePage() {
                                 <p className="mx-auto mt-4 max-w-xl text-base leading-7 text-muted-foreground">
                                     Your Stripe Connect account is fully set up. You can now create listings and receive payouts.
                                 </p>
+                                {retroRelease && retroRelease.released > 0 && (
+                                    <p className="mx-auto mt-3 max-w-xl rounded-2xl bg-green-50 px-4 py-3 text-sm text-green-800">
+                                        We just released <span className="font-medium">${releasedDollars.toFixed(2)}</span> for {retroRelease.released} pending {retroRelease.released === 1 ? "order" : "orders"}.
+                                    </p>
+                                )}
                             </div>
                             <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
                                 <Link

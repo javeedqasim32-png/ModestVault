@@ -31,33 +31,33 @@ export default async function SellPage({
         redirect("/login?callbackUrl=/sell");
     }
 
-    // Check user's latest seller status from the database
+    // Stripe onboarding is no longer required to list — anyone signed in can sell.
+    // We still verify the user exists in the DB; payout-pending state is handled
+    // post-sale via the UnpaidEarningsBanner and the AWAITING_SELLER_STRIPE flow.
     const user = await prisma.user.findUnique({
         where: { id: session.user.id },
-        select: { seller_enabled: true }
+        select: { id: true },
     });
 
     if (!user) {
         redirect("/login?callbackUrl=/sell");
     }
 
-    const listings = user.seller_enabled
-        ? await prisma.listing.findMany({
-            where: { user_id: session.user.id },
-            orderBy: { created_at: "desc" },
-            include: {
-                images: {
-                    orderBy: { imageOrder: "asc" },
-                    take: 1,
-                    select: { imageUrl: true, thumbUrl: true, mediumUrl: true, imageOrder: true },
-                },
-                purchases: {
-                    include: { order: true },
-                    take: 1
-                }
+    const listings = await prisma.listing.findMany({
+        where: { user_id: session.user.id },
+        orderBy: { created_at: "desc" },
+        include: {
+            images: {
+                orderBy: { imageOrder: "asc" },
+                take: 1,
+                select: { imageUrl: true, thumbUrl: true, mediumUrl: true, imageOrder: true },
             },
-        })
-        : [];
+            purchases: {
+                include: { order: true },
+                take: 1
+            }
+        },
+    });
 
     const safeListings = listings.map((listing) => {
         const order = listing.purchases?.[0]?.order;
@@ -114,7 +114,6 @@ export default async function SellPage({
     return (
         <SellPageClient
             currentUserId={session.user.id}
-            isSellerInitially={user.seller_enabled}
             listings={safeListings}
             openCreateInitially={openCreateInitially}
             openManageInitially={openManageInitially}

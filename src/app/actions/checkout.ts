@@ -5,7 +5,6 @@ import { getAppUrl } from "@/lib/app-url";
 import { getPrimaryListingImage } from "@/lib/listing-images";
 import { prisma } from "@/lib/prisma";
 import { getShipmentRateById, getShipmentRates } from "@/lib/shippo";
-import { isStripeAccountReady } from "@/lib/stripe-connect";
 import { stripe } from "@/lib/stripe";
 import { normalizeUsPhoneInput } from "@/lib/phone";
 import { hasCarrierPhoneLength } from "@/lib/phone";
@@ -130,8 +129,6 @@ async function getValidatedListingForCheckout(listingId: string, buyerId: string
                     state: true,
                     zip: true,
                     country: true,
-                    stripe_account_id: true,
-                    seller_enabled: true
                 }
             }
         }
@@ -139,28 +136,7 @@ async function getValidatedListingForCheckout(listingId: string, buyerId: string
 
     if (!listing) throw new Error("Listing not found.");
     if (listing.status !== "AVAILABLE") throw new Error("This item is no longer available.");
-    if (!listing.user.stripe_account_id) throw new Error("Seller is not set up to receive payments.");
     if (listing.user_id === buyerId) throw new Error("You cannot buy your own listing.");
-
-    const account = await stripe.accounts.retrieve(listing.user.stripe_account_id);
-    const sellerReady = isStripeAccountReady(account);
-
-    if (!sellerReady) {
-        if (listing.user.seller_enabled) {
-            await prisma.user.update({
-                where: { id: listing.user_id },
-                data: { seller_enabled: false },
-            });
-        }
-        throw new Error("Seller is not currently eligible to receive payments.");
-    }
-
-    if (!listing.user.seller_enabled) {
-        await prisma.user.update({
-            where: { id: listing.user_id },
-            data: { seller_enabled: true },
-        });
-    }
 
     return listing;
 }

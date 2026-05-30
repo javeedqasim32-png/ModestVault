@@ -4,6 +4,7 @@ import localFont from "next/font/local";
 import "./globals.css";
 import Navbar from "@/components/layout/Navbar";
 import MobileBottomNav from "@/components/layout/MobileBottomNav";
+import UnpaidEarningsBanner from "@/components/sell/UnpaidEarningsBanner";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const playfair = Playfair_Display({ subsets: ["latin"], variable: "--font-playfair" });
@@ -76,6 +77,7 @@ export default function RootLayout({
       <body className={`${inter.variable} ${playfair.variable} ${jostLocal.variable} ${cormorantLocal.variable} font-sans antialiased bg-background text-foreground min-h-screen flex flex-col`}>
         <Navbar />
         <main className="flex-1 flex flex-col w-full pb-24 lg:pb-0">
+          <UnpaidEarningsBanner />
           {children}
         </main>
         <MobileBottomNav />

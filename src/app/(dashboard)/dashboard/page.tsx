@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { ChevronRight, CircleHelp, FileText, ShieldCheck, ShoppingBag, Tag, TrendingUp, UserRound, Wallet } from "lucide-react";
+import { ChevronRight, CircleHelp, CreditCard, FileText, ShieldCheck, ShoppingBag, Tag, TrendingUp, UserRound, Wallet } from "lucide-react";
 import Link from "next/link";
 
 import { getUserSlugMap } from "@/lib/user-slugs";
@@ -28,12 +28,19 @@ export default async function ProfileDashboard() {
         ? await favoriteDelegate.count({ where: { user_id: userId } }).catch(() => 0)
         : 0;
 
-    const cards = [
+    type DashboardCard = {
+        label: string;
+        value: string;
+        icon: typeof Tag;
+        href: string;
+    };
+    const cards: DashboardCard[] = [
         ...(isAdmin ? [{ label: "Admin", value: "Manage marketplace", icon: ShieldCheck, href: "/admin/listings" }] : []),
         { label: "Orders", value: "Track purchases", icon: ShoppingBag, href: "/dashboard/purchases" },
-        { label: "Sell", value: isSeller ? "Create listing" : "Become a seller", icon: Tag, href: "/sell" },
+        { label: "Sell", value: "Create listing", icon: Tag, href: "/sell" },
         { label: "Sales", value: "Sold items", icon: TrendingUp, href: "/dashboard/sales" },
         { label: "Earnings", value: "Payout overview", icon: Wallet, href: "/dashboard/earnings" },
+        ...(isSeller ? [] : [{ label: "Payouts", value: "Set up payout", icon: CreditCard, href: "/sell/setup" }]),
     ];
 
     return (

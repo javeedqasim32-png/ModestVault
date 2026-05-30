@@ -136,13 +136,16 @@ model Order {
   shipped_at            DateTime?
   delivered_at          DateTime?
   hold_until            DateTime?
-  seller_transfer_status String   @default("PENDING_HOLD") // PENDING_HOLD, READY_FOR_RELEASE, RELEASED, BLOCKED, FAILED
+  seller_transfer_status String   @default("PENDING_HOLD") // PENDING_HOLD, READY_FOR_RELEASE, RELEASED, BLOCKED, FAILED, AWAITING_SELLER_STRIPE
   seller_transfer_id     String?
   seller_transfer_amount_cents Int?
   seller_transfer_currency String?
   seller_transfer_released_at DateTime?
+  unclaimed_reminder_sent_at DateTime?
   created_at            DateTime  @default(now())
   updated_at            DateTime  @updatedAt
+
+  @@index([seller_transfer_status])
 }
 
 model ListingImage {

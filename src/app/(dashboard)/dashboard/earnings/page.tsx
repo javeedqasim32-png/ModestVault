@@ -1,12 +1,23 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { getStripeBalance, createStripeDashboardLink } from "@/app/actions/stripe";
+import { getStripeBalance, createStripeDashboardLink, onboardSellerAction } from "@/app/actions/stripe";
 import { redirect } from "next/navigation";
-import { Wallet, Clock, ExternalLink, TrendingUp } from "lucide-react";
-import Link from "next/link";
-import { Button } from "@/components/ui/Button";
+import { Clock, ExternalLink, TrendingUp, AlertCircle } from "lucide-react";
 
 export const dynamic = "force-dynamic";
+
+type OrderAggregateDelegate = {
+    aggregate: (args: unknown) => Promise<{
+        _sum: { seller_transfer_amount_cents: number | null };
+        _count: number;
+    }>;
+};
+
+async function handleConnectStripe() {
+    "use server";
+    const result = await onboardSellerAction();
+    if (result?.url) redirect(result.url);
+}
 
 export default async function EarningsPage() {
     const session = await auth();
@@ -14,37 +25,37 @@ export default async function EarningsPage() {
 
     const user = await prisma.user.findUnique({
         where: { id: session.user.id },
-        select: { stripe_account_id: true, seller_enabled: true }
+        select: { stripe_account_id: true }
     });
 
-    if (!user?.seller_enabled) {
-        return (
-            <div className="px-6 py-8 sm:px-10 lg:px-12" style={{ fontFamily: "var(--font-sans), sans-serif" }}>
-                <div className="flex flex-col items-center justify-center rounded-[24px] border border-dashed border-[#d9cfc7] bg-[#f7f2ed] py-24 text-center px-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]">
-                    <Wallet className="w-12 h-12 text-[#b89881] mb-6 opacity-60" />
-                    <h2 className="text-[28px] text-[#2f2925] mb-3" style={{ fontFamily: "var(--font-serif), serif" }}>Earnings Inactive</h2>
-                    <p className="text-[15px] text-[#8a7667] max-w-sm mx-auto mb-8">
-                        Complete your seller onboarding to start receiving payouts.
-                    </p>
-                    <Link href="/sell">
-                        <Button className="rounded-full bg-[#aa8464] px-8 hover:bg-[#946f52] shadow-sm">Setup Seller Account</Button>
-                    </Link>
-                </div>
-            </div>
-        );
-    }
-
-    const balance = user.stripe_account_id
+    const balance = user?.stripe_account_id
         ? await getStripeBalance(user.stripe_account_id)
         : { available: 0, pending: 0, currency: "USD" };
 
-    // Pre-fetch the dashboard link so it reliably opens in a new tab
+    const orderDelegate = (prisma as unknown as { order: OrderAggregateDelegate }).order;
+    const awaitingAggregate = await orderDelegate.aggregate({
+        where: {
+            seller_transfer_status: "AWAITING_SELLER_STRIPE",
+            seller_transfer_id: null,
+            purchase: { listing: { user_id: session.user.id } },
+        },
+        _sum: { seller_transfer_amount_cents: true },
+        _count: true,
+    });
+    const awaitingCents = awaitingAggregate._sum.seller_transfer_amount_cents ?? 0;
+    const awaitingCount = awaitingAggregate._count ?? 0;
+    const awaitingDollars = awaitingCents / 100;
+
+    // Pre-fetch the dashboard link so it reliably opens in a new tab. Skip for
+    // sellers who haven't connected Stripe yet — there's no dashboard to link to.
     let stripeDashboardUrl = "https://dashboard.stripe.com";
-    try {
-        const result = await createStripeDashboardLink();
-        stripeDashboardUrl = result.url;
-    } catch (e) {
-        console.error("Failed to generate stripe dashboard link", e);
+    if (user?.stripe_account_id) {
+        try {
+            const result = await createStripeDashboardLink();
+            stripeDashboardUrl = result.url;
+        } catch (e) {
+            console.error("Failed to generate stripe dashboard link", e);
+        }
     }
 
     return (
@@ -63,7 +74,7 @@ export default async function EarningsPage() {
                 </a>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className={`grid grid-cols-1 gap-6 ${awaitingCount > 0 ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
                 {/* Available Balance */}
                 <a href={stripeDashboardUrl} target="_blank" rel="noopener noreferrer" className="block w-full text-left rounded-[24px] bg-[linear-gradient(135deg,#b89881_0%,#7f5f4e_100%)] p-6 sm:p-8 text-white shadow-[0_12px_30px_rgba(111,81,67,0.18)] relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_14px_36px_rgba(111,81,67,0.25)]">
                     <div className="space-y-6 relative z-10">
@@ -98,6 +109,31 @@ export default async function EarningsPage() {
                         </p>
                     </div>
                 </div>
+
+                {awaitingCount > 0 && (
+                    <div className="rounded-[24px] border border-amber-200 bg-amber-50 p-6 sm:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]">
+                        <div className="space-y-6">
+                            <div className="flex items-center gap-2.5">
+                                <AlertCircle className="w-4 h-4 text-amber-700" />
+                                <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-amber-700">Awaiting Stripe Connection</span>
+                            </div>
+                            <h2 className="text-[44px] md:text-[54px] leading-none text-amber-900" style={{ fontFamily: "var(--font-serif), serif" }}>
+                                ${awaitingDollars.toFixed(2)}
+                            </h2>
+                            <p className="text-[14px] text-amber-900/80 leading-relaxed">
+                                From {awaitingCount} sold {awaitingCount === 1 ? "item" : "items"}. Connect Stripe to claim your payout.
+                            </p>
+                            <form action={handleConnectStripe}>
+                                <button
+                                    type="submit"
+                                    className="inline-flex items-center justify-center rounded-full bg-amber-900 px-6 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-700 focus:ring-offset-2"
+                                >
+                                    Connect Stripe to claim
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                )}
             </div>
 
             <div className="rounded-[24px] border border-[#e3d9d1] bg-white p-5 sm:p-6 shadow-[0_4px_20px_rgba(0,0,0,0.02)] space-y-4">
@@ -107,6 +143,11 @@ export default async function EarningsPage() {
                     Funds typically transition from <em>Pending</em> to <em>Available</em> within 2–7 business days.
                     Once available, they are dispatched directly to your connected bank account.
                 </p>
+                {!user?.stripe_account_id && (
+                    <p className="text-[13px] text-[#8a7667] leading-[1.6]">
+                        Funds from completed sales are held on Modaire until you connect Stripe — there is no deadline to claim them.
+                    </p>
+                )}
             </div>
         </div>
     );

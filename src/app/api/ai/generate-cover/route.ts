@@ -4,6 +4,13 @@ import sharp from "sharp";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { auth } from "@/auth";
 import { buildS3ImageUrl, getS3BucketName, s3, uploadFile } from "@/lib/s3";
+import {
+  DEFAULT_SKIN_TONE,
+  getHijabPrompt,
+  getSkinTonePrompt,
+  isValidSkinTone,
+  type SkinTone,
+} from "@/lib/ai-cover-options";
 
 // Simple in-memory per-user cooldown. For multi-instance production, swap for Redis/DB.
 const LAST_GENERATE_BY_USER = new Map<string, number>();
@@ -78,6 +85,9 @@ export async function POST(req: NextRequest) {
     // 4. Parse per-slot files
     console.log("[AI COVER] Parsing multipart form data...");
     const slotFiles = new Map<SlotRole, File>();
+    let modelSkinTone: SkinTone = DEFAULT_SKIN_TONE;
+    let hijabRequired = false;
+    let rawHijab = "";
     const contentType = req.headers.get("content-type") || "";
     if (contentType.includes("multipart/form-data")) {
       try {
@@ -88,10 +98,23 @@ export async function POST(req: NextRequest) {
             slotFiles.set(slot.key, v as File);
           }
         }
+        const rawTone = form.get("modelSkinTone")?.toString() ?? "";
+        if (isValidSkinTone(rawTone)) {
+          modelSkinTone = rawTone;
+        }
+        rawHijab = form.get("hijabRequired")?.toString() ?? "";
+        hijabRequired = rawHijab === "true";
       } catch (formErr) {
         console.error("[AI COVER] Failed to parse multipart form data:", formErr);
         return NextResponse.json({ error: "Invalid form data payload." }, { status: 400 });
       }
+    }
+
+    if (rawHijab !== "true" && rawHijab !== "false") {
+      return NextResponse.json(
+        { error: "Please choose whether the model wears a hijab." },
+        { status: 400 }
+      );
     }
 
     console.log(`[AI COVER] Parsed slots: [${Array.from(slotFiles.keys()).join(", ")}]`);
@@ -227,9 +250,9 @@ Render the model wearing the complete outfit composed from the uploaded referenc
 
 MODEL APPEARANCE:
 - Beautiful, attractive South Asian / Pakistani female model
-- Fair skin tone with warm undertones, soft natural makeup
+- ${getSkinTonePrompt(modelSkinTone)}, soft natural makeup
 - Graceful, photogenic features; long lashes; defined eyebrows
-- Dark hair styled elegantly (low bun with a few soft face strands, similar to Image 1)
+- ${getHijabPrompt(hijabRequired)}
 - Slender, well-proportioned build
 - Natural human skin texture (visible pores, not airbrushed)
 - Natural hands and fingers
@@ -250,7 +273,7 @@ AVOID:
 - AI beauty perfection (no plastic/3D-render appearance, no mannequin pose)
 - Unrealistic anatomy, distorted hands, or fantasy couture redesigns
 
-The final result should resemble a real luxury Pakistani lawn brand campaign photographed with a DSLR camera — elegant, photorealistic, faithful to the uploaded outfit, with an attractive fair-toned model.`;
+The final result should resemble a real luxury Pakistani lawn brand campaign photographed with a DSLR camera — elegant, photorealistic, and faithful to the uploaded outfit and the specified model appearance above.`;
 
     formData.append("model", "gpt-image-2-2026-04-21");
     formData.append("prompt", promptText);

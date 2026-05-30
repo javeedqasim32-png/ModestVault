@@ -4,7 +4,8 @@ import Image from "next/image";
 import Link from "next/link";
 import localFont from "next/font/local";
 import { useMemo, useState } from "react";
-import { ChevronRight, ShoppingBag } from "lucide-react";
+import { ChevronRight, ShoppingCart, Sparkles } from "lucide-react";
+import EmptyBagIllustration from "@/components/ui/EmptyBagIllustration";
 
 type MobileOrderItem = {
     id: string;
@@ -339,14 +340,24 @@ export default function MobileOrdersClient({ orders, cartCount }: { orders: Mobi
             ) : (
                 <div className="space-y-3 px-4 pt-4">
                     {filtered.length === 0 ? (
-                        <div className="rounded-[1.25rem] border border-[#ddd3cb] bg-[#fbf8f5] px-5 py-8 text-center">
-                            <ShoppingBag className="mx-auto mb-4 h-10 w-10 text-[#8a7667]/50" />
-                            <p className="text-base text-[#8a7667]">No orders in this tab yet.</p>
+                        <div className="rounded-[1.5rem] border border-dashed border-[#d4c7bb] bg-transparent px-6 py-20 text-center">
+                            <div className="relative mx-auto mb-8 inline-flex h-20 w-20 items-center justify-center">
+                                <EmptyBagIllustration size={72} />
+                                <Sparkles className="absolute -top-1 -right-2 h-5 w-5 text-[#7a5a45]" strokeWidth={1.5} />
+                                <Sparkles className="absolute -bottom-0 -left-3 h-3.5 w-3.5 text-[#7a5a45]" strokeWidth={1.5} />
+                                <Sparkles className="absolute top-3 -right-5 h-2.5 w-2.5 text-[#7a5a45]" strokeWidth={1.8} />
+                            </div>
+                            <h3 className="text-[1.05rem] font-medium text-[#2f2925]">
+                                {orders.length === 0 ? "You don't have any orders yet." : "No orders in this tab yet."}
+                            </h3>
+                            <p className="mt-2 text-sm text-[#8a7667]">
+                                {orders.length === 0 ? "When you place an order, it will appear here." : "Try a different tab or start shopping."}
+                            </p>
                             <Link
                                 href="/browse"
-                                className="mx-auto mt-4 inline-flex items-center rounded-full bg-[#5f4437] px-4 py-2 text-sm text-white"
+                                className="mt-7 inline-flex items-center gap-2 rounded-full bg-[#7a5a45] px-6 py-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#684a38]"
                             >
-                                Explore marketplace
+                                Start Shopping
                             </Link>
                         </div>
                     ) : (
@@ -419,6 +430,19 @@ export default function MobileOrdersClient({ orders, cartCount }: { orders: Mobi
                     )}
                 </div>
             )}
+
+            <Link
+                href="/cart"
+                aria-label="Open cart"
+                className="fixed bottom-24 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[#7a5a45] text-white shadow-[0_10px_24px_rgba(122,90,69,0.35)] transition-transform active:scale-95"
+            >
+                <ShoppingCart className="h-6 w-6" strokeWidth={1.8} />
+                {cartCount > 0 ? (
+                    <span className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full border-2 border-[#f4efea] bg-[#5f4437] px-1 text-[11px] font-semibold leading-none text-white">
+                        {cartCount > 99 ? "99+" : cartCount}
+                    </span>
+                ) : null}
+            </Link>
         </div>
     );
 }

@@ -22,13 +22,14 @@ import {
 } from "@dnd-kit/sortable";
 import SortableImageCard from "@/components/sell/SortableImageCard";
 import { createListing, deleteListing, replaceListingImages, updateListing, getListingImages } from "../actions/listings";
-import { onboardSellerAction } from "../actions/stripe";
 import { Tag, UploadCloud, ChevronLeft, ChevronRight, Heart, PackagePlus, X, Printer, TrendingUp, Users, ShieldCheck, CreditCard, Sparkles, Plus, GripHorizontal } from "lucide-react";
+import EmptyBagIllustration from "@/components/ui/EmptyBagIllustration";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
 import { useRouter } from "next/navigation";
 import { getCategories, getStyles, getSubcategories, getTypes } from "@/lib/taxonomy";
 import { validateListingTaxonomy, type ListingTaxonomyErrors } from "@/lib/taxonomyValidation";
+import { SKIN_TONE_OPTIONS, DEFAULT_SKIN_TONE, type SkinTone } from "@/lib/ai-cover-options";
 
 type ListingItem = {
     id: string;
@@ -53,7 +54,6 @@ type ListingItem = {
 
 type SellPageClientProps = {
     currentUserId: string;
-    isSellerInitially: boolean;
     listings: ListingItem[];
     openCreateInitially?: boolean;
     openManageInitially?: boolean;
@@ -229,20 +229,20 @@ async function optimizeImageFile(file: File): Promise<File> {
 
 export default function SellPageClient({
     currentUserId,
-    isSellerInitially,
     listings,
     openCreateInitially = false,
     openManageInitially = false,
     analytics,
 }: SellPageClientProps) {
     const router = useRouter();
-    const [isSeller] = useState(isSellerInitially);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
     const [previewUrls, setPreviewUrls] = useState<string[]>([]);
     const [generatedImageUrls, setGeneratedImageUrls] = useState<string[]>([]);
     const [isGenerating, setIsGenerating] = useState(false);
+    const [modelSkinTone, setModelSkinTone] = useState<SkinTone>(DEFAULT_SKIN_TONE);
+    const [hijabRequired, setHijabRequired] = useState<boolean | null>(null);
     // dnd-kit sensors: PointerSensor handles mouse, TouchSensor handles touch.
     // activationConstraint prevents accidental drags during a quick tap or while scrolling.
     const sensors = useSensors(
@@ -497,23 +497,6 @@ export default function SellPageClient({
             if (editListingType) setEditListingType("");
         }
     }, [editCategory, editSubcategory, editListingType]);
-
-    async function handleStripeOnboarding() {
-        setLoading(true);
-        setError("");
-        try {
-            const res = await onboardSellerAction();
-            if (res?.url) {
-                window.location.href = res.url;
-            } else {
-                setError("Failed to generate onboarding link.");
-            }
-        } catch (err: unknown) {
-            setError(err instanceof Error ? err.message : "An unexpected error occurred during onboarding.");
-        } finally {
-            setLoading(false);
-        }
-    }
 
     const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files ?? []);
@@ -947,21 +930,68 @@ export default function SellPageClient({
                             </p>
                         </div>
 
-                        <div className="mt-5 flex flex-col gap-3 rounded-[20px] border border-[#e8ddd1] bg-[#faf6f0] p-4">
+                        <div className="mt-5 flex flex-col gap-4 rounded-[20px] border border-[#e8ddd1] bg-[#faf6f0] p-4">
                             <div className="flex items-start gap-3">
                                 <Sparkles className="mt-0.5 h-4.5 w-4.5 flex-shrink-0 text-[#cfb79f]" />
                                 <div>
                                     <p className="text-xs font-semibold text-[#4a3328]">Generate an AI cover photo</p>
                                     <p className="mt-0.5 text-[11px] text-[#8a7667] leading-normal">
-                                        {generatedImageUrls.length > 0 
-                                            ? "AI cover photo generated! Limit: 1 generated cover per listing." 
-                                            : "Creates a studio-quality cover from your uploaded photos (takes 2-4 minutes). Limit: 1 generated cover per listing."}
+                                        {generatedImageUrls.length > 0
+                                            ? "AI cover photo generated! Limit: 1 generated cover per listing."
+                                            : "Create a studio-quality cover from your uploaded photos. Takes 2–4 minutes. Limit: 1 cover per listing."}
                                     </p>
                                 </div>
                             </div>
+
+                            <div className="border-t border-[#e8ddd1] pt-4">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7667]">Model Tone</p>
+                                <div className="mt-3 flex items-center gap-3">
+                                    {SKIN_TONE_OPTIONS.map((opt) => {
+                                        const selected = modelSkinTone === opt.value;
+                                        return (
+                                            <button
+                                                key={opt.value}
+                                                type="button"
+                                                aria-label={`Skin tone: ${opt.label}`}
+                                                aria-pressed={selected}
+                                                onClick={() => setModelSkinTone(opt.value)}
+                                                className={`h-10 w-10 rounded-full transition ${selected ? "ring-2 ring-offset-2 ring-[#7a5a45]" : "ring-0"}`}
+                                                style={{ backgroundColor: opt.swatch }}
+                                            />
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            <div className="border-t border-[#e8ddd1] pt-4">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7667]">Hijab</p>
+                                <div className="mt-3 flex items-center gap-2">
+                                    {[
+                                        { label: "Yes", value: true },
+                                        { label: "No", value: false },
+                                    ].map((opt) => {
+                                        const selected = hijabRequired === opt.value;
+                                        return (
+                                            <button
+                                                key={opt.label}
+                                                type="button"
+                                                aria-pressed={selected}
+                                                onClick={() => setHijabRequired(opt.value)}
+                                                className={`min-w-[72px] rounded-full px-5 py-2 text-sm transition ${
+                                                    selected
+                                                        ? "bg-[#bca797] text-white"
+                                                        : "border border-[#cfb79f] bg-white text-[#7a6050] hover:bg-[#faf6f0]"
+                                                }`}
+                                            >
+                                                {opt.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
                             <Button
                                 type="button"
-                                variant="outline"
                                 onClick={async () => {
                                     if (generatedImageUrls.length > 0) {
                                         setError("You have already generated an AI cover photo for this listing.");
@@ -969,6 +999,10 @@ export default function SellPageClient({
                                     }
                                     if (selectedFiles.length === 0) {
                                         setError("Please upload at least one product photo first before generating a cover.");
+                                        return;
+                                    }
+                                    if (hijabRequired === null) {
+                                        setError("Please choose whether the model wears a hijab.");
                                         return;
                                     }
                                     try {
@@ -982,6 +1016,8 @@ export default function SellPageClient({
                                                 apiFormData.append(`reference_${mockSlots[index]}`, file);
                                             }
                                         });
+                                        apiFormData.set("modelSkinTone", modelSkinTone);
+                                        apiFormData.set("hijabRequired", String(hijabRequired));
 
                                         const res = await fetch("/api/ai/generate-cover", {
                                             method: "POST",
@@ -1027,11 +1063,14 @@ export default function SellPageClient({
                                         setIsGenerating(false);
                                     }
                                 }}
-                                disabled={isGenerating || selectedFiles.length === 0 || generatedImageUrls.length > 0}
+                                disabled={isGenerating || selectedFiles.length === 0 || generatedImageUrls.length > 0 || hijabRequired === null}
                                 isLoading={isGenerating}
-                                className="w-full bg-white hover:bg-[#faf6f0] border-[#cfb79f] text-[#7a6050] hover:text-[#4a3328] rounded-[28px]"
+                                className="w-full rounded-[28px] bg-[#5f4437] text-white hover:bg-[#4a3328] disabled:bg-[#5f4437]/40 disabled:text-white/80"
                             >
-                                {isGenerating ? "Generating…" : "Generate Cover"}
+                                <span className="inline-flex items-center justify-center gap-2 uppercase tracking-[0.12em]">
+                                    {isGenerating ? "Generating…" : "Generate Cover"}
+                                    {!isGenerating ? <Sparkles className="h-4 w-4" strokeWidth={1.8} /> : null}
+                                </span>
                             </Button>
                         </div>
 
@@ -1288,120 +1327,6 @@ export default function SellPageClient({
             </form>
         </div>
     );
-
-    if (!isSeller) {
-        const sellerBenefits = [
-            {
-                title: "Keep 85% of your sale",
-                desc: "Only a 15% platform fee, designed for modest fashion sellers.",
-                icon: TrendingUp,
-                iconBg: "#d6edd9",
-                iconColor: "#2f9a43",
-            },
-            {
-                title: "Dedicated buyer audience",
-                desc: "Shoppers actively looking for modest fashion with stronger conversion.",
-                icon: Users,
-                iconBg: "#cfe2f6",
-                iconColor: "#246fcd",
-            },
-            {
-                title: "Buyer protection built-in",
-                desc: "Secure payments, dispute support, and trust signals boost sales.",
-                icon: Heart,
-                iconBg: "#f3d3e2",
-                iconColor: "#ce2f3b",
-            },
-            {
-                title: "Fast, direct payouts",
-                desc: "Powered by Stripe Connect with direct transfer to your bank.",
-                icon: CreditCard,
-                iconBg: "#e8d5f1",
-                iconColor: "#7a2dc2",
-            },
-        ] as const;
-
-        return (
-            <div className="bg-[#f4efea] px-0 py-0 sm:px-6 sm:py-6 lg:px-8">
-                <div className="mx-auto flex min-h-[calc(100vh-11rem)] w-full max-w-[1360px] flex-col overflow-hidden bg-[#f4efea] sm:rounded-[2rem] sm:border sm:border-border/80 sm:shadow-[0_35px_80px_rgba(114,86,67,0.10)]">
-                    <section
-                        className="relative overflow-hidden border-b border-border/80 px-5 pb-6 pt-4 text-center sm:px-10 sm:pb-10 sm:pt-9 lg:px-14"
-                        style={{ backgroundImage: "linear-gradient(120deg,#3e2619 0%,#6d4327 45%,#a4774f 100%)" }}
-                    >
-                        <div className="pointer-events-none absolute -left-14 bottom-4 h-36 w-36 rounded-full bg-white/7" />
-                        <div className="pointer-events-none absolute -right-10 -top-8 h-44 w-44 rounded-full bg-white/9" />
-                        <div className="mx-auto mb-3 inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/35 bg-white/10 text-3xl sm:mb-5 sm:h-16 sm:w-16 sm:text-4xl">
-                            🏪
-                        </div>
-                        <h1 className="font-serif text-[23px] font-medium leading-[1.05] text-white">
-                            Start Selling on Modaire
-                        </h1>
-                        <p className="mx-auto mt-2 max-w-2xl text-[0.94rem] leading-[1.55] text-[#f1ddd0] sm:mt-4 sm:text-[1.1rem] sm:leading-[1.8]">
-                            Reach thousands of modest fashion buyers.
-                        </p>
-                        <div className="mx-auto mt-4 w-full max-w-md sm:mt-7">
-                            <Button
-                                onClick={handleStripeOnboarding}
-                                isLoading={loading}
-                                size="lg"
-                                className="h-11 w-full rounded-full bg-[#aa8464] px-6 text-[0.9rem] font-semibold tracking-[0.03em] text-white hover:bg-[#946f52] sm:h-14 sm:px-8 sm:text-[1.04rem]"
-                            >
-                                Continue to Stripe Setup
-                                <ChevronRight className="ml-2 h-5 w-5" />
-                            </Button>
-                        </div>
-                    </section>
-
-                    <section className="px-5 py-5 sm:px-10 sm:py-10 lg:px-14">
-                        <p className="text-[10px] font-medium uppercase tracking-[0.24em] text-[#8d7565]">Why Sell on Modaire</p>
-
-                        {error ? (
-                            <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                                {error}
-                            </div>
-                        ) : null}
-
-                        <div className="mt-3 space-y-4 sm:mt-5 sm:space-y-6">
-                            {sellerBenefits.map((item) => {
-                                const Icon = item.icon;
-                                return (
-                                    <div key={item.title} className="flex items-center gap-4 sm:gap-5">
-                                        <div
-                                            className="flex h-[56px] w-[56px] shrink-0 items-center justify-center overflow-hidden border border-black/5 sm:h-[76px] sm:w-[76px]"
-                                            style={{
-                                                backgroundColor: item.iconBg,
-                                                borderRadius: "12px",
-                                                clipPath: "inset(0 round 12px)",
-                                            }}
-                                        >
-                                            <Icon className="h-6 w-6 sm:h-9 sm:w-9" style={{ color: item.iconColor, strokeWidth: 2.3 }} />
-                                        </div>
-                                        <div className="flex min-h-[56px] flex-col justify-center sm:min-h-[76px]">
-                                            <h3 className="text-[0.95rem] font-semibold leading-[1.18] text-foreground sm:text-[1.25rem]">{item.title}</h3>
-                                            <p className="mt-0 max-w-3xl text-[0.66rem] leading-[1.55] text-[#8d7565] sm:text-[0.94rem]">
-                                                {item.desc}
-                                            </p>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-
-                        <div className="mt-5 rounded-[1.4rem] border border-[#b7d9d0] bg-[#d8e9e7] px-4 py-3 text-[#2f7f5d] sm:mt-10 sm:rounded-[2rem] sm:px-8 sm:py-6">
-                            <p className="flex items-start gap-2 text-[0.84rem] leading-[1.42] sm:gap-4 sm:text-[0.98rem] sm:leading-[1.35]">
-                                <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 sm:mt-1 sm:h-9 sm:w-9" />
-                                <span>
-                                    <strong className="font-semibold text-[#256f4f]">Your buyer account is still active.</strong>{" "}
-                                    Adding seller access lets you list items while continuing to shop normally.
-                                </span>
-                            </p>
-                        </div>
-
-                    </section>
-                </div>
-            </div>
-        );
-    }
 
     return (
         <>
@@ -1847,14 +1772,25 @@ export default function SellPageClient({
                 ) : (
                 <div className="space-y-3 px-4">
                     {filteredListings.length === 0 ? (
-                        <div className="rounded-[1.25rem] border border-dashed border-border bg-card/80 px-5 py-12 text-center">
-                            <p className="text-base text-muted-foreground">No listings in this tab yet.</p>
+                        <div className="rounded-[1.5rem] border border-dashed border-[#d4c7bb] bg-transparent px-6 py-20 text-center">
+                            <div className="relative mx-auto mb-8 inline-flex h-20 w-20 items-center justify-center">
+                                <EmptyBagIllustration size={72} />
+                                <Sparkles className="absolute -top-1 -right-2 h-5 w-5 text-[#7a5a45]" strokeWidth={1.5} />
+                                <Sparkles className="absolute -bottom-0 -left-3 h-3.5 w-3.5 text-[#7a5a45]" strokeWidth={1.5} />
+                                <Sparkles className="absolute top-3 -right-5 h-2.5 w-2.5 text-[#7a5a45]" strokeWidth={1.8} />
+                            </div>
+                            <h3 className="text-[1.05rem] font-medium text-[#2f2925]">
+                                {listings.length === 0 ? "You haven't listed anything yet." : "No listings in this tab yet."}
+                            </h3>
+                            <p className="mt-2 text-sm text-[#8a7667]">
+                                {listings.length === 0 ? "List your first item to start selling." : "Try a different tab or add a new item."}
+                            </p>
                             <button
                                 type="button"
                                 onClick={() => setShowCreateForm(true)}
-                                className="mt-4 inline-flex items-center gap-2 rounded-full bg-[#5f4437] px-4 py-2 text-sm text-white"
+                                className="mt-7 inline-flex items-center gap-2 rounded-full bg-[#7a5a45] px-6 py-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#684a38]"
                             >
-                                <PackagePlus className="h-4 w-4" />
+                                <Plus className="h-4 w-4" />
                                 Add your first item
                             </button>
                         </div>
@@ -1964,6 +1900,17 @@ export default function SellPageClient({
                     )}
                 </div>
                 )}
+
+                {mobileTab !== "ANALYTICS" && (
+                    <button
+                        type="button"
+                        aria-label="Create new listing"
+                        onClick={() => setShowCreateForm(true)}
+                        className="fixed bottom-24 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[#7a5a45] text-white shadow-[0_10px_24px_rgba(122,90,69,0.35)] transition-transform active:scale-95"
+                    >
+                        <Plus className="h-7 w-7" strokeWidth={2.2} />
+                    </button>
+                )}
             </div>
 
             <div className={`${showCreateForm ? "block" : "hidden"} bg-[#f4efea] px-4 py-6 sm:hidden`}>
@@ -2063,12 +2010,27 @@ export default function SellPageClient({
                             {/* Listings Grid/List */}
                             <div className="space-y-4">
                                 {filteredListings.length === 0 ? (
-                                    <div className="col-span-full rounded-[2rem] border border-dashed border-border py-20 text-center bg-card/40">
-                                        <Tag className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
-                                        <h3 className="text-xl font-serif font-bold text-foreground mb-2">No listings in this tab yet</h3>
-                                        <p className="text-muted-foreground max-w-sm mx-auto">
-                                            You haven&apos;t created any items matching this filter. Click the button above to add one!
+                                    <div className="col-span-full rounded-[2rem] border border-dashed border-[#d4c7bb] bg-transparent px-6 py-24 text-center">
+                                        <div className="relative mx-auto mb-8 inline-flex h-24 w-24 items-center justify-center">
+                                            <EmptyBagIllustration size={88} />
+                                            <Sparkles className="absolute -top-1 -right-2 h-6 w-6 text-[#7a5a45]" strokeWidth={1.5} />
+                                            <Sparkles className="absolute -bottom-0 -left-4 h-4 w-4 text-[#7a5a45]" strokeWidth={1.5} />
+                                            <Sparkles className="absolute top-4 -right-6 h-3 w-3 text-[#7a5a45]" strokeWidth={1.8} />
+                                        </div>
+                                        <h3 className="text-lg font-medium text-[#2f2925]">
+                                            {listings.length === 0 ? "You haven't listed anything yet." : "No listings in this tab yet."}
+                                        </h3>
+                                        <p className="mt-2 text-sm text-[#8a7667] max-w-sm mx-auto">
+                                            {listings.length === 0 ? "List your first item to start selling." : "Try a different tab or add a new item."}
                                         </p>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowCreateForm(true)}
+                                            className="mt-7 inline-flex items-center gap-2 rounded-full bg-[#7a5a45] px-6 py-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#684a38]"
+                                        >
+                                            <Plus className="h-4 w-4" />
+                                            Add your first item
+                                        </button>
                                     </div>
                                 ) : (
                                     filteredListings.map((listing) => {

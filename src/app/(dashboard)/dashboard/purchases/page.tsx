@@ -4,9 +4,10 @@ import { getPrimaryListingImage } from "@/lib/listing-images";
 import { prisma } from "@/lib/prisma";
 import { getCartCountForSessionUser } from "@/app/actions/cart";
 import Link from "next/link";
-import { ShoppingBag } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/Button";
+import EmptyBagIllustration from "@/components/ui/EmptyBagIllustration";
 import ListingCard from "@/components/marketplace/ListingCard";
 import MobileOrdersClient from "./MobileOrdersClient";
 
@@ -114,14 +115,19 @@ export default async function PurchasesPage() {
                 </div>
 
                 {purchases.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center rounded-[1.75rem] border border-dashed border-border py-24 text-center px-6">
-                        <ShoppingBag className="w-12 h-12 text-muted-foreground/30 mb-6" />
-                        <h2 className="font-serif text-2xl font-semibold text-foreground mb-2">No purchases yet</h2>
-                        <p className="text-muted-foreground max-w-sm mx-auto mb-8">
-                            Start exploring the marketplace to find unique pieces.
+                    <div className="flex flex-col items-center justify-center rounded-[2rem] border border-dashed border-[#d4c7bb] bg-transparent py-24 text-center px-6">
+                        <div className="relative mx-auto mb-8 inline-flex h-24 w-24 items-center justify-center">
+                            <EmptyBagIllustration size={88} />
+                            <Sparkles className="absolute -top-1 -right-2 h-6 w-6 text-[#7a5a45]" strokeWidth={1.5} />
+                            <Sparkles className="absolute -bottom-0 -left-4 h-4 w-4 text-[#7a5a45]" strokeWidth={1.5} />
+                            <Sparkles className="absolute top-4 -right-6 h-3 w-3 text-[#7a5a45]" strokeWidth={1.8} />
+                        </div>
+                        <h2 className="text-lg font-medium text-[#2f2925]">You don&apos;t have any orders yet.</h2>
+                        <p className="mt-2 text-sm text-[#8a7667] max-w-sm mx-auto mb-7">
+                            When you place an order, it will appear here.
                         </p>
                         <Link href="/browse">
-                            <Button>Explore Marketplace</Button>
+                            <Button className="rounded-full bg-[#7a5a45] px-6 py-3 hover:bg-[#684a38]">Start Shopping</Button>
                         </Link>
                     </div>
                 ) : (

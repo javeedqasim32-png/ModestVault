@@ -5,8 +5,6 @@ import sharp from "sharp";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { buildS3ImageUrl, getS3BucketName, s3, uploadFile, deleteS3Directory } from "@/lib/s3";
-import { isStripeAccountReady } from "@/lib/stripe-connect";
-import { stripe } from "@/lib/stripe";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { validateListingTaxonomy } from "@/lib/taxonomyValidation";
@@ -217,39 +215,10 @@ export async function createListing(formData: FormData) {
         return { error: taxonomyValidation.message };
     }
 
+    const userId = session.user.id;
+
     try {
-        // 1. Double check the user is actually a seller
-        const user = await prisma.user.findUnique({
-            where: { id: session.user.id }
-        });
-
-        if (!user?.stripe_account_id) {
-            logCreateListingReject("missing_stripe_account", { userId: session.user.id });
-            return { error: "Your seller account is not fully activated with Stripe." };
-        }
-
-        const account = await stripe.accounts.retrieve(user.stripe_account_id);
-        const isReady = isStripeAccountReady(account);
-
-        if (!isReady) {
-            if (user.seller_enabled) {
-                await prisma.user.update({
-                    where: { id: user.id },
-                    data: { seller_enabled: false },
-                });
-            }
-
-            return { error: "Your Stripe account is not ready to accept payouts yet." };
-        }
-
-        if (!user.seller_enabled) {
-            await prisma.user.update({
-                where: { id: user.id },
-                data: { seller_enabled: true },
-            });
-        }
-
-        // 2. Upload image to S3
+        // Upload image to S3
         const bucket = getS3BucketName();
         if (!bucket) {
             logCreateListingReject("missing_s3_bucket", { userId: session.user.id });
@@ -283,7 +252,7 @@ export async function createListing(formData: FormData) {
             await tx.listing.create({
                 data: {
                     id: listingId,
-                    user_id: user.id,
+                    user_id: userId,
                     title,
                     description,
                     price,

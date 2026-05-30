@@ -131,9 +131,10 @@ export default async function BuySuccessPage({ searchParams }: { searchParams: P
                 }
                 if (listing.user.email) {
                     await sendSaleNotificationEmail(
-                        listing.user.email, 
-                        listing.title, 
-                        Number(listing.price)
+                        listing.user.email,
+                        listing.title,
+                        Number(listing.price),
+                        { needsStripeConnect: !listing.user.stripe_account_id }
                     );
                 }
             } catch (error: any) {

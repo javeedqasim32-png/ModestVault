@@ -33,12 +33,29 @@ export async function sendVerificationEmail(email: string, code: string): Promis
     }
 }
 
-export async function sendSaleNotificationEmail(email: string, listingTitle: string, amount: number): Promise<void> {
+export async function sendSaleNotificationEmail(
+    email: string,
+    listingTitle: string,
+    amount: number,
+    opts?: { needsStripeConnect?: boolean }
+): Promise<void> {
     try {
+        const needsStripeConnect = opts?.needsStripeConnect === true;
+        const subject = needsStripeConnect
+            ? `Your item sold — connect Stripe to receive $${amount.toFixed(2)}`
+            : 'Good news! Your item has been sold on Modaire';
+        const ctaHref = needsStripeConnect
+            ? `${process.env.NEXT_PUBLIC_APP_URL}/sell`
+            : `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/sales`;
+        const ctaLabel = needsStripeConnect ? 'Connect Stripe to Get Paid' : 'View Order';
+        const callout = needsStripeConnect
+            ? `<p style="margin-top: 20px;">To receive your payout, you'll need to connect a Stripe account. It takes about two minutes — your funds are held safely on Modaire until then.</p>`
+            : `<p>Please log in to your dashboard to download your shipping label and fulfill the order.</p>`;
+
         const mailOptions = {
             from: `"Modaire" <${process.env.EMAIL_USER}>`,
             to: email,
-            subject: 'Good news! Your item has been sold on Modaire',
+            subject,
             html: `
                 <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 600px; margin: auto; border: 1px solid #eee; border-radius: 10px;">
                     <h2 style="color: #4a3328;">You made a sale!</h2>
@@ -47,8 +64,8 @@ export async function sendSaleNotificationEmail(email: string, listingTitle: str
                         <p style="margin: 0; font-size: 14px; color: #8a7667;">Sale Price</p>
                         <h1 style="margin: 5px 0; color: #2f2925;">$${amount.toFixed(2)}</h1>
                     </div>
-                    <p>Please log in to your dashboard to download your shipping label and fulfill the order.</p>
-                    <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/sales" style="display: inline-block; background: #a07c61; color: white; padding: 12px 25px; text-decoration: none; border-radius: 25px; font-weight: bold; margin-top: 10px;">View Order</a>
+                    ${callout}
+                    <a href="${ctaHref}" style="display: inline-block; background: #a07c61; color: white; padding: 12px 25px; text-decoration: none; border-radius: 25px; font-weight: bold; margin-top: 10px;">${ctaLabel}</a>
                     <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;" />
                     <p style="font-size: 12px; color: #b0a89e;">Thank you for selling on Modaire.</p>
                 </div>
@@ -57,6 +74,39 @@ export async function sendSaleNotificationEmail(email: string, listingTitle: str
         await transporter.sendMail(mailOptions);
     } catch (error) {
         console.error("❌ Failed to send sale notification email:", error);
+    }
+}
+
+export async function sendUnclaimedPayoutReminderEmail(
+    email: string,
+    totalAmount: number,
+    orderCount: number
+): Promise<void> {
+    try {
+        const itemWord = orderCount === 1 ? 'item' : 'items';
+        const isWord = orderCount === 1 ? 'is' : 'are';
+        const mailOptions = {
+            from: `"Modaire" <${process.env.EMAIL_USER}>`,
+            to: email,
+            subject: `You have $${totalAmount.toFixed(2)} waiting — connect Stripe to claim`,
+            html: `
+                <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 600px; margin: auto; border: 1px solid #eee; border-radius: 10px;">
+                    <h2 style="color: #4a3328;">Your payout is waiting</h2>
+                    <p>${orderCount} ${itemWord} you sold ${isWord} ready for payout. Connect a Stripe account to claim your earnings.</p>
+                    <div style="background: #f9f4f1; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                        <p style="margin: 0; font-size: 14px; color: #8a7667;">Total Waiting</p>
+                        <h1 style="margin: 5px 0; color: #2f2925;">$${totalAmount.toFixed(2)}</h1>
+                    </div>
+                    <p>Stripe onboarding takes about two minutes. Once connected, your pending payouts release automatically.</p>
+                    <a href="${process.env.NEXT_PUBLIC_APP_URL}/sell" style="display: inline-block; background: #a07c61; color: white; padding: 12px 25px; text-decoration: none; border-radius: 25px; font-weight: bold; margin-top: 10px;">Connect Stripe to Get Paid</a>
+                    <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;" />
+                    <p style="font-size: 12px; color: #b0a89e;">Your funds are held safely on Modaire until you connect.</p>
+                </div>
+            `
+        };
+        await transporter.sendMail(mailOptions);
+    } catch (error) {
+        console.error("❌ Failed to send unclaimed payout reminder email:", error);
     }
 }
 
