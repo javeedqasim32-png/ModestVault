@@ -4,6 +4,7 @@ import { ChevronRight, CircleHelp, FileText, ShieldCheck, ShoppingBag, Tag, Tren
 import Link from "next/link";
 
 import { getUserSlugMap } from "@/lib/user-slugs";
+import ProfileAvatarUploader from "@/components/profile/ProfileAvatarUploader";
 
 export default async function ProfileDashboard() {
     const session = await auth();
@@ -11,7 +12,7 @@ export default async function ProfileDashboard() {
 
     const dbUser = userId ? await prisma.user.findUnique({
         where: { id: userId },
-        select: { seller_enabled: true, first_name: true, last_name: true }
+        select: { seller_enabled: true, first_name: true, last_name: true, profile_image: true }
     }) : null;
 
     const slugMap = await getUserSlugMap();
@@ -39,9 +40,20 @@ export default async function ProfileDashboard() {
         <div className="flex-1 overflow-y-auto bg-[#f4efea] pb-[96px] lg:pb-6" style={{ fontFamily: "var(--font-sans), sans-serif" }}>
             <div className="mx-auto w-full max-w-[860px] overflow-hidden border-y border-[#ddd3cb] bg-[#f4efea]">
                 <section className="border-b border-[#ddd3cb] px-6 py-6 text-center sm:px-8 sm:py-8">
-                    <div className="mx-auto flex h-[96px] w-[96px] items-center justify-center rounded-full border-[4px] border-[#e1d6cd] bg-[linear-gradient(135deg,#d5c1b1_0%,#c8ad9c_100%)] text-[36px] text-[#7a6050]" style={{ fontFamily: "var(--font-serif), serif" }}>
-                        {(session?.user?.name?.split(" ").map((part) => part[0]).join("").slice(0, 2) || "TU").toUpperCase()}
-                    </div>
+                    {userId ? (
+                        <ProfileAvatarUploader
+                            sellerId={userId}
+                            initials={(session?.user?.name?.split(" ").map((part) => part[0]).join("").slice(0, 2) || "TU").toUpperCase()}
+                            isOwnProfile={true}
+                            initialProfileImage={dbUser?.profile_image ?? null}
+                            avatarClassName="h-[96px] w-[96px] min-h-[96px] min-w-[96px] border-[4px] border-[#e1d6cd] bg-[linear-gradient(135deg,#d5c1b1_0%,#c8ad9c_100%)]"
+                            initialsClassName="text-[36px] text-[#7a6050]"
+                        />
+                    ) : (
+                        <div className="mx-auto flex h-[96px] w-[96px] items-center justify-center rounded-full border-[4px] border-[#e1d6cd] bg-[linear-gradient(135deg,#d5c1b1_0%,#c8ad9c_100%)] text-[36px] text-[#7a6050]" style={{ fontFamily: "var(--font-serif), serif" }}>
+                            TU
+                        </div>
+                    )}
                     <h1 className="mt-4 text-[38px] leading-[1] text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif" }}>{session?.user?.name ?? "Test User"}</h1>
                     <p className="mt-2 text-[14px] text-[#8a7667]">{session?.user?.email}</p>
                     <Link

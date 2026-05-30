@@ -10,13 +10,23 @@ interface ProfileAvatarUploaderProps {
     initials: string;
     isOwnProfile: boolean;
     initialProfileImage: string | null;
+    /** Override the avatar circle's size/border/bg styling. Defaults to 80px ring with #cfb79f bg. */
+    avatarClassName?: string;
+    /** Override the initials text styling. Defaults to text-[30px] text-[#7a6050]. */
+    initialsClassName?: string;
 }
+
+const DEFAULT_AVATAR_CLASS =
+    "h-[80px] w-[80px] min-h-[80px] min-w-[80px] border-[3px] border-[#ddd3cb] bg-[#cfb79f]";
+const DEFAULT_INITIALS_CLASS = "text-[30px] text-[#7a6050]";
 
 export default function ProfileAvatarUploader({
     sellerId,
     initials,
     isOwnProfile,
     initialProfileImage,
+    avatarClassName,
+    initialsClassName,
 }: ProfileAvatarUploaderProps) {
     const router = useRouter();
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -99,8 +109,8 @@ export default function ProfileAvatarUploader({
                 {/* 1. Main Avatar Circle */}
                 <div
                     onClick={handleAvatarClick}
-                    className={`relative flex h-[80px] w-[80px] min-h-[80px] min-w-[80px] items-center justify-center rounded-full border-[3px] border-[#ddd3cb] bg-[#cfb79f] text-[30px] text-[#7a6050] select-none overflow-hidden transition-all duration-300 ${
-                        isOwnProfile && !isUploading ? "cursor-pointer hover:border-[#cfb79f] hover:brightness-95 active:scale-95" : ""
+                    className={`relative flex items-center justify-center rounded-full select-none overflow-hidden transition-all duration-300 ${avatarClassName || DEFAULT_AVATAR_CLASS} ${
+                        isOwnProfile && !isUploading ? "cursor-pointer hover:brightness-95 active:scale-95" : ""
                     }`}
                     style={{ fontFamily: "var(--font-serif), serif" }}
                 >
@@ -112,7 +122,7 @@ export default function ProfileAvatarUploader({
                             className="h-full w-full object-cover rounded-full select-none"
                         />
                     ) : (
-                        <span>{initials}</span>
+                        <span className={initialsClassName || DEFAULT_INITIALS_CLASS}>{initials}</span>
                     )}
 
                     {/* Interactive hover overlay for owner */}
@@ -141,6 +151,21 @@ export default function ProfileAvatarUploader({
                     </div>
                 )}
             </div>
+
+            {/* Remove photo link (only when an image exists and viewer owns the profile) */}
+            {isOwnProfile && profileImage && !isUploading && (
+                <button
+                    type="button"
+                    onClick={(e) => {
+                        if (window.confirm("Remove your profile photo?")) {
+                            void handleRemoveClick(e);
+                        }
+                    }}
+                    className="text-[11px] text-muted-foreground transition-colors hover:text-foreground hover:underline"
+                >
+                    Remove photo
+                </button>
+            )}
 
             {/* Hidden Input for upload */}
             {isOwnProfile && (

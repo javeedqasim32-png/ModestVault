@@ -138,7 +138,7 @@ export default async function Home() {
   const topSellerUsers = topSellerIds.length
     ? await prisma.user.findMany({
         where: { id: { in: topSellerIds } },
-        select: { id: true, first_name: true, last_name: true },
+        select: { id: true, first_name: true, last_name: true, profile_image: true },
       })
     : [];
 
@@ -158,9 +158,10 @@ export default async function Home() {
         initials,
         slug: slugMap.get(user.id) || user.id,
         activeCount: item._count._all,
+        profileImage: user.profile_image,
       };
     })
-    .filter((seller): seller is { id: string; name: string; initials: string; slug: string; activeCount: number } => seller !== null);
+    .filter((seller): seller is { id: string; name: string; initials: string; slug: string; activeCount: number; profileImage: string | null } => seller !== null);
 
   const recentlyViewedListings = recentViewedIds.length
     ? await prisma.listing.findMany({
@@ -397,10 +398,19 @@ export default async function Home() {
                   <Link
                     key={seller.id}
                     href={`/${seller.slug}`}
-                    className="min-w-[110px] rounded-[1.6rem] border border-border/60 bg-[#f6f1ec] px-2 py-5 text-center sm:min-w-[140px]"
+                    className="min-w-[110px] rounded-[1.6rem] border border-border/60 bg-[#f6f1ec] px-2 py-4 text-center sm:min-w-[140px]"
                   >
-                    <div className="mx-auto mb-2 flex h-[44px] w-[44px] items-center justify-center rounded-full border-[2.5px] border-[#d9cdc3] bg-[#cdb79f] text-[15px] text-[#7b5f4f]">
-                      <span className={cormorantHeading.className}>{seller.initials}</span>
+                    <div className="mx-auto mb-2 flex h-[56px] w-[56px] items-center justify-center overflow-hidden rounded-full border-[2.5px] border-[#d9cdc3] bg-[#cdb79f] text-[18px] text-[#7b5f4f]">
+                      {seller.profileImage ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={seller.profileImage}
+                          alt={seller.name}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className={cormorantHeading.className}>{seller.initials}</span>
+                      )}
                     </div>
                     <p className="truncate text-[13px] leading-tight text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif" }}>
                       {seller.name}

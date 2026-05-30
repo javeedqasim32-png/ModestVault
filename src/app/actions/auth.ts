@@ -325,7 +325,7 @@ export async function updateUserProfilePicture(formData: FormData) {
         const buffer = Buffer.from(arrayBuffer);
 
         const extension = file.name.split(".").pop() || "jpg";
-        const key = `profiles/${userId}/${Date.now()}.${extension}`;
+        const key = `listings/profiles/${userId}/${Date.now()}.${extension}`;
         const bucket = getS3BucketName() || "modestvault-uploads";
         
         await uploadFile(buffer, key, file.type, bucket);

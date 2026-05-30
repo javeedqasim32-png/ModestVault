@@ -128,19 +128,12 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                 />
 
                 <div className="mt-1 px-4 pt-2">
-                    <div className="flex items-start justify-between gap-3">
-                        <h1
-                            className="text-[24px] leading-[1.2] text-[#2f2925]"
-                            style={{ fontFamily: "var(--font-serif), serif", fontWeight: 600 }}
-                        >
-                            {listing.title}
-                        </h1>
-                        <ShareListingButton
-                            title={listing.title}
-                            className="inline-flex h-11 w-11 shrink-0 items-center justify-center text-[#2f2925]"
-                            iconClassName="h-6 w-6"
-                        />
-                    </div>
+                    <h1
+                        className="text-[24px] leading-[1.2] text-[#2f2925]"
+                        style={{ fontFamily: "var(--font-serif), serif", fontWeight: 600 }}
+                    >
+                        {listing.title}
+                    </h1>
                     <p className="mt-1 text-[22px] font-semibold leading-none text-[#4a3328]">
                         ${Number(listing.price).toLocaleString()}
                     </p>
@@ -249,43 +242,46 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                 </div>
 
                 <div className="fixed inset-x-0 bottom-[86px] z-[70] border-t border-[#ddd3cb] bg-[#fbf8f5]/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-[#fbf8f5]/80 md:bottom-0">
-                    <div className="mx-auto flex w-full max-w-[760px] gap-2">
+                    <div className="mx-auto flex w-full max-w-[480px] items-center justify-between gap-3">
                         <FavoriteButton
                             listingId={listing.id}
                             initialFavorited={favoriteListingIds.has(listing.id)}
-                            className="inline-flex min-h-[42px] basis-[25%] shrink-0 items-center justify-center gap-2 rounded-full border border-[#ddd3cb] bg-[#fbf8f5] px-3 text-[12px] text-[#2f2925] whitespace-nowrap"
-                            iconClassName="h-4 w-4"
-                            label="Save"
-                            labelClassName="text-[12px]"
+                            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#ddd3cb] bg-[#fbf8f5] text-[#2f2925]"
+                            iconClassName="h-5 w-5"
                         />
                         {!isOwner ? (
                             <Link
                                 href={`/messages/start?sellerId=${listing.user_id}&listingId=${listing.id}`}
-                                className="inline-flex min-h-[42px] basis-[29%] shrink-0 items-center justify-center gap-2 rounded-full border border-[#ddd3cb] bg-[#fbf8f5] px-3 text-[12px] text-[#2f2925] whitespace-nowrap"
+                                aria-label="Message seller"
+                                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#ddd3cb] bg-[#fbf8f5] text-[#2f2925]"
                             >
-                                <MessageCircle className="h-4 w-4" />
-                                Message
+                                <MessageCircle className="h-5 w-5" />
                             </Link>
                         ) : (
                             <Link
                                 href="/sell?create=1"
-                                className="inline-flex min-h-[42px] basis-[29%] shrink-0 items-center justify-center gap-2 rounded-full border border-[#ddd3cb] bg-[#fbf8f5] px-3 text-[12px] text-[#2f2925] whitespace-nowrap"
+                                aria-label="Add listing"
+                                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#ddd3cb] bg-[#fbf8f5] text-[#2f2925]"
                             >
-                                <Plus className="h-4 w-4" />
-                                Add listing
+                                <Plus className="h-5 w-5" />
                             </Link>
                         )}
+                        <ShareListingButton
+                            title={listing.title}
+                            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#ddd3cb] bg-[#fbf8f5] text-[#2f2925]"
+                            iconClassName="h-5 w-5"
+                        />
                         {isAvailable && !isOwner ? (
                             <form
                                 action={async () => {
                                     "use server";
                                     await addToCartAndRedirect(listing.id);
                                 }}
-                                className="basis-[42%] shrink-0"
+                                className="w-[180px]"
                             >
                                 <button
                                     type="submit"
-                                    className="inline-flex min-h-[42px] w-full items-center justify-center gap-2 rounded-full border border-[#a07c61] bg-[#a07c61] px-3 text-[12px] font-medium text-white whitespace-nowrap"
+                                    className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full border border-[#a07c61] bg-[#a07c61] px-4 text-[13px] font-medium text-white whitespace-nowrap"
                                 >
                                     <ShoppingBag className="h-4 w-4" />
                                     Add to Bag
@@ -295,7 +291,7 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                             <button
                                 type="button"
                                 disabled
-                                className="inline-flex min-h-[42px] basis-[42%] shrink-0 items-center justify-center rounded-full border border-[#cdbfb3] bg-[#cdbfb3] px-3 text-[12px] font-medium text-white whitespace-nowrap disabled:opacity-80"
+                                className="inline-flex h-11 w-[180px] items-center justify-center rounded-full border border-[#cdbfb3] bg-[#cdbfb3] px-4 text-[13px] font-medium text-white whitespace-nowrap disabled:opacity-80"
                             >
                                 {isOwner ? "Your listing" : "Sold Out"}
                             </button>

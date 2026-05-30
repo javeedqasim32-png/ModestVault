@@ -4,6 +4,23 @@ import Image from "next/image";
 import Link from "next/link";
 import localFont from "next/font/local";
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+    DndContext,
+    type DragEndEvent,
+    KeyboardSensor,
+    PointerSensor,
+    TouchSensor,
+    closestCenter,
+    useSensor,
+    useSensors,
+} from "@dnd-kit/core";
+import {
+    SortableContext,
+    arrayMove,
+    rectSortingStrategy,
+    sortableKeyboardCoordinates,
+} from "@dnd-kit/sortable";
+import SortableImageCard from "@/components/sell/SortableImageCard";
 import { createListing, deleteListing, replaceListingImages, updateListing, getListingImages } from "../actions/listings";
 import { onboardSellerAction } from "../actions/stripe";
 import { Tag, UploadCloud, ChevronLeft, ChevronRight, Heart, PackagePlus, X, Printer, TrendingUp, Users, ShieldCheck, CreditCard, Sparkles, Plus, GripHorizontal } from "lucide-react";
@@ -226,9 +243,15 @@ export default function SellPageClient({
     const [previewUrls, setPreviewUrls] = useState<string[]>([]);
     const [generatedImageUrls, setGeneratedImageUrls] = useState<string[]>([]);
     const [isGenerating, setIsGenerating] = useState(false);
-    const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
-    const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-    const draggedIndexRef = useRef<number | null>(null);
+    // dnd-kit sensors: PointerSensor handles mouse, TouchSensor handles touch.
+    // activationConstraint prevents accidental drags during a quick tap or while scrolling.
+    const sensors = useSensors(
+        useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+        useSensor(TouchSensor, { activationConstraint: { delay: 500, tolerance: 5 } }),
+        useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    );
+
+    const getFileId = (file: File) => `${file.name}-${file.size}-${file.lastModified}`;
     const [mobileTab, setMobileTab] = useState<SellTab>("LISTINGS");
     const [showCreateForm, setShowCreateForm] = useState(openCreateInitially);
     const [editingListing, setEditingListing] = useState<ListingItem | null>(null);
@@ -560,109 +583,45 @@ export default function SellPageClient({
         });
     };
 
-    const handleDragStart = (e: React.DragEvent, index: number) => {
-        setDraggedIndex(index);
-        e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData("text/plain", index.toString());
-        // Enable drag representation in some browsers
-        try {
-            e.dataTransfer.setData("text/html", "");
-        } catch (err) {}
-    };
-
-    const handleDragOver = (e: React.DragEvent, index: number) => {
-        e.preventDefault();
-        if (draggedIndex === null || draggedIndex === index) return;
-        setDragOverIndex(index);
-    };
-
-    const handleDragEnd = () => {
-        setDraggedIndex(null);
-        setDragOverIndex(null);
-    };
-
-    const handleDrop = (e: React.DragEvent, index: number) => {
-        e.preventDefault();
-        if (draggedIndex === null || draggedIndex === index) return;
-
+    // dnd-kit drag end: reorder selectedFiles via arrayMove based on the
+    // dragged item's id and its drop target's id.
+    const handleSortEnd = (event: DragEndEvent) => {
+        const { active, over } = event;
+        if (!over || active.id === over.id) return;
         setSelectedFiles((prev) => {
-            const updated = [...prev];
-            const [draggedItem] = updated.splice(draggedIndex, 1);
-            updated.splice(index, 0, draggedItem);
-            return updated;
+            const oldIndex = prev.findIndex((f) => getFileId(f) === active.id);
+            const newIndex = prev.findIndex((f) => getFileId(f) === over.id);
+            if (oldIndex < 0 || newIndex < 0) return prev;
+            return arrayMove(prev, oldIndex, newIndex);
         });
-
-        setDraggedIndex(null);
-        setDragOverIndex(null);
-    };
-
-    const handleTouchStart = (index: number) => {
-        setDraggedIndex(index);
-        draggedIndexRef.current = index;
-
-        // Register global window listeners to guarantee state cleanup on iOS Safari
-        const cleanupTouch = () => {
-            setDraggedIndex(null);
-            setDragOverIndex(null);
-            draggedIndexRef.current = null;
-            window.removeEventListener("touchend", cleanupTouch);
-            window.removeEventListener("touchcancel", cleanupTouch);
-        };
-
-        window.addEventListener("touchend", cleanupTouch, { passive: true });
-        window.addEventListener("touchcancel", cleanupTouch, { passive: true });
-    };
-
-    const handleTouchMove = (e: React.TouchEvent, index: number) => {
-        // Prevent default window scrolling behavior during active drag reorder
-        if (e.cancelable) {
-            e.preventDefault();
-        }
-        
-        const touch = e.touches[0];
-        const targetElement = document.elementFromPoint(touch.clientX, touch.clientY);
-        if (!targetElement) return;
-
-        const card = targetElement.closest("[data-index]");
-        if (!card) return;
-
-        const targetIndexAttr = card.getAttribute("data-index");
-        if (targetIndexAttr === null) return;
-
-        const targetIndex = parseInt(targetIndexAttr, 10);
-        
-        // Use live synchronous index from ref to prevent React stale state closure bugs!
-        const currentIndex = draggedIndexRef.current;
-        if (currentIndex === null || isNaN(targetIndex) || targetIndex === currentIndex) return;
-
-        setSelectedFiles((prev) => {
-            const updated = [...prev];
-            const temp = updated[currentIndex];
-            updated[currentIndex] = updated[targetIndex];
-            updated[targetIndex] = temp;
-            return updated;
-        });
-
-        setDraggedIndex(targetIndex);
-        draggedIndexRef.current = targetIndex;
-    };
-
-    const handleTouchEnd = () => {
-        setDraggedIndex(null);
-        setDragOverIndex(null);
-        draggedIndexRef.current = null;
     };
 
     const removeGeneratedImage = (indexToRemove: number) => {
         setGeneratedImageUrls((prev) => prev.filter((_, index) => index !== indexToRemove));
     };
 
+    // Cache object URLs per-File so a reorder doesn't regenerate every URL
+    // (which would change every React key and force unmount/remount of every
+    // card mid-drag, breaking touch reordering).
+    const fileUrlCacheRef = useRef<Map<File, string>>(new Map());
     useEffect(() => {
-        const urls = selectedFiles.map((file) => URL.createObjectURL(file));
+        const cache = fileUrlCacheRef.current;
+        for (const file of selectedFiles) {
+            if (!cache.has(file)) {
+                cache.set(file, URL.createObjectURL(file));
+            }
+        }
+        const urls = selectedFiles.map((file) => cache.get(file)!);
         setPreviewUrls(urls);
-        return () => {
-            urls.forEach((url) => URL.revokeObjectURL(url));
-        };
+
+        // Revoke URLs for files that have been removed from selectedFiles
+        const currentSet = new Set(selectedFiles);
+        for (const [file, url] of cache.entries()) {
+            if (!currentSet.has(file)) {
+                URL.revokeObjectURL(url);
+                cache.delete(file);
+            }
+        }
     }, [selectedFiles]);
 
     useEffect(() => {
@@ -939,115 +898,46 @@ export default function SellPageClient({
                             </button>
                         )}
 
-                        {/* 2. Premium unified grid containing both thumbnails and compact plus-card */}
+                        {/* 2. Premium unified grid — dnd-kit SortableContext handles reorder */}
                         {previewUrls.length > 0 && (
-                            <div className="grid grid-cols-2 gap-4 sm:grid-cols-5 mb-6">
-                                {previewUrls.map((url, index) => {
-                                    const isDraggingThis = draggedIndex === index;
-                                    const isDragOverThis = dragOverIndex === index;
-                                    return (
-                                        <div 
-                                            key={url} 
-                                            data-index={index}
-                                            draggable
-                                            onDragStart={(e) => handleDragStart(e, index)}
-                                            onDragOver={(e) => handleDragOver(e, index)}
-                                            onDragEnd={handleDragEnd}
-                                            onDrop={(e) => handleDrop(e, index)}
-                                            onTouchStart={() => handleTouchStart(index)}
-                                            onTouchMove={(e) => handleTouchMove(e, index)}
-                                            onTouchEnd={handleTouchEnd}
-                                            onTouchCancel={handleTouchEnd}
-                                            className={`group relative aspect-[3/4] rounded-[24px] border p-1.5 flex flex-col justify-between transition-all bg-[#fbf9f6] select-none ${
-                                                isDraggingThis ? "opacity-30 scale-95 duration-100" : ""
-                                            } ${
-                                                isDragOverThis ? "border-[#cfb79f] bg-[#f6efe7] scale-[1.02] duration-200" : index === 0 ? "border-[#cfb79f] ring-1 ring-[#cfb79f]/20" : "border-[#f2e7de]"
-                                            }`}
-                                            style={{ touchAction: "none", WebkitTouchCallout: "none" }}
-                                        >
-                                            {/* Centered Top Grab Handle Badge */}
-                                            <div 
-                                                className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-white border border-[#e8ded5] group-hover:border-[#cfb79f] rounded-md h-6 w-9 flex items-center justify-center shadow-[0_2px_4px_rgba(0,0,0,0.06)] cursor-grab active:cursor-grabbing z-20 group-hover:scale-110 active:scale-95 transition-all duration-200"
-                                                title="Drag to reorder"
-                                                style={{ touchAction: "none", WebkitTouchCallout: "none" }}
-                                            >
-                                                <GripHorizontal className="h-3.5 w-3.5 text-[#8a7667] group-hover:text-[#cfb79f] transition-colors duration-200" />
-                                            </div>
+                            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleSortEnd}>
+                                <SortableContext
+                                    items={selectedFiles.map((f) => getFileId(f))}
+                                    strategy={rectSortingStrategy}
+                                >
+                                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-5 mb-6">
+                                        {selectedFiles.map((file, index) => {
+                                            const id = getFileId(file);
+                                            const url = previewUrls[index];
+                                            return (
+                                                <SortableImageCard
+                                                    key={id}
+                                                    id={id}
+                                                    url={url}
+                                                    index={index}
+                                                    showCoverLabel={generatedImageUrls.length === 0}
+                                                    onRemove={removeImage}
+                                                />
+                                            );
+                                        })}
 
-                                            {/* Delete button placed on top layer with stopPropagation to avoid touch drag conflicts */}
+                                        {/* 'Add Photo' slot card stays inside the grid */}
+                                        {previewUrls.length < 5 && (
                                             <button
                                                 type="button"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    removeImage(index);
-                                                }}
-                                                onTouchStart={(e) => e.stopPropagation()}
-                                                onMouseDown={(e) => e.stopPropagation()}
-                                                aria-label="Remove image"
-                                                className="absolute right-2.5 top-2.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white shadow-sm hover:scale-105 active:scale-95 transition-transform z-30 cursor-pointer"
+                                                onClick={() => fileInputRef.current?.click()}
+                                                className="flex aspect-[3/4] flex-col items-center justify-center rounded-[24px] border border-dashed border-[#cfb79f] bg-[#fbf9f6] hover:bg-[#f6efe7] hover:border-[#ebdccf] transition-all text-center cursor-pointer p-3"
                                             >
-                                                <X className="h-3 w-3" />
+                                                <div className="flex h-11 w-11 items-center justify-center rounded-full border border-[#f2e7de] bg-white text-[#7a6050] mb-2 shrink-0 shadow-sm">
+                                                    <Plus className="h-5 w-5" />
+                                                </div>
+                                                <span className="text-[13px] font-semibold text-[#2f2925]">Add Photo</span>
+                                                <span className="text-[10px] text-[#8a7667] mt-0.5">({5 - previewUrls.length} left)</span>
                                             </button>
-
-                                            <div className="relative w-full h-full rounded-[18px] overflow-hidden pointer-events-none select-none">
-                                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                <img
-                                                    src={url}
-                                                    alt={`Preview ${index + 1}`}
-                                                    className="h-full w-full object-cover pointer-events-none select-none"
-                                                    style={{ WebkitTouchCallout: "none" }}
-                                                />
-                                                {/* Dynamic Role Badges based on index selection order shifted to bottom corner to preserve model faces */}
-                                                {index === 0 && (
-                                                    <span className="absolute left-2.5 bottom-2.5 bg-[#cfb79f] text-[#4a3328] text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
-                                                        {generatedImageUrls.length > 0 ? "Full Outfit" : "Cover · Full Outfit"}
-                                                    </span>
-                                                )}
-                                                {index === 1 && (
-                                                    <span className="absolute left-2.5 bottom-2.5 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
-                                                        Top
-                                                    </span>
-                                                )}
-                                                {index === 2 && (
-                                                    <span className="absolute left-2.5 bottom-2.5 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
-                                                        Bottom
-                                                    </span>
-                                                )}
-                                                {index === 3 && (
-                                                    <span className="absolute left-2.5 bottom-2.5 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
-                                                        Accessories
-                                                    </span>
-                                                )}
-                                                {index === 4 && (
-                                                    <span className="absolute left-2.5 bottom-2.5 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
-                                                        Close-up
-                                                    </span>
-                                                )}
-                                                {index >= 5 && (
-                                                    <span className="absolute left-2.5 bottom-2.5 bg-black/60 text-white text-[9px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
-                                                        Additional
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-
-                                {/* Beautiful 'Add Photo' slot card integrated directly inside the grid if under the 5 images limit */}
-                                {previewUrls.length < 5 && (
-                                    <button
-                                        type="button"
-                                        onClick={() => fileInputRef.current?.click()}
-                                        className="flex aspect-[3/4] flex-col items-center justify-center rounded-[24px] border border-dashed border-[#cfb79f] bg-[#fbf9f6] hover:bg-[#f6efe7] hover:border-[#ebdccf] transition-all text-center cursor-pointer p-3"
-                                    >
-                                        <div className="flex h-11 w-11 items-center justify-center rounded-full border border-[#f2e7de] bg-white text-[#7a6050] mb-2 shrink-0 shadow-sm">
-                                            <Plus className="h-5 w-5" />
-                                        </div>
-                                        <span className="text-[13px] font-semibold text-[#2f2925]">Add Photo</span>
-                                        <span className="text-[10px] text-[#8a7667] mt-0.5">({5 - previewUrls.length} left)</span>
-                                    </button>
-                                )}
-                            </div>
+                                        )}
+                                    </div>
+                                </SortableContext>
+                            </DndContext>
                         )}
 
                         <div className="mt-3 flex items-center justify-between gap-2">
