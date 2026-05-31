@@ -617,17 +617,12 @@ export default function SellPageClient({
         };
     }, [editFiles]);
 
+    // When arriving via /sell?manage=1 (e.g. the "Your Listings" card),
+    // just ensure the create form is collapsed. The listings tabs are now
+    // the top of the page, so no scrollIntoView is needed — that used to
+    // jump past the old "List New Item" header and now would hide the Navbar.
     useEffect(() => {
-        if (!openManageInitially) return;
-        setShowCreateForm(false);
-        const raf = requestAnimationFrame(() => {
-            const target =
-                window.matchMedia("(min-width: 640px)").matches
-                    ? desktopMyListingsRef.current
-                    : mobileMyListingsRef.current;
-            target?.scrollIntoView({ behavior: "smooth", block: "start" });
-        });
-        return () => cancelAnimationFrame(raf);
+        if (openManageInitially) setShowCreateForm(false);
     }, [openManageInitially]);
 
     // Deep-link from /listings/[id] (owner-only Edit button) → /sell?edit=<id>.

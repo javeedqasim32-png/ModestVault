@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { ChevronRight, CircleHelp, CreditCard, FileText, ShieldCheck, ShoppingBag, Tag, TrendingUp, UserRound, Wallet } from "lucide-react";
+import { ChevronRight, CircleHelp, CreditCard, FileText, Package, ShieldCheck, ShoppingBag, Tag, TrendingUp, UserRound, Wallet } from "lucide-react";
 import Link from "next/link";
 
 import { getUserSlugMap } from "@/lib/user-slugs";
@@ -38,13 +38,14 @@ export default async function ProfileDashboard() {
         ...(isAdmin ? [{ label: "Admin", value: "Manage marketplace", icon: ShieldCheck, href: "/admin/listings" }] : []),
         { label: "Orders", value: "Track purchases", icon: ShoppingBag, href: "/dashboard/purchases" },
         { label: "Sell", value: "Create listing", icon: Tag, href: "/sell" },
+        { label: "Your Listings", value: "Manage listings", icon: Package, href: "/sell?manage=1" },
         { label: "Sales", value: "Sold items", icon: TrendingUp, href: "/dashboard/sales" },
         { label: "Earnings", value: "Payout overview", icon: Wallet, href: "/dashboard/earnings" },
         ...(isSeller ? [] : [{ label: "Payouts", value: "Set up payout", icon: CreditCard, href: "/sell/setup" }]),
     ];
 
     return (
-        <div className="flex-1 overflow-y-auto bg-[#f4efea] pb-[96px] lg:pb-6" style={{ fontFamily: "var(--font-sans), sans-serif" }}>
+        <div className="flex-1 bg-[#f4efea] pb-[96px] lg:pb-6" style={{ fontFamily: "var(--font-sans), sans-serif" }}>
             <div className="mx-auto w-full max-w-[860px] overflow-hidden border-y border-[#ddd3cb] bg-[#f4efea]">
                 <section className="border-b border-[#ddd3cb] px-6 py-6 text-center sm:px-8 sm:py-8">
                     {userId ? (

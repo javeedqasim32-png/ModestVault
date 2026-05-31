@@ -6,7 +6,7 @@ export default function SupportPage() {
     const supportPhone = "8172627618";
 
     return (
-        <div className="flex-1 overflow-y-auto bg-[#f4efea] pb-[96px] lg:pb-6" style={{ fontFamily: "var(--font-sans), sans-serif" }}>
+        <div className="flex-1 bg-[#f4efea] pb-[96px] lg:pb-6" style={{ fontFamily: "var(--font-sans), sans-serif" }}>
             <div className="mx-auto w-full max-w-[860px] overflow-hidden border-y border-[#ddd3cb] bg-[#f4efea]">
                 
                 {/* Header with Back Button */}

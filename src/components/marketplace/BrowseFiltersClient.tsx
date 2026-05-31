@@ -211,14 +211,14 @@ export default function BrowseFiltersClient({
 
     return (
         <div className="space-y-4">
-            <div className="flex items-center gap-2 rounded-full border border-border/80 bg-card/90 p-1.5">
-                <div className="flex flex-1 items-center gap-3 rounded-full px-3 py-3">
-                    <Search className="h-5 w-5 text-muted-foreground" />
+            <div className="flex items-center gap-2 rounded-full border border-border/80 bg-card/90 p-1">
+                <div className="flex flex-1 items-center gap-2.5 rounded-full px-3 py-1.5">
+                    <Search className="h-4 w-4 text-muted-foreground" />
                     <input
                         value={draft.search}
                         onChange={(event) => setDraft((prev) => ({ ...prev, search: event.target.value }))}
                         placeholder="Search listings..."
-                        className="w-full bg-transparent text-base text-foreground placeholder:text-muted-foreground focus:outline-none"
+                        className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
                     />
                 </div>
                 <button

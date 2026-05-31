@@ -13,7 +13,7 @@ const items = [
     { href: "/dashboard/purchases", label: "Orders", icon: Archive, match: (pathname: string) => pathname.startsWith("/dashboard/purchases") },
     {
         href: "/dashboard",
-        label: "Profile",
+        label: "Account",
         icon: User,
         match: (pathname: string) =>
             pathname.startsWith("/dashboard") &&
