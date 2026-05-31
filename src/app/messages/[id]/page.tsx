@@ -75,7 +75,7 @@ export default async function ConversationPage({ params }: { params: Promise<{ i
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex h-[100dvh] flex-col bg-[#EFE7DE]">
+    <div className="fixed inset-0 z-[60] flex flex-col bg-[#EFE7DE]">
       <ConversationViewportFix messageCount={conversation.messages.length} />
 
       {/* Header */}
@@ -125,7 +125,7 @@ export default async function ConversationPage({ params }: { params: Promise<{ i
       </div>
 
       {/* Composer pinned to the bottom edge */}
-      <div className="shrink-0 border-t border-[#ddd3cb] bg-[#fbf8f5] px-3 py-3">
+      <div id="conversation-composer" className="shrink-0 border-t border-[#ddd3cb] bg-[#fbf8f5] px-3 py-3">
         <div className="mx-auto w-full max-w-[820px]">
           <MessageComposer action={sendMessage} />
         </div>
