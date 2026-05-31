@@ -1,6 +1,6 @@
 "use client";
 
-import { SquareArrowUp } from "lucide-react";
+import { Upload } from "lucide-react";
 
 type ShareListingButtonProps = {
     title: string;
@@ -63,7 +63,7 @@ export default function ShareListingButton({ title, className = "", iconClassNam
             title="Share listing"
             className={className}
         >
-            <SquareArrowUp className={iconClassName} />
+            <Upload className={iconClassName} strokeWidth={1.8} />
         </button>
     );
 }

@@ -22,8 +22,10 @@ export default async function SellPage({
     const params = await searchParams;
     const createParam = Array.isArray(params.create) ? params.create[0] : params.create;
     const manageParam = Array.isArray(params.manage) ? params.manage[0] : params.manage;
+    const editParam = Array.isArray(params.edit) ? params.edit[0] : params.edit;
     const openCreateInitially = createParam === "1" || createParam === "true";
     const openManageInitially = manageParam === "1" || manageParam === "true";
+    const editListingIdInitially = typeof editParam === "string" && editParam.length > 0 ? editParam : null;
     const session = await auth();
 
     // If logged-out user clicks Sell, redirect them to login/signup
@@ -117,6 +119,7 @@ export default async function SellPage({
             listings={safeListings}
             openCreateInitially={openCreateInitially}
             openManageInitially={openManageInitially}
+            editListingIdInitially={editListingIdInitially}
             analytics={analytics}
         />
     );

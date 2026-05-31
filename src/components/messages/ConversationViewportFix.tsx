@@ -1,99 +1,48 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 
+/**
+ * Thread-page side-effects:
+ *  - Lock document scroll while the thread is mounted so swiping the message
+ *    list doesn't drag the outer page or rubber-band Safari.
+ *  - Snap the message list to the bottom on mount and again on keyboard
+ *    open/close (visualViewport `resize`). We deliberately do NOT listen to
+ *    visualViewport `scroll` — it fires continuously on iOS and causes jank.
+ *  - We do NOT try to track keyboard height via CSS variables; trust the
+ *    browser's built-in handling and rely on `fixed inset-0 h-[100dvh]` plus
+ *    body scroll lock.
+ */
 export default function ConversationViewportFix({ messageCount = 0 }: { messageCount?: number }) {
-    const lastViewportHeightRef = useRef<number | null>(null);
-
     useEffect(() => {
-        const vv = window.visualViewport;
-        const getComposerInput = () => document.querySelector<HTMLInputElement>('input[name="body"]');
+        const root = document.documentElement;
+        const body = document.body;
+        const previousHtmlOverflow = root.style.overflow;
+        const previousBodyOverflow = body.style.overflow;
+        const previousBodyOverscroll = body.style.overscrollBehavior;
+        root.style.overflow = "hidden";
+        body.style.overflow = "hidden";
+        body.style.overscrollBehavior = "contain";
 
         const scrollToLatest = () => {
-            const anchor = document.getElementById("conversation-latest-anchor");
-            if (!anchor) return;
-            window.requestAnimationFrame(() => {
-                anchor.scrollIntoView({ behavior: "auto", block: "end" });
-            });
+            const scroller = document.getElementById("conversation-scroll");
+            if (!scroller) return;
+            scroller.scrollTop = scroller.scrollHeight;
         };
 
-        const keepComposerVisible = () => {
-            const input = getComposerInput();
-            if (!input) return;
-            window.requestAnimationFrame(() => {
-                input.scrollIntoView({ behavior: "auto", block: "nearest" });
-            });
-        };
+        [0, 40, 120, 260].forEach((delay) => window.setTimeout(scrollToLatest, delay));
 
-        const stabilize = () => {
-            // Let Safari finish keyboard/layout animation first, then snap to latest.
-            window.setTimeout(scrollToLatest, 40);
-        };
-
-        const runInitialSnap = () => {
-            // Safari can apply layout/scroll restoration after first paint.
-            // Retry a few times to guarantee landing on latest message.
-            [0, 40, 120, 260].forEach((delay) => {
-                window.setTimeout(scrollToLatest, delay);
-            });
-        };
-
-        // Initial enter / re-enter to thread should start at latest message.
-        runInitialSnap();
-
-        const onViewportResize = () => {
-            // On iOS, keyboard open shrinks visual viewport.
-            // Keep composer visible while keyboard is open; re-stick to latest on close.
-            if (!vv) {
-                stabilize();
-                return;
-            }
-            const current = vv.height;
-            const prev = lastViewportHeightRef.current;
-            lastViewportHeightRef.current = current;
-            if (prev == null) return;
-            const keyboardLikelyOpened = current < prev;
-            const keyboardLikelyClosed = current > prev;
-            if (keyboardLikelyOpened) {
-                window.setTimeout(keepComposerVisible, 20);
-            }
-            if (keyboardLikelyClosed) stabilize();
-        };
-        const onFocusIn = (event: Event) => {
-            const target = event.target as HTMLElement | null;
-            if (target?.getAttribute("name") === "body") {
-                window.setTimeout(keepComposerVisible, 30);
-            }
-        };
-        const onFocusOut = (event: FocusEvent) => {
-            const target = event.target as HTMLElement | null;
-            if (target?.getAttribute("name") === "body") stabilize();
-        };
-        const onPageShow = () => stabilize();
-        const onWindowFocus = () => stabilize();
-        const onVisibility = () => {
-            if (document.visibilityState === "visible") stabilize();
-        };
-
-        if (vv) {
-            lastViewportHeightRef.current = vv.height;
-            vv.addEventListener("resize", onViewportResize);
-        }
-        document.addEventListener("focusin", onFocusIn);
-        document.addEventListener("focusout", onFocusOut);
-        window.addEventListener("pageshow", onPageShow);
-        window.addEventListener("focus", onWindowFocus);
-        document.addEventListener("visibilitychange", onVisibility);
+        const vv = window.visualViewport;
+        const onResize = () => window.requestAnimationFrame(scrollToLatest);
+        if (vv) vv.addEventListener("resize", onResize);
+        window.addEventListener("pageshow", scrollToLatest);
 
         return () => {
-            if (vv) {
-                vv.removeEventListener("resize", onViewportResize);
-            }
-            document.removeEventListener("focusin", onFocusIn);
-            document.removeEventListener("focusout", onFocusOut);
-            window.removeEventListener("pageshow", onPageShow);
-            window.removeEventListener("focus", onWindowFocus);
-            document.removeEventListener("visibilitychange", onVisibility);
+            if (vv) vv.removeEventListener("resize", onResize);
+            window.removeEventListener("pageshow", scrollToLatest);
+            root.style.overflow = previousHtmlOverflow;
+            body.style.overflow = previousBodyOverflow;
+            body.style.overscrollBehavior = previousBodyOverscroll;
         };
     }, [messageCount]);
 

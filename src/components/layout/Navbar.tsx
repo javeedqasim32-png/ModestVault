@@ -16,7 +16,7 @@ export default async function Navbar() {
     const unreadMessageCount = await getUnreadMessageCountForSessionUser();
 
     return (
-        <header className="sticky top-0 z-50 w-full border-b border-border/80 bg-[#fefdf9]/95 backdrop-blur-xl">
+        <header className="sticky top-0 z-50 w-full border-b border-border/80 bg-background">
             <div className="mx-auto flex w-full max-w-[1360px] items-center gap-3 px-4 pt-4 pb-2 sm:px-6 sm:pb-3 lg:px-8">
                 <Link href="/" className="flex min-w-0 items-center gap-3 sm:border-r sm:border-border/80 sm:pr-8">
                     <div className="flex items-center">

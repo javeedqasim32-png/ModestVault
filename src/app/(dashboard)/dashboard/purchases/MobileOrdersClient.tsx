@@ -203,21 +203,6 @@ export default function MobileOrdersClient({ orders, cartCount }: { orders: Mobi
 
     return (
         <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-[#f4efea] pb-24 pt-4 sm:hidden">
-            <div className="px-4">
-                <Link
-                    href="/cart"
-                    className="mb-3 flex w-full items-center justify-between gap-3 rounded-[1.65rem] border border-[#ddd3cb] bg-[#fbf8f5] px-5 py-4 text-left"
-                >
-                    <div>
-                        <p className={`${cormorantHeading.className} text-[23px] font-semibold leading-[1.05] text-foreground`}>Your Bag</p>
-                        <p className="mt-1.5 text-[0.92rem] leading-[1.25] text-[#8a7667]">
-                            {cartCount} {cartCount === 1 ? "item" : "items"} · {cartCount > 0 ? "Tap to view bag" : "Tap to start shopping"}
-                        </p>
-                    </div>
-                    <ChevronRight className="h-5 w-5 text-[#8a7667]" />
-                </Link>
-            </div>
-
             <div className="max-w-full overflow-x-auto overflow-y-hidden border-b border-[#ddd3cb] bg-[#f7f2ed] pl-4 pr-4 [touch-action:pan-x] [-webkit-overflow-scrolling:touch]">
                 <div className="inline-flex min-w-max items-center gap-4 pt-2.5">
                     {tabs.map((tab) => (
@@ -434,7 +419,7 @@ export default function MobileOrdersClient({ orders, cartCount }: { orders: Mobi
             <Link
                 href="/cart"
                 aria-label="Open cart"
-                className="fixed bottom-24 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[#7a5a45] text-white shadow-[0_10px_24px_rgba(122,90,69,0.35)] transition-transform active:scale-95"
+                className="fixed bottom-32 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[#7a5a45] text-white shadow-[0_10px_24px_rgba(122,90,69,0.35)] transition-transform active:scale-95"
             >
                 <ShoppingCart className="h-6 w-6" strokeWidth={1.8} />
                 {cartCount > 0 ? (

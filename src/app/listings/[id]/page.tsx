@@ -4,7 +4,7 @@ import { auth } from "@/auth";
 import { addToCartAndRedirect } from "@/app/actions/cart";
 import { getFavoriteListingIdsForSessionUser } from "@/app/actions/favorites";
 import { getOrderedListingGallery } from "@/lib/listing-images";
-import { MessageCircle, Plus, ShoppingBag, Star, ChevronRight, ChevronLeft } from "lucide-react";
+import { MessageCircle, Pencil, ShoppingBag, Star, ChevronRight, ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import RecentlyViewedTracker from "@/components/marketplace/RecentlyViewedTracker";
 import FavoriteButton from "@/components/marketplace/FavoriteButton";
@@ -259,11 +259,11 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                             </Link>
                         ) : (
                             <Link
-                                href="/sell?create=1"
-                                aria-label="Add listing"
+                                href={`/sell?edit=${listing.id}`}
+                                aria-label="Edit listing"
                                 className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#ddd3cb] bg-[#fbf8f5] text-[#2f2925]"
                             >
-                                <Plus className="h-5 w-5" />
+                                <Pencil className="h-5 w-5" />
                             </Link>
                         )}
                         <ShareListingButton

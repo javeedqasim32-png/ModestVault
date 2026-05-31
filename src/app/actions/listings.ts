@@ -440,7 +440,7 @@ export async function replaceListingImages(listingId: string, formData: FormData
 
     try {
         // Upload new images to S3 if there are any
-        const uploadedImages = images.length > 0 
+        const uploadedImages = images.length > 0
             ? await uploadImagesForListing({ listingId, images, bucket })
             : [];
 
@@ -454,29 +454,75 @@ export async function replaceListingImages(listingId: string, formData: FormData
             imageOrder: number;
         }[] = [];
 
-        // 1. Add kept existing images
-        keptImages.forEach((img: any, idx: number) => {
-            combinedData.push({
-                id: img.id,
-                listingId,
-                imageUrl: img.imageUrl,
-                thumbUrl: img.thumbUrl || null,
-                mediumUrl: img.mediumUrl || null,
-                imageOrder: idx,
-            });
-        });
+        // Honor an explicit per-item order if the client sent one (unified
+        // drag-and-drop edit grid). Each entry is either `{kind:"existing",id}`
+        // or `{kind:"new",index}`. Falls back to "kept first then new" when
+        // the field is missing so older clients keep working.
+        const itemOrderRaw = formData.get("itemOrder") as string | null;
+        let itemOrder: Array<{ kind: "existing" | "new"; id?: string; index?: number }> | null = null;
+        if (itemOrderRaw) {
+            try {
+                const parsed = JSON.parse(itemOrderRaw);
+                if (Array.isArray(parsed)) itemOrder = parsed;
+            } catch {
+                itemOrder = null;
+            }
+        }
 
-        // 2. Add newly uploaded S3 images
-        uploadedImages.forEach((img: any, idx: number) => {
-            combinedData.push({
-                id: img.id,
-                listingId,
-                imageUrl: img.imageUrl,
-                thumbUrl: img.thumbUrl || null,
-                mediumUrl: img.mediumUrl || null,
-                imageOrder: keptImages.length + idx,
+        if (itemOrder && itemOrder.length === keptImages.length + uploadedImages.length) {
+            const keptById = new Map<string, (typeof keptImages)[number]>(
+                keptImages.map((img: { id: string }) => [img.id, img])
+            );
+            itemOrder.forEach((entry, position) => {
+                if (entry.kind === "existing" && entry.id) {
+                    const img = keptById.get(entry.id);
+                    if (img) {
+                        combinedData.push({
+                            id: img.id,
+                            listingId,
+                            imageUrl: img.imageUrl,
+                            thumbUrl: img.thumbUrl || null,
+                            mediumUrl: img.mediumUrl || null,
+                            imageOrder: position,
+                        });
+                    }
+                } else if (entry.kind === "new" && typeof entry.index === "number") {
+                    const img = uploadedImages[entry.index];
+                    if (img) {
+                        combinedData.push({
+                            id: img.id,
+                            listingId,
+                            imageUrl: img.imageUrl,
+                            thumbUrl: img.thumbUrl || null,
+                            mediumUrl: img.mediumUrl || null,
+                            imageOrder: position,
+                        });
+                    }
+                }
             });
-        });
+        } else {
+            // Legacy path: kept images first (in their array order), then new uploads.
+            keptImages.forEach((img: { id: string; imageUrl: string; thumbUrl?: string | null; mediumUrl?: string | null }, idx: number) => {
+                combinedData.push({
+                    id: img.id,
+                    listingId,
+                    imageUrl: img.imageUrl,
+                    thumbUrl: img.thumbUrl || null,
+                    mediumUrl: img.mediumUrl || null,
+                    imageOrder: idx,
+                });
+            });
+            uploadedImages.forEach((img, idx: number) => {
+                combinedData.push({
+                    id: img.id,
+                    listingId,
+                    imageUrl: img.imageUrl,
+                    thumbUrl: img.thumbUrl || null,
+                    mediumUrl: img.mediumUrl || null,
+                    imageOrder: keptImages.length + idx,
+                });
+            });
+        }
 
         const coverImage = combinedData[0]?.imageUrl;
         if (!coverImage) {

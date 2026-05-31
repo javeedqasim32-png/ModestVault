@@ -65,6 +65,10 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  // Resize the layout viewport when the virtual keyboard opens so fixed/dvh
+  // elements (e.g. the messages thread composer) snap to just above the keyboard
+  // instead of leaving a gap.
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({

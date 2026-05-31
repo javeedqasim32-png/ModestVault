@@ -57,6 +57,7 @@ type SellPageClientProps = {
     listings: ListingItem[];
     openCreateInitially?: boolean;
     openManageInitially?: boolean;
+    editListingIdInitially?: string | null;
     analytics: {
         totalListings: number;
         deliveredRevenue: number;
@@ -232,6 +233,7 @@ export default function SellPageClient({
     listings,
     openCreateInitially = false,
     openManageInitially = false,
+    editListingIdInitially = null,
     analytics,
 }: SellPageClientProps) {
     const router = useRouter();
@@ -260,6 +262,14 @@ export default function SellPageClient({
     const [editFiles, setEditFiles] = useState<File[]>([]);
     const [editPreviewUrls, setEditPreviewUrls] = useState<string[]>([]);
     const [existingImages, setExistingImages] = useState<{ id: string; imageUrl: string; thumbUrl?: string | null; mediumUrl?: string | null; imageOrder: number }[]>([]);
+    // Unified ordering for the edit grid. Each entry is "existing:<imageId>" or
+    // "new:<fileId>", matching ids in existingImages / editFiles. Drives both
+    // the render order and the itemOrder we send to the server.
+    const [editItemOrder, setEditItemOrder] = useState<string[]>([]);
+    // Flips true the moment the user adds, removes, or reorders an image so
+    // we know whether to call replaceListingImages on save. Pure text/taxonomy
+    // edits skip that call and therefore skip re-moderation.
+    const [editImagesChanged, setEditImagesChanged] = useState(false);
     const [title, setTitle] = useState("");
     const [price, setPrice] = useState("");
     const [brand, setBrand] = useState("");
@@ -320,12 +330,6 @@ export default function SellPageClient({
         return [];
     }, [listings, mobileTab]);
 
-    const listingStats = useMemo(() => {
-        const activeCount = listings.filter((listing) => listing.moderation_status === "APPROVED" && listing.status !== "SOLD").length;
-        const soldCount = listings.filter((listing) => listing.status === "SOLD").length;
-        const listedValue = listings.reduce((sum, listing) => sum + Number(listing.price || 0), 0);
-        return { activeCount, soldCount, listedValue };
-    }, [listings]);
     const soldViewedStorageKey = `${SOLD_VIEWED_KEY_PREFIX}:${currentUserId}`;
 
     useEffect(() => {
@@ -628,6 +632,19 @@ export default function SellPageClient({
         return () => cancelAnimationFrame(raf);
     }, [openManageInitially]);
 
+    // Deep-link from /listings/[id] (owner-only Edit button) → /sell?edit=<id>.
+    // Auto-open the edit modal for the matching listing on mount.
+    useEffect(() => {
+        if (!editListingIdInitially) return;
+        const target = listings.find((l) => l.id === editListingIdInitially);
+        if (target) {
+            setShowCreateForm(false);
+            void startEditListing(target);
+        }
+        // Intentionally only on mount; we don't want re-open if the user later closes.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     const handleEditImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files ?? []);
         if (files.length === 0) {
@@ -635,52 +652,69 @@ export default function SellPageClient({
             return;
         }
 
-        const merged = [...editFiles];
-        for (const rawFile of files) {
-            const file = await optimizeImageFile(rawFile);
-            if (!COMPRESSIBLE_TYPES.has(file.type) && file.size > MAX_IMAGE_BYTES) {
-                setError(`"${rawFile.name}" is larger than 10MB. Please choose a smaller file.`);
-                e.target.value = "";
-                return;
+        setIsOptimizing(true);
+        try {
+            const merged = [...editFiles];
+            const newFileIds: string[] = [];
+            for (const rawFile of files) {
+                const file = await optimizeImageFile(rawFile);
+                if (!COMPRESSIBLE_TYPES.has(file.type) && file.size > MAX_IMAGE_BYTES) {
+                    setError(`"${rawFile.name}" is larger than 10MB. Please choose a smaller file.`);
+                    e.target.value = "";
+                    return;
+                }
+                if (file.size > MAX_IMAGE_BYTES) {
+                    setError(`"${rawFile.name}" is still larger than 10MB after optimization.`);
+                    e.target.value = "";
+                    return;
+                }
+                merged.push(file);
+                newFileIds.push(`new:${getFileId(file)}`);
+                if (existingImages.length + merged.length > MAX_IMAGES) {
+                    setError("You can upload a maximum of 6 images.");
+                    e.target.value = "";
+                    return;
+                }
             }
-            if (file.size > MAX_IMAGE_BYTES) {
-                setError(`"${rawFile.name}" is still larger than 10MB after optimization.`);
-                e.target.value = "";
-                return;
-            }
-            merged.push(file);
-            if (existingImages.length + merged.length > MAX_IMAGES) {
-                setError("You can upload a maximum of 6 images.");
-                e.target.value = "";
-                return;
-            }
-        }
 
-        const totalImageBytes = merged.reduce((total, file) => total + file.size, 0);
-        if (totalImageBytes > MAX_TOTAL_IMAGE_BYTES) {
-            setError("Total image upload size is too large. Please keep all images under 18MB combined.");
+            const totalImageBytes = merged.reduce((total, file) => total + file.size, 0);
+            if (totalImageBytes > MAX_TOTAL_IMAGE_BYTES) {
+                setError("Total image upload size is too large. Please keep all images under 18MB combined.");
+                e.target.value = "";
+                return;
+            }
+
+            setEditFiles(merged);
+            setEditItemOrder((prev) => [...prev, ...newFileIds]);
+            if (newFileIds.length > 0) setEditImagesChanged(true);
             e.target.value = "";
-            return;
+        } finally {
+            setIsOptimizing(false);
         }
-
-        setEditFiles(merged);
-        e.target.value = "";
     };
 
-    const removeEditImage = (indexToRemove: number) => {
-        setEditFiles((prev) => prev.filter((_, index) => index !== indexToRemove));
-    };
     const removeExistingImage = (idToRemove: string) => {
         setExistingImages((prev) => prev.filter((img) => img.id !== idToRemove));
+        setEditItemOrder((prev) => prev.filter((entry) => entry !== `existing:${idToRemove}`));
+        setEditImagesChanged(true);
     };
-    const moveEditImage = (fromIndex: number, toIndex: number) => {
-        setEditFiles((prev) => {
-            if (toIndex < 0 || toIndex >= prev.length) return prev;
-            const next = [...prev];
-            const [moved] = next.splice(fromIndex, 1);
-            next.splice(toIndex, 0, moved);
-            return next;
+
+    const removeEditFileById = (fileId: string) => {
+        setEditFiles((prev) => prev.filter((f) => getFileId(f) !== fileId));
+        setEditItemOrder((prev) => prev.filter((entry) => entry !== `new:${fileId}`));
+        setEditImagesChanged(true);
+    };
+
+    const handleEditSortEnd = (event: DragEndEvent) => {
+        const { active, over } = event;
+        if (!over || active.id === over.id) return;
+        setEditItemOrder((prev) => {
+            const oldIndex = prev.indexOf(String(active.id));
+            const newIndex = prev.indexOf(String(over.id));
+            if (oldIndex < 0 || newIndex < 0) return prev;
+            return arrayMove(prev, oldIndex, newIndex);
         });
+        setEditImagesChanged(true);
     };
 
     const handleDeleteListing = async (listingId: string) => {
@@ -707,6 +741,8 @@ export default function SellPageClient({
         setEditingListing(listing);
         setEditFiles([]);
         setExistingImages([]);
+        setEditItemOrder([]);
+        setEditImagesChanged(false);
         setError("");
         setEditStyle(listing.style || "");
         setEditCategory(listing.category || "");
@@ -717,6 +753,7 @@ export default function SellPageClient({
         try {
             const images = await getListingImages(listing.id);
             setExistingImages(images);
+            setEditItemOrder(images.map((img) => `existing:${img.id}`));
         } catch (err) {
             console.error("Failed to load listing images:", err);
         }
@@ -726,6 +763,8 @@ export default function SellPageClient({
         setEditingListing(null);
         setEditFiles([]);
         setExistingImages([]);
+        setEditItemOrder([]);
+        setEditImagesChanged(false);
         setEditStyle("");
         setEditCategory("");
         setEditSubcategory("");
@@ -930,12 +969,12 @@ export default function SellPageClient({
                             </p>
                         </div>
 
-                        <div className="mt-5 flex flex-col gap-4 rounded-[20px] border border-[#e8ddd1] bg-[#faf6f0] p-4">
+                        <div className="mt-5 flex flex-col gap-5 rounded-[20px] border border-[#e8ddd1] bg-[#faf6f0] p-5 sm:p-6">
                             <div className="flex items-start gap-3">
-                                <Sparkles className="mt-0.5 h-4.5 w-4.5 flex-shrink-0 text-[#cfb79f]" />
+                                <Sparkles className="mt-0.5 h-5 w-5 flex-shrink-0 text-[#cfb79f]" />
                                 <div>
-                                    <p className="text-xs font-semibold text-[#4a3328]">Generate an AI cover photo</p>
-                                    <p className="mt-0.5 text-[11px] text-[#8a7667] leading-normal">
+                                    <p className="text-sm font-semibold text-[#4a3328]">Generate an AI cover photo</p>
+                                    <p className="mt-1 text-[12px] text-[#8a7667] leading-relaxed">
                                         {generatedImageUrls.length > 0
                                             ? "AI cover photo generated! Limit: 1 generated cover per listing."
                                             : "Create a studio-quality cover from your uploaded photos. Takes 2–4 minutes. Limit: 1 cover per listing."}
@@ -943,9 +982,9 @@ export default function SellPageClient({
                                 </div>
                             </div>
 
-                            <div className="border-t border-[#e8ddd1] pt-4">
+                            <div className="border-t border-[#e8ddd1] pt-5">
                                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7667]">Model Tone</p>
-                                <div className="mt-3 flex items-center gap-3">
+                                <div className="mt-4 flex items-center justify-between px-1">
                                     {SKIN_TONE_OPTIONS.map((opt) => {
                                         const selected = modelSkinTone === opt.value;
                                         return (
@@ -955,7 +994,7 @@ export default function SellPageClient({
                                                 aria-label={`Skin tone: ${opt.label}`}
                                                 aria-pressed={selected}
                                                 onClick={() => setModelSkinTone(opt.value)}
-                                                className={`h-10 w-10 rounded-full transition ${selected ? "ring-2 ring-offset-2 ring-[#7a5a45]" : "ring-0"}`}
+                                                className={`h-12 w-12 rounded-full transition ${selected ? "ring-[1.5px] ring-offset-[3px] ring-[#7a5a45] ring-offset-[#faf6f0]" : "ring-0"}`}
                                                 style={{ backgroundColor: opt.swatch }}
                                             />
                                         );
@@ -963,9 +1002,9 @@ export default function SellPageClient({
                                 </div>
                             </div>
 
-                            <div className="border-t border-[#e8ddd1] pt-4">
+                            <div className="border-t border-[#e8ddd1] pt-5">
                                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7667]">Hijab</p>
-                                <div className="mt-3 flex items-center gap-2">
+                                <div className="mt-4 flex items-center gap-3">
                                     {[
                                         { label: "Yes", value: true },
                                         { label: "No", value: false },
@@ -977,9 +1016,9 @@ export default function SellPageClient({
                                                 type="button"
                                                 aria-pressed={selected}
                                                 onClick={() => setHijabRequired(opt.value)}
-                                                className={`min-w-[72px] rounded-full px-5 py-2 text-sm transition ${
+                                                className={`min-w-[88px] rounded-full px-6 py-2.5 text-sm font-medium transition ${
                                                     selected
-                                                        ? "bg-[#bca797] text-white"
+                                                        ? "bg-[#a89180] text-white"
                                                         : "border border-[#cfb79f] bg-white text-[#7a6050] hover:bg-[#faf6f0]"
                                                 }`}
                                             >
@@ -1332,7 +1371,13 @@ export default function SellPageClient({
         <>
             {editingListing ? (
                 <div className="fixed inset-0 z-[80] bg-black/45 p-4">
-                    <div className="mx-auto mt-6 max-h-[86vh] w-full max-w-2xl overflow-y-auto rounded-[1.5rem] border border-border bg-card p-5 sm:p-6">
+                    <div className="relative mx-auto mt-6 max-h-[86vh] w-full max-w-2xl overflow-y-auto rounded-[1.5rem] border border-border bg-card p-5 sm:p-6">
+                        {isOptimizing && (
+                            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white/70 backdrop-blur-[2px] rounded-[1.5rem]">
+                                <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+                                <p className="mt-3 text-xs font-medium text-foreground">Optimizing photo...</p>
+                            </div>
+                        )}
                         <div className="mb-4 flex items-center justify-between">
                             <h3 className="font-serif text-3xl text-foreground">Edit Listing</h3>
                             <button
@@ -1370,14 +1415,30 @@ export default function SellPageClient({
                                         return;
                                     }
 
-                                    const imageData = new FormData();
-                                    imageData.append("keptImages", JSON.stringify(existingImages));
-                                    editFiles.forEach((file) => imageData.append("images", file));
-                                    
-                                    const imageResult = await replaceListingImages(editingListing.id, imageData);
-                                    if (imageResult?.error) {
-                                        setError(imageResult.error);
-                                        return;
+                                    // Only round-trip images (which re-queues moderation) when the user
+                                    // actually added, removed, or reordered something. Pure text /
+                                    // taxonomy edits leave moderation_status as-is.
+                                    if (editImagesChanged) {
+                                        const imageData = new FormData();
+                                        imageData.append("keptImages", JSON.stringify(existingImages));
+                                        editFiles.forEach((file) => imageData.append("images", file));
+                                        const itemOrder = editItemOrder
+                                            .map((entryId) => {
+                                                if (entryId.startsWith("existing:")) {
+                                                    return { kind: "existing" as const, id: entryId.slice("existing:".length) };
+                                                }
+                                                const fileId = entryId.slice("new:".length);
+                                                const index = editFiles.findIndex((f) => getFileId(f) === fileId);
+                                                return index >= 0 ? { kind: "new" as const, index } : null;
+                                            })
+                                            .filter((entry): entry is { kind: "existing"; id: string } | { kind: "new"; index: number } => entry !== null);
+                                        imageData.append("itemOrder", JSON.stringify(itemOrder));
+
+                                        const imageResult = await replaceListingImages(editingListing.id, imageData);
+                                        if (imageResult?.error) {
+                                            setError(imageResult.error);
+                                            return;
+                                        }
                                     }
 
                                     closeEditListing();
@@ -1580,68 +1641,38 @@ export default function SellPageClient({
                                     className="block w-full rounded-[0.75rem] border border-border bg-background p-2 text-sm"
                                     disabled={existingImages.length + editFiles.length >= 6}
                                 />
-                                {(existingImages.length > 0 || editPreviewUrls.length > 0) ? (
+                                {editItemOrder.length > 0 ? (
                                     <>
-                                        <div className="grid grid-cols-3 gap-2">
-                                            {/* Existing S3 Images */}
-                                            {existingImages.map((img, index) => (
-                                                <div key={img.id} className="rounded-lg border border-border bg-card p-1.5">
-                                                    <div className="relative overflow-hidden rounded-md">
-                                                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                        <img src={img.imageUrl} alt={`Existing image ${index + 1}`} className="aspect-square w-full object-cover" />
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => removeExistingImage(img.id)}
-                                                            className="absolute right-1 top-1 z-10 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-white hover:bg-black transition"
-                                                        >
-                                                            <X className="h-3.5 w-3.5" />
-                                                        </button>
-                                                        <div className="absolute left-1 top-1 rounded-full bg-[#725643] px-2 py-0.5 text-[9px] font-medium text-white shadow-sm">
-                                                            Existing
-                                                        </div>
-                                                    </div>
+                                        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleEditSortEnd}>
+                                            <SortableContext items={editItemOrder} strategy={rectSortingStrategy}>
+                                                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                                                    {editItemOrder.map((entryId, index) => {
+                                                        const isExisting = entryId.startsWith("existing:");
+                                                        const url = isExisting
+                                                            ? existingImages.find((img) => `existing:${img.id}` === entryId)?.imageUrl
+                                                            : editPreviewUrls[editFiles.findIndex((f) => `new:${getFileId(f)}` === entryId)];
+                                                        if (!url) return null;
+                                                        return (
+                                                            <SortableImageCard
+                                                                key={entryId}
+                                                                id={entryId}
+                                                                url={url}
+                                                                index={index}
+                                                                showCoverLabel={true}
+                                                                onRemove={() => {
+                                                                    if (isExisting) {
+                                                                        removeExistingImage(entryId.slice("existing:".length));
+                                                                    } else {
+                                                                        removeEditFileById(entryId.slice("new:".length));
+                                                                    }
+                                                                }}
+                                                            />
+                                                        );
+                                                    })}
                                                 </div>
-                                            ))}
-
-                                            {/* Newly Uploaded local Images */}
-                                            {editPreviewUrls.map((url, index) => (
-                                                <div key={`${url}-${index}`} className="rounded-lg border border-border bg-card p-1.5">
-                                                    <div className="relative overflow-hidden rounded-md">
-                                                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                        <img src={url} alt={`New image ${index + 1}`} className="aspect-square w-full object-cover" />
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => removeEditImage(index)}
-                                                            className="absolute right-1 top-1 z-10 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-white hover:bg-black transition"
-                                                        >
-                                                            <X className="h-3.5 w-3.5" />
-                                                        </button>
-                                                        <div className="absolute left-1 top-1 rounded-full bg-[#10b981] px-2 py-0.5 text-[9px] font-medium text-white shadow-sm">
-                                                            New
-                                                        </div>
-                                                    </div>
-                                                    <div className="mt-1.5 grid grid-cols-2 gap-1">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => moveEditImage(index, index - 1)}
-                                                            disabled={index === 0}
-                                                            className="inline-flex h-6 items-center justify-center rounded-md border border-border text-foreground disabled:opacity-40"
-                                                        >
-                                                            <ChevronLeft className="h-3.5 w-3.5" />
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => moveEditImage(index, index + 1)}
-                                                            disabled={index === editPreviewUrls.length - 1}
-                                                            className="inline-flex h-6 items-center justify-center rounded-md border border-border text-foreground disabled:opacity-40"
-                                                        >
-                                                            <ChevronRight className="h-3.5 w-3.5" />
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                        <p className="mt-2 text-xs text-muted-foreground">The first image in the grid will be the main cover photo.</p>
+                                            </SortableContext>
+                                        </DndContext>
+                                        <p className="mt-3 text-xs text-muted-foreground">Drag photos to reorder. The first image is your cover.</p>
                                     </>
                                 ) : null}
                             </div>
@@ -1666,22 +1697,6 @@ export default function SellPageClient({
                     mobileTab === "ANALYTICS" ? "min-h-screen pb-0" : "min-h-screen pb-28"
                 }`}
             >
-                <div className="px-4">
-                    <button
-                        type="button"
-                        onClick={() => setShowCreateForm(true)}
-                        className="mb-3 flex w-full items-center justify-between gap-3 rounded-[1.65rem] border border-[#ddd3cb] bg-[#fbf8f5] px-5 py-4 text-left"
-                    >
-                        <div>
-                            <p className={`${cormorantHeading.className} text-[23px] font-semibold leading-[1.05] text-foreground`}>List New Item</p>
-                            <p className="mt-1.5 text-[0.92rem] leading-[1.25] text-[#8a7667]">
-                                {listingStats.activeCount} active · {listingStats.soldCount} sold · ${listingStats.listedValue.toLocaleString()} listed value
-                            </p>
-                        </div>
-                        <ChevronRight className="h-5 w-5 text-[#8a7667]" />
-                    </button>
-                </div>
-
                 <div className="overflow-x-auto border-b border-[#ddd3cb] bg-[#f7f2ed] px-8">
                     <div className="inline-flex min-w-max items-center gap-7 pt-2.5">
                         {mobileTabs.map((tab) => (
@@ -1906,7 +1921,7 @@ export default function SellPageClient({
                         type="button"
                         aria-label="Create new listing"
                         onClick={() => setShowCreateForm(true)}
-                        className="fixed bottom-24 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[#7a5a45] text-white shadow-[0_10px_24px_rgba(122,90,69,0.35)] transition-transform active:scale-95"
+                        className="fixed bottom-32 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[#7a5a45] text-white shadow-[0_10px_24px_rgba(122,90,69,0.35)] transition-transform active:scale-95"
                     >
                         <Plus className="h-7 w-7" strokeWidth={2.2} />
                     </button>
