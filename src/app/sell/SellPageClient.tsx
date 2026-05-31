@@ -1706,11 +1706,11 @@ export default function SellPageClient({
             ) : null}
 
             <div
-                className={`${showCreateForm ? "hidden" : "block"} bg-[#f4efea] pt-4 sm:hidden ${
+                className={`${showCreateForm ? "hidden" : "block"} bg-background pt-4 sm:hidden ${
                     mobileTab === "INSIGHTS" ? "min-h-screen pb-0" : "min-h-screen pb-28"
                 }`}
             >
-                <div className="border-b border-[#ddd3cb] bg-[#f7f2ed] px-7">
+                <div className="border-b border-[#ddd3cb] bg-background px-7">
                     <div className="flex items-center justify-evenly pt-0">
                         {mobileTabs.map((tab) => (
                             <button
@@ -1941,11 +1941,11 @@ export default function SellPageClient({
                 )}
             </div>
 
-            <div className={`${showCreateForm ? "block" : "hidden"} bg-[#f4efea] px-4 py-6 sm:hidden`}>
+            <div className={`${showCreateForm ? "block" : "hidden"} bg-background px-4 py-6 sm:hidden`}>
                 {renderCreateForm(true)}
             </div>
 
-            <div className="hidden bg-[#f4efea] px-4 py-6 sm:block sm:px-6 lg:px-8">
+            <div className="hidden bg-background px-4 py-6 sm:block sm:px-6 lg:px-8">
                 <div className="mx-auto max-w-6xl space-y-8">
                     {showCreateForm ? (
                         <div className="space-y-6">

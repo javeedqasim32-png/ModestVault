@@ -189,8 +189,8 @@ export default function MobileOrdersClient({ orders, cartCount }: { orders: Mobi
     const avatarTones = ["#d7bea1", "#c5b0d9", "#d9b8b8"] as const;
 
     return (
-        <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-[#f4efea] pb-24 pt-4 sm:hidden">
-            <div className="border-b border-[#ddd3cb] bg-[#f7f2ed] px-7">
+        <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-background pb-24 pt-4 sm:hidden">
+            <div className="border-b border-[#ddd3cb] bg-background px-7">
                 <div className="flex items-center justify-evenly pt-0">
                     {tabs.map((tab) => (
                         <button
