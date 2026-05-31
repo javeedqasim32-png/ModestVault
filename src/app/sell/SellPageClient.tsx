@@ -68,13 +68,12 @@ type SellPageClientProps = {
     };
 };
 
-type SellTab = "LISTINGS" | "SOLD" | "ACTIVE" | "PENDING" | "ANALYTICS";
+type SellTab = "ACTIVE" | "PENDING" | "SOLD" | "INSIGHTS";
 const mobileTabs: { key: SellTab; label: string }[] = [
-    { key: "LISTINGS", label: "Listings" },
-    { key: "SOLD", label: "Sold" },
     { key: "ACTIVE", label: "Active" },
     { key: "PENDING", label: "Pending" },
-    { key: "ANALYTICS", label: "Analytics" },
+    { key: "SOLD", label: "Sold" },
+    { key: "INSIGHTS", label: "Insights" },
 ];
 const styleOptions = getStyles();
 const categoryOptions = getCategories();
@@ -254,7 +253,7 @@ export default function SellPageClient({
     );
 
     const getFileId = (file: File) => `${file.name}-${file.size}-${file.lastModified}`;
-    const [mobileTab, setMobileTab] = useState<SellTab>("LISTINGS");
+    const [mobileTab, setMobileTab] = useState<SellTab>("ACTIVE");
     const [showCreateForm, setShowCreateForm] = useState(openCreateInitially);
     const [editingListing, setEditingListing] = useState<ListingItem | null>(null);
     const [deletingListingId, setDeletingListingId] = useState<string | null>(null);
@@ -323,10 +322,9 @@ export default function SellPageClient({
         const byUpdatedDesc = (a: ListingItem, b: ListingItem) =>
             new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime();
 
-        if (mobileTab === "LISTINGS") return [...listings].sort(byCreatedDesc);
-        if (mobileTab === "SOLD") return listings.filter((listing) => listing.status === "SOLD").sort(byUpdatedDesc);
         if (mobileTab === "ACTIVE") return listings.filter((listing) => listing.moderation_status === "APPROVED" && listing.status !== "SOLD").sort(byCreatedDesc);
         if (mobileTab === "PENDING") return listings.filter((listing) => listing.moderation_status === "PENDING").sort(byCreatedDesc);
+        if (mobileTab === "SOLD") return listings.filter((listing) => listing.status === "SOLD").sort(byUpdatedDesc);
         return [];
     }, [listings, mobileTab]);
 
@@ -865,6 +863,7 @@ export default function SellPageClient({
                 <section className="space-y-4">
                     <h2 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
                         Product Photos (Up to 6)
+                        <span className="ml-0.5 text-red-600" aria-hidden="true">*</span>
                     </h2>
 
                     {generatedImageUrls.length > 0 && (
@@ -1151,11 +1150,11 @@ export default function SellPageClient({
 
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <div className="space-y-2">
-                            <Label htmlFor="title">Title</Label>
+                            <Label htmlFor="title" required>Title</Label>
                             <Input id="title" name="title" required placeholder="e.g., Silk Floral Abaya" className="h-12" value={title} onChange={(e) => setTitle(e.target.value)} />
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="style">Style</Label>
+                            <Label htmlFor="style" required>Style</Label>
                             <select
                                 id="style"
                                 name="style"
@@ -1182,7 +1181,7 @@ export default function SellPageClient({
 
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <div className="space-y-2">
-                            <Label htmlFor="category">Category</Label>
+                            <Label htmlFor="category" required>Category</Label>
                             <select
                                 id="category"
                                 name="category"
@@ -1213,7 +1212,7 @@ export default function SellPageClient({
                         </div>
                         {subcategoryOptions.length > 0 ? (
                             <div className="space-y-2">
-                                <Label htmlFor="subcategory">Subcategory</Label>
+                                <Label htmlFor="subcategory" required>Subcategory</Label>
                                 <select
                                     id="subcategory"
                                     name="subcategory"
@@ -1244,7 +1243,7 @@ export default function SellPageClient({
                     {typeOptions.length > 0 ? (
                         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                             <div className="space-y-2">
-                                <Label htmlFor="type">Type</Label>
+                                <Label htmlFor="type" required>Type</Label>
                                 <select
                                     id="type"
                                     name="type"
@@ -1274,7 +1273,7 @@ export default function SellPageClient({
 
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <div className="space-y-2">
-                            <Label htmlFor="price">Price ($)</Label>
+                            <Label htmlFor="price" required>Price ($)</Label>
                             <Input id="price" name="price" type="number" step="0.01" min="0.50" required placeholder="0.00" className="h-12" value={price} onChange={(e) => setPrice(e.target.value)} />
                         </div>
                         <div className="space-y-2">
@@ -1284,7 +1283,7 @@ export default function SellPageClient({
                     </div>
 
                     <div className="space-y-2">
-                        <Label htmlFor="description">Description</Label>
+                        <Label htmlFor="description" required>Description</Label>
                         <textarea
                             id="description"
                             name="description"
@@ -1299,10 +1298,11 @@ export default function SellPageClient({
 
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <div className="space-y-2">
-                            <Label htmlFor="condition">Condition</Label>
+                            <Label htmlFor="condition" required>Condition</Label>
                             <select
                                 id="condition"
                                 name="condition"
+                                required
                                 value={condition}
                                 onChange={(e) => setCondition(e.target.value)}
                                 className="w-full h-12 border border-border bg-background px-4 text-sm rounded-[16px] focus:border-primary focus:outline-none transition-colors"
@@ -1315,10 +1315,11 @@ export default function SellPageClient({
                         </div>
                         <div className="space-y-2">
                             <div className="space-y-2">
-                                <Label htmlFor="size">Size</Label>
+                                <Label htmlFor="size" required>Size</Label>
                                 <select
                                     id="size"
                                     name="size"
+                                    required
                                     className="h-12 w-full border border-border bg-background px-4 text-sm rounded-[16px] focus:border-primary focus:outline-none transition-colors"
                                     value={size}
                                     onChange={(e) => setSize(e.target.value)}
@@ -1451,18 +1452,18 @@ export default function SellPageClient({
                         >
                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 <div className="space-y-1">
-                                    <Label htmlFor="edit-title">Title</Label>
+                                    <Label htmlFor="edit-title" required>Title</Label>
                                     <Input id="edit-title" name="title" required defaultValue={editingListing.title} />
                                 </div>
                                 <div className="space-y-1">
-                                    <Label htmlFor="edit-price">Price ($)</Label>
+                                    <Label htmlFor="edit-price" required>Price ($)</Label>
                                     <Input id="edit-price" name="price" type="number" step="0.01" min="0.5" required defaultValue={Number(editingListing.price)} />
                                 </div>
                             </div>
 
                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 <div className="space-y-1">
-                                    <Label htmlFor="edit-style">Style</Label>
+                                    <Label htmlFor="edit-style" required>Style</Label>
                                     <select
                                         id="edit-style"
                                         name="style"
@@ -1486,7 +1487,7 @@ export default function SellPageClient({
                                     {editTaxonomyErrors.style ? <p className="text-xs text-red-600">{editTaxonomyErrors.style}</p> : null}
                                 </div>
                                 <div className="space-y-1">
-                                    <Label htmlFor="edit-category">Category</Label>
+                                    <Label htmlFor="edit-category" required>Category</Label>
                                     <select
                                         id="edit-category"
                                         name="category"
@@ -1519,7 +1520,7 @@ export default function SellPageClient({
                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 {editSubcategoryOptions.length > 0 ? (
                                     <div className="space-y-1">
-                                        <Label htmlFor="edit-subcategory">Subcategory</Label>
+                                        <Label htmlFor="edit-subcategory" required>Subcategory</Label>
                                         <select
                                             id="edit-subcategory"
                                             name="subcategory"
@@ -1547,7 +1548,7 @@ export default function SellPageClient({
                                 )}
                                 {editTypeOptions.length > 0 ? (
                                     <div className="space-y-1">
-                                        <Label htmlFor="edit-type">Type</Label>
+                                        <Label htmlFor="edit-type" required>Type</Label>
                                         <select
                                             id="edit-type"
                                             name="type"
@@ -1577,15 +1578,27 @@ export default function SellPageClient({
 
                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 <div className="space-y-1">
-                                    <Label htmlFor="edit-condition">Condition</Label>
-                                    <Input id="edit-condition" name="condition" defaultValue={editingListing.condition || ""} />
+                                    <Label htmlFor="edit-condition" required>Condition</Label>
+                                    <select
+                                        id="edit-condition"
+                                        name="condition"
+                                        required
+                                        defaultValue={editingListing.condition || ""}
+                                        className="h-11 w-full rounded-[0.75rem] border border-border bg-background px-3 text-sm text-foreground"
+                                    >
+                                        <option value="">Select Condition</option>
+                                        {["New with tags", "Like new", "Good", "Fair"].map(cond => (
+                                            <option key={cond} value={cond}>{cond}</option>
+                                        ))}
+                                    </select>
                                 </div>
                                 <div className="space-y-1">
                                     <div className="space-y-1">
-                                        <Label htmlFor="edit-size">Size</Label>
+                                        <Label htmlFor="edit-size" required>Size</Label>
                                         <select
                                             id="edit-size"
                                             name="size"
+                                            required
                                             defaultValue={editingListing.size || ""}
                                             className="h-11 w-full rounded-[0.75rem] border border-border bg-background px-3 text-sm text-foreground"
                                         >
@@ -1619,7 +1632,7 @@ export default function SellPageClient({
                             </div>
 
                             <div className="space-y-1">
-                                <Label htmlFor="edit-description">Description</Label>
+                                <Label htmlFor="edit-description" required>Description</Label>
                                 <textarea
                                     id="edit-description"
                                     name="description"
@@ -1694,17 +1707,17 @@ export default function SellPageClient({
 
             <div
                 className={`${showCreateForm ? "hidden" : "block"} bg-[#f4efea] pt-4 sm:hidden ${
-                    mobileTab === "ANALYTICS" ? "min-h-screen pb-0" : "min-h-screen pb-28"
+                    mobileTab === "INSIGHTS" ? "min-h-screen pb-0" : "min-h-screen pb-28"
                 }`}
             >
-                <div className="overflow-x-auto border-b border-[#ddd3cb] bg-[#f7f2ed] px-8">
-                    <div className="inline-flex min-w-max items-center gap-7 pt-2.5">
+                <div className="border-b border-[#ddd3cb] bg-[#f7f2ed] px-7">
+                    <div className="flex items-center justify-evenly pt-0">
                         {mobileTabs.map((tab) => (
                             <button
                                 key={tab.key}
                                 type="button"
                                 onClick={() => setMobileTab(tab.key)}
-                                className={`relative whitespace-nowrap pb-2 text-[0.93rem] ${
+                                className={`relative whitespace-nowrap pb-2.5 text-[1.05rem] ${
                                     mobileTab === tab.key ? "font-semibold text-[#2f2925]" : "font-normal text-[#8a7667]"
                                 }`}
                             >
@@ -1720,7 +1733,7 @@ export default function SellPageClient({
                     </div>
                 </div>
 
-                {mobileTab !== "ANALYTICS" ? (
+                {mobileTab !== "INSIGHTS" ? (
                     <div className="px-4 pt-4">
                         <h2
                             ref={mobileMyListingsRef}
@@ -1736,10 +1749,10 @@ export default function SellPageClient({
                     </div>
                 ) : null}
 
-                {mobileTab === "ANALYTICS" ? (
+                {mobileTab === "INSIGHTS" ? (
                     <div className="px-4 pb-4 pt-4">
                         <h3 className={`${cormorantHeading.className} mb-4 text-[23px] font-medium leading-[1.05] text-[#2f2925]`}>
-                            Analytics
+                            Insights
                         </h3>
 
                         <div className="grid grid-cols-2 gap-3">
@@ -1916,7 +1929,7 @@ export default function SellPageClient({
                 </div>
                 )}
 
-                {mobileTab !== "ANALYTICS" && (
+                {mobileTab !== "INSIGHTS" && (
                     <button
                         type="button"
                         aria-label="Create new listing"
@@ -1950,7 +1963,7 @@ export default function SellPageClient({
                         </div>
                     ) : (
                         <div className="space-y-8">
-                            {/* Analytics Summary Header */}
+                            {/* Insights Summary Header */}
                             <div className="grid grid-cols-4 gap-4">
                                 <div className="rounded-[1.6rem] border border-[#e3dbd3] bg-[#fbf8f5] px-6 py-5 shadow-sm">
                                     <p className="text-xs uppercase tracking-[0.16em] text-[#8a7667] font-semibold">Total Listings</p>
@@ -2006,7 +2019,7 @@ export default function SellPageClient({
 
                             {/* Desktop Tabs */}
                             <div className="flex border border-[#ddd3cb] bg-[#f7f2ed] p-1 rounded-xl">
-                                {mobileTabs.filter(t => t.key !== "ANALYTICS").map((tab) => (
+                                {mobileTabs.filter(t => t.key !== "INSIGHTS").map((tab) => (
                                     <button
                                         key={tab.key}
                                         type="button"

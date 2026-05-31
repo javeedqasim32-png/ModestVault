@@ -1,5 +1,5 @@
 const baseTaxonomy = {
-    styles: ["Bridals", "Everyday", "Festive Pret", "Formals", "Modest Wear"],
+    styles: ["Bridals", "Western", "Festive Pret", "Formals", "Modest Wear"],
     categories: {
         Abayas: [],
         Accessories: [
@@ -25,7 +25,7 @@ const baseTaxonomy = {
         ]
     },
     types: {
-        "Shalwar Kameez": ["2 Piece", "3 Piece"]
+        "Shalwar Kameez": ["2 Piece", "3 Piece", "4 Piece"]
     }
 } as const;
 

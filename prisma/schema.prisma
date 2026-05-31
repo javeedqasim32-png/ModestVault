@@ -28,6 +28,7 @@ model User {
   email_verified     Boolean   @default(true)
   reset_token        String?   @unique
   reset_token_expiry DateTime?
+  welcome_seen_at    DateTime?
   created_at         DateTime  @default(now())
   updated_at         DateTime  @updatedAt
   listings           Listing[]

@@ -138,29 +138,29 @@ export default function SignupPage() {
                             </div>
 
                             <div className="space-y-4 pt-4 border-t border-border/50">
-                                <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Home Address (Optional)</p>
+                                <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Home Address</p>
                                 <div className="space-y-2">
                                     <Label htmlFor="street1">Street Address</Label>
-                                    <Input id="street1" name="street1" placeholder="123 Main St" className="h-12" />
+                                    <Input id="street1" name="street1" required placeholder="123 Main St" className="h-12" />
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
                                         <Label htmlFor="city">City</Label>
-                                        <Input id="city" name="city" placeholder="New York" className="h-12" />
+                                        <Input id="city" name="city" required placeholder="New York" className="h-12" />
                                     </div>
                                     <div className="space-y-2">
                                         <Label htmlFor="state">State</Label>
-                                        <Input id="state" name="state" placeholder="NY" className="h-12" />
+                                        <Input id="state" name="state" required placeholder="NY" className="h-12" />
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
                                         <Label htmlFor="zip">Zip Code</Label>
-                                        <Input id="zip" name="zip" placeholder="10001" className="h-12" />
+                                        <Input id="zip" name="zip" required placeholder="10001" className="h-12" />
                                     </div>
                                     <div className="space-y-2">
                                         <Label htmlFor="country">Country</Label>
-                                        <Input id="country" name="country" defaultValue="US" className="h-12" />
+                                        <Input id="country" name="country" required defaultValue="US" className="h-12" />
                                     </div>
                                 </div>
                             </div>

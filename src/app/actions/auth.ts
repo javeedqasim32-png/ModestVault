@@ -24,12 +24,12 @@ export async function startSignup(formData: FormData) {
     let email = ((formData.get("email") as string) || "").trim();
     const password = ((formData.get("password") as string) || "").trim();
     const rawPhone = ((formData.get("phone") as string) || "").trim();
-    const street1 = formData.get("street1") as string;
-    const street2 = formData.get("street2") as string;
-    const city = formData.get("city") as string;
-    const state = formData.get("state") as string;
-    const zip = formData.get("zip") as string;
-    const country = formData.get("country") as string;
+    const street1 = ((formData.get("street1") as string) || "").trim();
+    const street2 = ((formData.get("street2") as string) || "").trim();
+    const city = ((formData.get("city") as string) || "").trim();
+    const state = ((formData.get("state") as string) || "").trim();
+    const zip = ((formData.get("zip") as string) || "").trim();
+    const country = ((formData.get("country") as string) || "").trim();
 
     const missingFields: string[] = [];
     if (!firstName) missingFields.push("First name");
@@ -37,6 +37,11 @@ export async function startSignup(formData: FormData) {
     if (!email) missingFields.push("Email");
     if (!password) missingFields.push("Password");
     if (!rawPhone) missingFields.push("Phone number");
+    if (!street1) missingFields.push("Street address");
+    if (!city) missingFields.push("City");
+    if (!state) missingFields.push("State");
+    if (!zip) missingFields.push("Zip code");
+    if (!country) missingFields.push("Country");
 
     if (missingFields.length > 0) {
         return { error: `Missing required field${missingFields.length > 1 ? "s" : ""}: ${missingFields.join(", ")}.` };

@@ -13,10 +13,11 @@ import { auth } from "@/auth";
 import { getRecentlyViewedCookieName, parseRecentlyViewedCookie } from "@/lib/recently-viewed";
 import { revalidatePath } from "next/cache";
 import { getUserSlugMap } from "@/lib/user-slugs";
+import WelcomeModal from "@/components/welcome/WelcomeModal";
 
 const categories = [
   {
-    name: "Everyday",
+    name: "Western",
     accent: "from-[#ead5c7] to-[#f4ece5]",
     image: "/category-everyday-blend.png",
   },
@@ -73,6 +74,20 @@ function toSizeCode(size?: string | null) {
 
 export default async function Home() {
   const session = await auth();
+  const sessionUserId = session?.user?.id;
+
+  // Show the post-signup welcome modal exactly once. Stored as a nullable
+  // welcome_seen_at timestamp on the User row so it survives logout / device
+  // change.
+  let showWelcome = false;
+  if (sessionUserId) {
+    const me = await prisma.user.findUnique({
+      where: { id: sessionUserId },
+      select: { welcome_seen_at: true },
+    });
+    showWelcome = me ? me.welcome_seen_at === null : false;
+  }
+
   const cookieStore = await cookies();
   const recentUserCookieName = getRecentlyViewedCookieName(session?.user?.id);
   const recentGuestCookieName = getRecentlyViewedCookieName(null);
@@ -220,6 +235,7 @@ export default async function Home() {
   return (
     <div className="bg-[#f6f1e8] px-0 py-0 sm:px-6 sm:py-6 lg:px-8">
       <HomeBackRefresh />
+      {showWelcome ? <WelcomeModal /> : null}
       <div className="mx-auto flex w-full max-w-[1360px] flex-col overflow-hidden bg-[#f6f1e8] sm:rounded-[2rem] sm:border sm:border-border/80 sm:shadow-[0_35px_80px_rgba(114,86,67,0.10)]">
         <section className="bg-transparent px-4 pb-6 pt-8 sm:border-b sm:border-border/80 sm:px-6 sm:py-6 lg:px-10">
           <div className="grid grid-cols-5 gap-3 md:grid-cols-5 lg:flex lg:flex-wrap lg:justify-center lg:gap-8 xl:justify-between xl:gap-6">

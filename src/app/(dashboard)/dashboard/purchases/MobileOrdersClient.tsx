@@ -33,7 +33,7 @@ type MobileOrderItem = {
     };
 };
 
-const tabs = ["ALL", "ACTIVE", "COMPLETED", "PENDING", "DISPUTES", "ANALYTICS"] as const;
+const tabs = ["ORDERS", "PENDING", "DELIVERED", "INSIGHTS"] as const;
 type OrdersTab = (typeof tabs)[number];
 
 const cormorantHeading = localFont({
@@ -45,30 +45,19 @@ const cormorantHeading = localFont({
 });
 
 const tabLabel: Record<OrdersTab, string> = {
-    ALL: "All",
-    ACTIVE: "Active",
-    COMPLETED: "Completed",
+    ORDERS: "Orders",
     PENDING: "Pending",
-    DISPUTES: "Disputes",
-    ANALYTICS: "Analytics",
+    DELIVERED: "Delivered",
+    INSIGHTS: "Insights",
 };
 
 function isDelivered(order: MobileOrderItem) {
     return normalizeOrderStatus(order.status) === "DELIVERED";
 }
 
-function isDispute(order: MobileOrderItem) {
-    const status = normalizeOrderStatus(order.status);
-    return status === "CANCELLED" || status === "RETURNED";
-}
-
 function isPending(order: MobileOrderItem) {
     const status = normalizeOrderStatus(order.status);
     return status === "PROCESSING" || status === "PENDING" || status === "NOT_SHIPPED";
-}
-
-function isActive(order: MobileOrderItem) {
-    return !isDelivered(order) && !isDispute(order);
 }
 
 function formatMoney(amount: number) {
@@ -128,14 +117,12 @@ function formatCategoryLabel(value: string) {
 }
 
 export default function MobileOrdersClient({ orders, cartCount }: { orders: MobileOrderItem[]; cartCount: number }) {
-    const [activeTab, setActiveTab] = useState<OrdersTab>("ALL");
+    const [activeTab, setActiveTab] = useState<OrdersTab>("ORDERS");
 
     const filtered = useMemo(() => {
-        if (activeTab === "ALL") return orders;
-        if (activeTab === "ACTIVE") return orders.filter(isActive);
-        if (activeTab === "COMPLETED") return orders.filter(isDelivered);
+        if (activeTab === "ORDERS") return orders;
         if (activeTab === "PENDING") return orders.filter(isPending);
-        if (activeTab === "DISPUTES") return orders.filter(isDispute);
+        if (activeTab === "DELIVERED") return orders.filter(isDelivered);
         return [];
     }, [orders, activeTab]);
 
@@ -203,14 +190,14 @@ export default function MobileOrdersClient({ orders, cartCount }: { orders: Mobi
 
     return (
         <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-[#f4efea] pb-24 pt-4 sm:hidden">
-            <div className="max-w-full overflow-x-auto overflow-y-hidden border-b border-[#ddd3cb] bg-[#f7f2ed] pl-4 pr-4 [touch-action:pan-x] [-webkit-overflow-scrolling:touch]">
-                <div className="inline-flex min-w-max items-center gap-4 pt-2.5">
+            <div className="border-b border-[#ddd3cb] bg-[#f7f2ed] px-7">
+                <div className="flex items-center justify-evenly pt-0">
                     {tabs.map((tab) => (
                         <button
                             key={tab}
                             type="button"
                             onClick={() => setActiveTab(tab)}
-                            className={`relative whitespace-nowrap pb-2 text-[0.88rem] ${
+                            className={`relative whitespace-nowrap pb-2.5 text-[1.05rem] ${
                                 activeTab === tab ? "font-semibold text-[#2f2925]" : "font-normal text-[#8a7667]"
                             }`}
                         >
@@ -223,10 +210,10 @@ export default function MobileOrdersClient({ orders, cartCount }: { orders: Mobi
                 </div>
             </div>
 
-            {activeTab === "ANALYTICS" ? (
+            {activeTab === "INSIGHTS" ? (
                 <div className="px-4 pb-6 pt-4">
                     <h3 className={`${cormorantHeading.className} mb-4 text-[23px] font-medium leading-[1.05] text-[#2f2925]`}>
-                        Purchase Analytics
+                        Purchase Insights
                     </h3>
 
                     <div className="grid grid-cols-2 gap-3">
