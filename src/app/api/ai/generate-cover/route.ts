@@ -249,41 +249,38 @@ export async function POST(req: NextRequest) {
 
 CRITICAL:
 The image must look like REAL professional fashion photography — not AI generated.
-Prioritize photorealism, natural human appearance, and editorial polish over strict symmetry.
+Prioritize photorealism, natural human appearance, and editorial polish.
 
-IMAGE ROLES:
-- Image 1 provides the pose, framing, background (off-white wall with door molding), flooring (light grey low-pile carpet), and soft studio lighting. The neutral beige bodysuit shown in Image 1 is not the outfit — it must be fully replaced by the garment from the uploaded references below.
+IMAGE 1 IS THE BLUEPRINT — PRESERVE EVERYTHING EXCEPT THE OUTFIT:
+- Same model: identical face, skin tone, hair, body, hands, fingers
+- Same pose, head position, and expression
+- Same background, walls, flooring, and decor
+- Same lighting, shadows, and color temperature
+- Same camera angle, focal length, framing, and depth of field
+- The ONLY thing to change is the neutral bodysuit shown in Image 1 — fully replace it with the outfit composed from the uploaded reference images below
+
 ${imageRoleLines}
 
-Render the model wearing the complete outfit composed from the uploaded references. Preserve the exact garment colors, prints, embroidery, neckline, sleeve length, hem, and silhouette of every reference image. If a dupatta is visible in any reference, drape it naturally over the shoulder.
+OUTFIT REPLACEMENT:
+Render the SAME model from Image 1 wearing the complete outfit composed from the uploaded reference images. Preserve the exact garment colors, prints, embroidery, neckline, sleeve length, hem, and silhouette of every reference image. If a dupatta is visible in any reference, drape it naturally over the shoulder.
 
-MODEL APPEARANCE:
-- Beautiful, attractive South Asian / Pakistani female model
-- Preserve the model's skin tone exactly as shown in Image 1
-- Soft natural makeup, no heavy contouring
-- Graceful, photogenic features; long lashes; defined eyebrows
-- ${getHijabPrompt(hijabRequired)}
-- Slender, well-proportioned build
-- Natural human skin texture (visible pores, not airbrushed)
-- Natural hands and fingers
-- Soft confident expression, relaxed editorial posture
-- Premium designer campaign appearance
+HEAD COVERING (overrides the "preserve hair" rule above):
+${getHijabPrompt(hijabRequired)}
 
-FRAMING:
-- Full-body vertical portrait, model centered
-- IMPORTANT: Scale down the model slightly (to approximately 80-85% of the frame height) to leave safe, generous empty vertical margin (breathing room/air space) both above the top of the hair/head and below the bottom of the feet/shoes.
-- Ensure that both the model's head and feet/shoes are fully visible inside the image boundary, far away from the top and bottom edges, so that they will never get cut off when rendered in standard 3:4 aspect ratio crops.
-- Soft cinematic studio lighting with realistic shadows
+FRAMING SAFETY:
+Match Image 1's framing. Ensure both the model's head/hair AND feet/shoes remain fully visible inside the image boundary with comfortable breathing room above and below, so the image survives standard 3:4 aspect-ratio crops without anything getting cut off.
 
 AVOID:
-- Changing garment colors
-- Removing major garment pieces
+- Altering the model's face, skin tone, hair (unless overridden by the head-covering rule above), body, or any physical feature shown in Image 1
+- Altering the background, flooring, decor, or lighting shown in Image 1
+- Changing garment colors from the uploaded references
+- Removing major garment pieces from the uploaded references
 - Inventing jewelry, handbags, scarves, shoes, or accessories that are NOT visible in the uploaded references
 - Any text, logos, brand tags, watermarks, or signage anywhere in the image
 - AI beauty perfection (no plastic/3D-render appearance, no mannequin pose)
 - Unrealistic anatomy, distorted hands, or fantasy couture redesigns
 
-The final result should resemble a real luxury Pakistani lawn brand campaign photographed with a DSLR camera — elegant, photorealistic, and faithful to the uploaded outfit and the specified model appearance above.`;
+The final result should look like the model in Image 1 simply changed outfits — same person, same room, same pose, same lighting — just wearing the garment from the uploaded references.`;
 
     formData.append("model", "gpt-image-2-2026-04-21");
     formData.append("prompt", promptText);

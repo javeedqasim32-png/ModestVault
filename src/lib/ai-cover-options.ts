@@ -33,8 +33,8 @@ export function getSkinToneTemplateUrl(value: string): string | null {
 
 export function getHijabPrompt(required: boolean): string {
     return required
-        ? "Wearing a hijab in a complementary neutral tone that frames the face naturally and matches the outfit's modesty"
-        : "Hair styled elegantly in a low bun with a few soft face strands";
+        ? "Replace the model's visible hair with a hijab in a complementary neutral tone that frames the face naturally and matches the outfit's modesty"
+        : "Keep the model's hair exactly as shown in Image 1";
 }
 
 export function isValidSkinTone(value: unknown): value is SkinTone {
