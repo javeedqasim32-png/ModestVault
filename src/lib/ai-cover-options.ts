@@ -1,22 +1,34 @@
 export type SkinTone = "fair" | "light" | "medium" | "tan" | "deep";
 
+// Per-tone reference photos live in s3://modestvault/Ai-template-skintone/.
+// The generate-cover route picks the matching template at request time so the
+// AI gets a visual blueprint for the model's skin tone instead of relying on
+// text-only descriptors. NOTE: S3 keys are case-sensitive — folder is
+// "Ai-template-skintone" with a capital A.
+const TEMPLATE_BASE = "https://modestvault.s3.us-east-1.amazonaws.com/Ai-template-skintone";
+
 export const SKIN_TONE_OPTIONS: {
     value: SkinTone;
     label: string;
     swatch: string;
     prompt: string;
+    template: string;
 }[] = [
-    { value: "fair", label: "Fair", swatch: "#F1D5BB", prompt: "fair skin tone with cool pink undertones" },
-    { value: "light", label: "Light", swatch: "#DDA984", prompt: "light olive skin tone with warm peach undertones" },
-    { value: "medium", label: "Medium", swatch: "#B9784F", prompt: "medium tan skin tone with warm bronze undertones" },
-    { value: "tan", label: "Tan", swatch: "#8B5A2B", prompt: "deep tan skin tone with rich golden undertones" },
-    { value: "deep", label: "Deep", swatch: "#3D2718", prompt: "deep brown skin tone with warm chocolate undertones" },
+    { value: "fair", label: "Fair", swatch: "#F1D5BB", prompt: "fair skin tone with cool pink undertones", template: `${TEMPLATE_BASE}/fair.PNG` },
+    { value: "light", label: "Light", swatch: "#DDA984", prompt: "light olive skin tone with warm peach undertones", template: `${TEMPLATE_BASE}/Light.PNG` },
+    { value: "medium", label: "Medium", swatch: "#B9784F", prompt: "medium tan skin tone with warm bronze undertones", template: `${TEMPLATE_BASE}/Medium.PNG` },
+    { value: "tan", label: "Tan", swatch: "#8B5A2B", prompt: "deep tan skin tone with rich golden undertones", template: `${TEMPLATE_BASE}/Tan.PNG` },
+    { value: "deep", label: "Deep", swatch: "#3D2718", prompt: "deep brown skin tone with warm chocolate undertones", template: `${TEMPLATE_BASE}/deep.PNG` },
 ];
 
 export const DEFAULT_SKIN_TONE: SkinTone = "medium";
 
 export function getSkinTonePrompt(value: string): string {
     return SKIN_TONE_OPTIONS.find((o) => o.value === value)?.prompt ?? SKIN_TONE_OPTIONS[2].prompt;
+}
+
+export function getSkinToneTemplateUrl(value: string): string | null {
+    return SKIN_TONE_OPTIONS.find((o) => o.value === value)?.template ?? null;
 }
 
 export function getHijabPrompt(required: boolean): string {

@@ -7,7 +7,7 @@ import { buildS3ImageUrl, getS3BucketName, s3, uploadFile } from "@/lib/s3";
 import {
   DEFAULT_SKIN_TONE,
   getHijabPrompt,
-  getSkinTonePrompt,
+  getSkinToneTemplateUrl,
   isValidSkinTone,
   type SkinTone,
 } from "@/lib/ai-cover-options";
@@ -71,11 +71,11 @@ export async function POST(req: NextRequest) {
       console.error("[AI COVER] Error: OPENAI_API_KEY is not configured");
       return NextResponse.json({ error: "OPENAI_API_KEY is not configured" }, { status: 500 });
     }
-    const staticRefUrl = process.env.AI_STATIC_REFERENCE_URL;
-    if (!staticRefUrl) {
-      console.error("[AI COVER] Error: AI studio template URL is not configured");
-      return NextResponse.json({ error: "AI studio template URL is not configured." }, { status: 500 });
-    }
+    // The template URL is resolved AFTER the form is parsed because it now
+    // depends on the chosen skin tone (per-tone reference photo). Falls back
+    // to the legacy AI_STATIC_REFERENCE_URL env var if a tone has no mapped
+    // template yet.
+    let staticRefUrl: string | null = null;
     const bucket = getS3BucketName();
     if (!bucket) {
       console.error("[AI COVER] Error: S3 bucket is not configured");
@@ -115,6 +115,15 @@ export async function POST(req: NextRequest) {
         { error: "Please choose whether the model wears a hijab." },
         { status: 400 }
       );
+    }
+
+    // Resolve the studio template URL now that we know the chosen skin tone.
+    // Per-tone template wins; legacy env var is the fallback so the route still
+    // works for tones that aren't mapped yet (or during template uploads).
+    staticRefUrl = getSkinToneTemplateUrl(modelSkinTone) ?? process.env.AI_STATIC_REFERENCE_URL ?? null;
+    if (!staticRefUrl) {
+      console.error("[AI COVER] Error: no studio template URL available for tone", modelSkinTone);
+      return NextResponse.json({ error: "AI studio template URL is not configured." }, { status: 500 });
     }
 
     console.log(`[AI COVER] Parsed slots: [${Array.from(slotFiles.keys()).join(", ")}]`);
@@ -250,7 +259,8 @@ Render the model wearing the complete outfit composed from the uploaded referenc
 
 MODEL APPEARANCE:
 - Beautiful, attractive South Asian / Pakistani female model
-- ${getSkinTonePrompt(modelSkinTone)}, soft natural makeup
+- Preserve the model's skin tone exactly as shown in Image 1
+- Soft natural makeup, no heavy contouring
 - Graceful, photogenic features; long lashes; defined eyebrows
 - ${getHijabPrompt(hijabRequired)}
 - Slender, well-proportioned build
