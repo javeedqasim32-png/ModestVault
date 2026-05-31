@@ -215,8 +215,16 @@ export default function BrowseFiltersClient({
                 <div className="flex flex-1 items-center gap-2.5 rounded-full px-3 py-1.5">
                     <Search className="h-4 w-4 text-muted-foreground" />
                     <input
+                        type="search"
+                        enterKeyHint="search"
                         value={draft.search}
                         onChange={(event) => setDraft((prev) => ({ ...prev, search: event.target.value }))}
+                        onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                                event.preventDefault();
+                                applyFilters();
+                            }
+                        }}
                         placeholder="Search listings..."
                         className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
                     />

@@ -33,10 +33,16 @@ export default function ShareListingButton({ title, className = "", iconClassNam
         if (navigator.share) {
             try {
                 await navigator.share({ title, url });
-                window.alert("Link shared.");
+                // Share sheet provides its own confirmation — no in-app feedback needed.
                 return;
-            } catch {
-                // User cancelled or share failed; continue to clipboard fallback.
+            } catch (err) {
+                // User cancelled the share sheet (AbortError) — silently bail,
+                // do NOT fall through to clipboard / prompt, which would surface
+                // the unwanted "URL" box after they dismissed the share.
+                if (err instanceof DOMException && err.name === "AbortError") {
+                    return;
+                }
+                // Genuine share failure — continue to clipboard fallback.
             }
         }
 
@@ -50,6 +56,8 @@ export default function ShareListingButton({ title, className = "", iconClassNam
             // Continue to manual fallback below.
         }
 
+        // Last-resort fallback: only reached when share is unavailable AND
+        // clipboard write failed (e.g. insecure HTTP context).
         window.prompt("Copy listing link:", url);
     };
 
