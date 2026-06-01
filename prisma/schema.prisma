@@ -43,6 +43,30 @@ model User {
   sentConversationMessages ConversationMessage[] @relation("ConversationMessageSender")
   followers          Follow[] @relation("UserFollowing")
   following          Follow[] @relation("UserFollowers")
+  drafts             Draft[]
+}
+
+model Draft {
+  id                   String   @id @default(uuid())
+  user_id              String
+  user                 User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  title                String?
+  style                String?
+  category             String?
+  subcategory          String?
+  type                 String?
+  price                String?
+  brand                String?
+  description          String?
+  condition            String?
+  size                 String?
+  measurements         String?
+  photo_urls           String[]
+  generated_image_urls String[]
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
+
+  @@index([user_id, updated_at])
 }
 
 model Listing {

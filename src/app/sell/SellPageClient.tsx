@@ -21,7 +21,7 @@ import {
     sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
 import SortableImageCard from "@/components/sell/SortableImageCard";
-import { createListing, deleteListing, replaceListingImages, updateListing, getListingImages } from "../actions/listings";
+import { createListing, deleteListing, replaceListingImages, updateListing, getListingImages, uploadDraftPhotos, saveDraft, listMyDrafts, deleteDraft, clearDraftRecord, type DraftRecord } from "../actions/listings";
 import { Tag, UploadCloud, ChevronLeft, ChevronRight, Heart, PackagePlus, X, Printer, TrendingUp, Users, ShieldCheck, CreditCard, Sparkles, Plus, GripHorizontal } from "lucide-react";
 import EmptyBagIllustration from "@/components/ui/EmptyBagIllustration";
 import { Button } from "@/components/ui/Button";
@@ -55,6 +55,7 @@ type ListingItem = {
 type SellPageClientProps = {
     currentUserId: string;
     listings: ListingItem[];
+    initialDrafts: DraftRecord[];
     openCreateInitially?: boolean;
     openManageInitially?: boolean;
     editListingIdInitially?: string | null;
@@ -68,11 +69,12 @@ type SellPageClientProps = {
     };
 };
 
-type SellTab = "ACTIVE" | "PENDING" | "SOLD" | "INSIGHTS";
+type SellTab = "ACTIVE" | "PENDING" | "SOLD" | "DRAFT" | "INSIGHTS";
 const mobileTabs: { key: SellTab; label: string }[] = [
     { key: "ACTIVE", label: "Active" },
     { key: "PENDING", label: "Pending" },
     { key: "SOLD", label: "Sold" },
+    { key: "DRAFT", label: "Draft" },
     { key: "INSIGHTS", label: "Insights" },
 ];
 const styleOptions = getStyles();
@@ -230,6 +232,7 @@ async function optimizeImageFile(file: File): Promise<File> {
 export default function SellPageClient({
     currentUserId,
     listings,
+    initialDrafts,
     openCreateInitially = false,
     openManageInitially = false,
     editListingIdInitially = null,
@@ -244,6 +247,19 @@ export default function SellPageClient({
     const [isGenerating, setIsGenerating] = useState(false);
     const [modelSkinTone, setModelSkinTone] = useState<SkinTone>(DEFAULT_SKIN_TONE);
     const [hijabRequired, setHijabRequired] = useState<boolean | null>(null);
+    // Explicit "Save as Draft" state. `drafts` mirrors localStorage; `restoredPhotoUrls`
+    // holds the S3 URLs of photos from a resumed draft (shown in the photo grid alongside
+    // newly uploaded selectedFiles); `currentDraftId` tracks the draft being resumed so
+    // we can clean it up if the seller publishes or saves again.
+    const [drafts, setDrafts] = useState<DraftRecord[]>(initialDrafts);
+    const [restoredPhotoUrls, setRestoredPhotoUrls] = useState<string[]>([]);
+    const [currentDraftId, setCurrentDraftId] = useState<string | null>(null);
+    const [isSavingDraft, setIsSavingDraft] = useState(false);
+    // Unified ordering for the create-form photo grid. Each entry is
+    // "draft:<url>" (restored from a saved draft) or "new:<fileId>" (a fresh
+    // upload). Drives both the grid render and the itemOrder we send to the
+    // server, so draft photos and new uploads can be freely interleaved.
+    const [createItemOrder, setCreateItemOrder] = useState<string[]>([]);
     // dnd-kit sensors: PointerSensor handles mouse, TouchSensor handles touch.
     // activationConstraint prevents accidental drags during a quick tap or while scrolling.
     const sensors = useSensors(
@@ -346,9 +362,24 @@ export default function SellPageClient({
         }
     }, [soldViewedStorageKey]);
 
+    // Drafts are seeded from the server-rendered `initialDrafts` prop so the
+    // list is correct on first paint. We still re-fetch on mount as a
+    // cheap refresh in case another tab/device added or removed drafts since
+    // this RSC payload was generated — but we only overwrite state if the
+    // server action succeeded, so a transient auth race can't blank the list.
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            const result = await listMyDrafts();
+            if (cancelled) return;
+            if ("drafts" in result) setDrafts(result.drafts);
+        })();
+        return () => { cancelled = true; };
+    }, [currentUserId]);
+
     useEffect(() => {
         try {
-            const draft = window.localStorage.getItem(`modaire_listing_draft:${currentUserId}`);
+            const draft = window.sessionStorage.getItem(`modaire_listing_draft:${currentUserId}`);
             if (draft) {
                 const parsed = JSON.parse(draft);
                 if (parsed.title) setTitle(parsed.title);
@@ -389,9 +420,9 @@ export default function SellPageClient({
             .some(k => (draft as any)[k] && (draft as any)[k].trim().length > 0) || generatedImageUrls.length > 0;
             
         if (hasData) {
-            window.localStorage.setItem(`modaire_listing_draft:${currentUserId}`, JSON.stringify(draft));
+            window.sessionStorage.setItem(`modaire_listing_draft:${currentUserId}`, JSON.stringify(draft));
         } else {
-            window.localStorage.removeItem(`modaire_listing_draft:${currentUserId}`);
+            window.sessionStorage.removeItem(`modaire_listing_draft:${currentUserId}`);
         }
     }, [title, style, category, subcategory, listingType, price, brand, description, condition, size, measurements, generatedImageUrls, currentUserId]);
 
@@ -505,9 +536,12 @@ export default function SellPageClient({
         setError("");
         if (files.length === 0) return;
 
-        // Check if we already have 5 images
-        if (selectedFiles.length >= 5) {
-            setError("You can only upload up to 5 photos.");
+        // Cap is 5 NEW + restored photos combined; the AI cover takes the 6th
+        // slot (MAX_LISTING_IMAGES on the server).
+        const PHOTO_LIMIT = 5;
+        const currentTotal = selectedFiles.length + restoredPhotoUrls.length;
+        if (currentTotal >= PHOTO_LIMIT) {
+            setError(`You can only upload up to ${PHOTO_LIMIT} photos.`);
             e.target.value = "";
             return;
         }
@@ -516,8 +550,8 @@ export default function SellPageClient({
         try {
             const newlyOptimized: File[] = [];
             for (const rawFile of files) {
-                if (selectedFiles.length + newlyOptimized.length >= 5) {
-                    setError("Maximum 5 photos allowed. Some files were skipped.");
+                if (currentTotal + newlyOptimized.length >= PHOTO_LIMIT) {
+                    setError(`Maximum ${PHOTO_LIMIT} photos allowed. Some files were skipped.`);
                     break;
                 }
 
@@ -543,6 +577,10 @@ export default function SellPageClient({
             }
 
             setSelectedFiles(candidateFiles);
+            setCreateItemOrder((prev) => [
+                ...prev,
+                ...newlyOptimized.map((file) => `new:${getFileId(file)}`),
+            ]);
         } catch (err) {
             console.error("Optimization error:", err);
             setError("Failed to process images.");
@@ -553,7 +591,12 @@ export default function SellPageClient({
     };
 
     const removeImage = (indexToRemove: number) => {
+        const removedFile = selectedFiles[indexToRemove];
         setSelectedFiles((prev) => prev.filter((_, idx) => idx !== indexToRemove));
+        if (removedFile) {
+            const removedId = `new:${getFileId(removedFile)}`;
+            setCreateItemOrder((prev) => prev.filter((entry) => entry !== removedId));
+        }
     };
 
     const moveImage = (index: number, direction: "left" | "right") => {
@@ -568,14 +611,14 @@ export default function SellPageClient({
         });
     };
 
-    // dnd-kit drag end: reorder selectedFiles via arrayMove based on the
-    // dragged item's id and its drop target's id.
+    // dnd-kit drag end: reorder the unified createItemOrder so draft-restored
+    // photos and new uploads can be freely interleaved.
     const handleSortEnd = (event: DragEndEvent) => {
         const { active, over } = event;
         if (!over || active.id === over.id) return;
-        setSelectedFiles((prev) => {
-            const oldIndex = prev.findIndex((f) => getFileId(f) === active.id);
-            const newIndex = prev.findIndex((f) => getFileId(f) === over.id);
+        setCreateItemOrder((prev) => {
+            const oldIndex = prev.indexOf(String(active.id));
+            const newIndex = prev.indexOf(String(over.id));
             if (oldIndex < 0 || newIndex < 0) return prev;
             return arrayMove(prev, oldIndex, newIndex);
         });
@@ -710,6 +753,156 @@ export default function SellPageClient({
         setEditImagesChanged(true);
     };
 
+    // --- Explicit "Save as Draft" handlers ---
+
+    const handleSaveAsDraft = async () => {
+        if (isSavingDraft || loading) return;
+        const hasContent =
+            title.trim().length > 0 ||
+            description.trim().length > 0 ||
+            price.trim().length > 0 ||
+            selectedFiles.length > 0 ||
+            restoredPhotoUrls.length > 0 ||
+            generatedImageUrls.length > 0;
+        if (!hasContent) {
+            setError("Add a title, description, photo, or other detail before saving as draft.");
+            return;
+        }
+
+        setIsSavingDraft(true);
+        setError("");
+        try {
+            // We need a draftId BEFORE uploading photos so they land under
+            // the right S3 prefix. If we're resuming an existing draft, reuse
+            // its id; otherwise generate one client-side.
+            const draftId = currentDraftId || (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
+
+            // Upload any new product photos to S3 under drafts/<userId>/<draftId>/
+            let uploadedPhotoUrls: string[] = [];
+            if (selectedFiles.length > 0) {
+                const fd = new FormData();
+                fd.set("draftId", draftId);
+                selectedFiles.forEach((file) => fd.append("images", file));
+                const result = await uploadDraftPhotos(fd);
+                if (result?.error) {
+                    setError(result.error);
+                    return;
+                }
+                uploadedPhotoUrls = result.urls ?? [];
+            }
+
+            const saveResult = await saveDraft({
+                id: currentDraftId ?? draftId,
+                title,
+                style,
+                category,
+                subcategory,
+                listingType,
+                price,
+                brand,
+                description,
+                condition,
+                size,
+                measurements,
+                // Resumed-draft photos stay first, then any freshly uploaded ones.
+                photoUrls: [...restoredPhotoUrls, ...uploadedPhotoUrls],
+                generatedImageUrls,
+            });
+            if ("error" in saveResult) {
+                setError(saveResult.error);
+                return;
+            }
+
+            // Refresh the drafts list so the new/updated draft shows up.
+            const refreshed = await listMyDrafts();
+            if ("drafts" in refreshed) setDrafts(refreshed.drafts);
+
+            // Reset the create form and clear the sessionStorage autosave —
+            // the explicit draft is now the canonical store.
+            window.sessionStorage.removeItem(`modaire_listing_draft:${currentUserId}`);
+            resetCreateForm();
+            setShowCreateForm(false);
+            setMobileTab("DRAFT");
+            // After the form closes the page collapses to the (shorter) Draft
+            // tab content. Without this scroll-to-top the seller is left
+            // looking at blank space below the new content.
+            if (typeof window !== "undefined") {
+                window.scrollTo({ top: 0, behavior: "smooth" });
+            }
+        } catch (err) {
+            console.error("Save draft failed:", err);
+            setError("Failed to save draft. Please try again.");
+        } finally {
+            setIsSavingDraft(false);
+        }
+    };
+
+    const resetCreateForm = () => {
+        setTitle("");
+        setStyle("");
+        setCategory("");
+        setSubcategory("");
+        setListingType("");
+        setPrice("");
+        setBrand("");
+        setDescription("");
+        setCondition("");
+        setSize("");
+        setMeasurements("");
+        setSelectedFiles([]);
+        setGeneratedImageUrls([]);
+        setRestoredPhotoUrls([]);
+        setCreateItemOrder([]);
+        setCurrentDraftId(null);
+        setHijabRequired(null);
+        setModelSkinTone(DEFAULT_SKIN_TONE);
+    };
+
+    const handleResumeDraft = (draft: DraftRecord) => {
+        setTitle(draft.title || "");
+        setStyle(draft.style || "");
+        setCategory(draft.category || "");
+        setSubcategory(draft.subcategory || "");
+        setListingType(draft.listingType || "");
+        setPrice(draft.price || "");
+        setBrand(draft.brand || "");
+        setDescription(draft.description || "");
+        setCondition(draft.condition || "");
+        setSize(draft.size || "");
+        setMeasurements(draft.measurements || "");
+        setSelectedFiles([]);
+        const photos = draft.photoUrls || [];
+        setRestoredPhotoUrls(photos);
+        setCreateItemOrder(photos.map((url) => `draft:${url}`));
+        setGeneratedImageUrls(draft.generatedImageUrls || []);
+        setCurrentDraftId(draft.id);
+        setError("");
+        setShowCreateForm(true);
+    };
+
+    const handleDeleteDraft = async (draftId: string) => {
+        const confirmed = window.confirm("Delete this draft? Its saved photos will be removed too.");
+        if (!confirmed) return;
+        // Optimistically remove from UI; server cleanup deletes the DB row + S3 photos.
+        setDrafts((prev) => prev.filter((d) => d.id !== draftId));
+        try {
+            const result = await deleteDraft(draftId);
+            if ("error" in result) {
+                console.error("Delete draft failed:", result.error);
+                // Refresh from server to reconcile in case the optimistic delete was wrong.
+                const refreshed = await listMyDrafts();
+                if ("drafts" in refreshed) setDrafts(refreshed.drafts);
+            }
+        } catch (err) {
+            console.error("Delete draft failed:", err);
+        }
+    };
+
+    const handleRemoveRestoredPhoto = (urlToRemove: string) => {
+        setRestoredPhotoUrls((prev) => prev.filter((url) => url !== urlToRemove));
+        setCreateItemOrder((prev) => prev.filter((entry) => entry !== `draft:${urlToRemove}`));
+    };
+
     const handleDeleteListing = async (listingId: string) => {
         const confirmed = window.confirm("Delete this listing? This will remove it from your listings and delete its images.");
         if (!confirmed) return;
@@ -818,33 +1011,43 @@ export default function SellPageClient({
                     formData.set("subcategory", taxonomyValidation.normalized.subcategory || "");
                     formData.set("type", taxonomyValidation.normalized.type || "");
                     const submissionFiles = selectedFiles;
-                    if (submissionFiles.length === 0) {
+                    if (submissionFiles.length === 0 && restoredPhotoUrls.length === 0 && generatedImageUrls.length === 0) {
                         setError("Please upload at least one image.");
                         setLoading(false);
                         return;
                     }
                     submissionFiles.forEach((file) => formData.append("images", file));
+                    // Photos restored from a resumed draft — server slots them in the
+                    // listingImages array without re-uploading.
+                    restoredPhotoUrls.forEach((url) => formData.append("keptDraftPhotoUrls", url));
+                    // Send the explicit unified order so draft + new uploads keep
+                    // the exact arrangement the seller dragged into.
+                    const itemOrderPayload = createItemOrder
+                        .map((entryId) => {
+                            if (entryId.startsWith("draft:")) {
+                                return { kind: "draft" as const, url: entryId.slice("draft:".length) };
+                            }
+                            const fileId = entryId.slice("new:".length);
+                            const idx = submissionFiles.findIndex((f) => getFileId(f) === fileId);
+                            return idx >= 0 ? { kind: "new" as const, index: idx } : null;
+                        })
+                        .filter((entry): entry is { kind: "draft"; url: string } | { kind: "new"; index: number } => entry !== null);
+                    formData.append("itemOrder", JSON.stringify(itemOrderPayload));
                     const res = await createListing(formData);
                     if (res?.error) {
                         setError(res.error);
                     } else if (res?.success) {
-                        // Successfully created! Close form and refresh listings
+                        // Successfully created! Close form, clear draft + autosave, refresh.
+                        const publishedDraftId = currentDraftId;
+                        resetCreateForm();
                         setShowCreateForm(false);
-                        setSelectedFiles([]);
-                        setGeneratedImageUrls([]);
-                        setStyle("");
-                        setCategory("");
-                        setSubcategory("");
-                        setListingType("");
-                        setTitle("");
-                        setPrice("");
-                        setBrand("");
-                        setDescription("");
-                        setCondition("");
-                        setSize("");
-                        setMeasurements("");
                         setTaxonomyErrors({});
-                        window.localStorage.removeItem(`modaire_listing_draft:${currentUserId}`);
+                        window.sessionStorage.removeItem(`modaire_listing_draft:${currentUserId}`);
+                        if (publishedDraftId) {
+                            // Photos belong to the new listing now — keep them on S3, just drop the DB row.
+                            void clearDraftRecord(publishedDraftId);
+                            setDrafts((prev) => prev.filter((d) => d.id !== publishedDraftId));
+                        }
                         router.refresh();
                     }
                 } catch (err) {
@@ -895,8 +1098,9 @@ export default function SellPageClient({
                     </div>
 
                     <div className="relative">
-                        {/* 1. Large, gorgeous full-width dropzone ONLY when no photos are uploaded yet */}
-                        {previewUrls.length === 0 && (
+                        {/* 1. Full-width dropzone only when there are no photos yet
+                            (neither newly uploaded nor restored from a draft). */}
+                        {createItemOrder.length === 0 && (
                             <button
                                 type="button"
                                 onClick={() => fileInputRef.current?.click()}
@@ -914,31 +1118,40 @@ export default function SellPageClient({
                             </button>
                         )}
 
-                        {/* 2. Premium unified grid — dnd-kit SortableContext handles reorder */}
-                        {previewUrls.length > 0 && (
+                        {/* 2. Unified DnD grid — restored draft photos + new uploads
+                            share one SortableContext driven by createItemOrder so
+                            sellers can freely interleave them. */}
+                        {createItemOrder.length > 0 && (
                             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleSortEnd}>
-                                <SortableContext
-                                    items={selectedFiles.map((f) => getFileId(f))}
-                                    strategy={rectSortingStrategy}
-                                >
+                                <SortableContext items={createItemOrder} strategy={rectSortingStrategy}>
                                     <div className="grid grid-cols-2 gap-4 sm:grid-cols-5 mb-6">
-                                        {selectedFiles.map((file, index) => {
-                                            const id = getFileId(file);
-                                            const url = previewUrls[index];
+                                        {createItemOrder.map((entryId, index) => {
+                                            const isDraft = entryId.startsWith("draft:");
+                                            const url = isDraft
+                                                ? entryId.slice("draft:".length)
+                                                : previewUrls[selectedFiles.findIndex((f) => `new:${getFileId(f)}` === entryId)];
+                                            if (!url) return null;
                                             return (
                                                 <SortableImageCard
-                                                    key={id}
-                                                    id={id}
+                                                    key={entryId}
+                                                    id={entryId}
                                                     url={url}
                                                     index={index}
                                                     showCoverLabel={generatedImageUrls.length === 0}
-                                                    onRemove={removeImage}
+                                                    onRemove={() => {
+                                                        if (isDraft) {
+                                                            handleRemoveRestoredPhoto(entryId.slice("draft:".length));
+                                                        } else {
+                                                            const fileIdx = selectedFiles.findIndex((f) => `new:${getFileId(f)}` === entryId);
+                                                            if (fileIdx >= 0) removeImage(fileIdx);
+                                                        }
+                                                    }}
                                                 />
                                             );
                                         })}
 
-                                        {/* 'Add Photo' slot card stays inside the grid */}
-                                        {previewUrls.length < 5 && (
+                                        {/* 'Add Photo' slot — capped at 5 total photos (draft + new combined). */}
+                                        {createItemOrder.length < 5 && (
                                             <button
                                                 type="button"
                                                 onClick={() => fileInputRef.current?.click()}
@@ -948,7 +1161,7 @@ export default function SellPageClient({
                                                     <Plus className="h-5 w-5" />
                                                 </div>
                                                 <span className="text-[13px] font-semibold text-[#2f2925]">Add Photo</span>
-                                                <span className="text-[10px] text-[#8a7667] mt-0.5">({5 - previewUrls.length} left)</span>
+                                                <span className="text-[10px] text-[#8a7667] mt-0.5">({5 - createItemOrder.length} left)</span>
                                             </button>
                                         )}
                                     </div>
@@ -959,7 +1172,7 @@ export default function SellPageClient({
                         <div className="mt-3 flex items-center justify-between gap-2">
                             <p className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium text-[#7a6050]">
                                 <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                {selectedFiles.length} photos uploaded · Drag photos to rearrange
+                                {createItemOrder.length} photos · Drag photos to rearrange
                             </p>
                         </div>
 
@@ -1349,15 +1562,28 @@ export default function SellPageClient({
                     <p className="text-xs text-muted-foreground max-w-xs text-center sm:text-left">
                         By publishing, you agree to our community guidelines.
                     </p>
-                    <Button
-                        type="submit"
-                        isLoading={loading}
-                        size="lg"
-                        disabled={!taxonomyValidation.ok || loading || isGenerating}
-                        className="px-12 w-full sm:w-auto rounded-[28px]"
-                    >
-                        Publish Listing
-                    </Button>
+                    <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="lg"
+                            disabled={loading || isGenerating || isSavingDraft}
+                            isLoading={isSavingDraft}
+                            onClick={() => { void handleSaveAsDraft(); }}
+                            className="px-6 w-full sm:w-auto rounded-[28px]"
+                        >
+                            Save as Draft
+                        </Button>
+                        <Button
+                            type="submit"
+                            isLoading={loading}
+                            size="lg"
+                            disabled={!taxonomyValidation.ok || loading || isGenerating || isSavingDraft}
+                            className="px-12 w-full sm:w-auto rounded-[28px]"
+                        >
+                            Publish Listing
+                        </Button>
+                    </div>
                 </div>
             </form>
         </div>
@@ -1728,7 +1954,7 @@ export default function SellPageClient({
                     </div>
                 </div>
 
-                {mobileTab !== "INSIGHTS" ? (
+                {mobileTab !== "INSIGHTS" && mobileTab !== "DRAFT" ? (
                     <div className="px-4 pt-4">
                         <h2
                             ref={mobileMyListingsRef}
@@ -1791,6 +2017,73 @@ export default function SellPageClient({
                                 </span>
                             </div>
                         </div>
+                    </div>
+                ) : mobileTab === "DRAFT" ? (
+                    <div className="px-4 pt-4">
+                        <h2 className={`${cormorantHeading.className} mb-4 text-[23px] font-medium leading-[1.05] text-foreground`}>
+                            Drafts
+                        </h2>
+                        {drafts.length === 0 ? (
+                            <div className="rounded-[1.5rem] border border-dashed border-[#d4c7bb] bg-transparent px-6 py-16 text-center">
+                                <div className="relative mx-auto mb-6 inline-flex h-16 w-16 items-center justify-center">
+                                    <EmptyBagIllustration size={56} />
+                                </div>
+                                <h3 className="text-[1.05rem] font-medium text-[#2f2925]">No drafts saved yet</h3>
+                                <p className="mx-auto mt-2 max-w-xs text-sm text-[#8a7667]">
+                                    Inside a new listing, tap <span className="font-semibold">Save as Draft</span> to come back later. Drafts sync across your devices.
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                {drafts.map((draft) => {
+                                    const cover = draft.generatedImageUrls?.[0] || draft.photoUrls?.[0] || null;
+                                    const savedDate = new Date(draft.savedAt);
+                                    const photoCount = (draft.photoUrls?.length || 0) + (draft.generatedImageUrls?.length || 0);
+                                    return (
+                                        <article key={draft.id} className="rounded-[1.45rem] border border-[#ddd3cb] bg-[#fbf8f5] p-3.5">
+                                            <div className="grid grid-cols-[96px_1fr] gap-3">
+                                                <div className="relative overflow-hidden rounded-[1.05rem] border border-[#e3d8cf] bg-[#f2ebe4]">
+                                                    <div className="relative aspect-[2/3]">
+                                                        {cover ? (
+                                                            // eslint-disable-next-line @next/next/no-img-element
+                                                            <img src={cover} alt={draft.title || "Draft photo"} className="h-full w-full object-cover" />
+                                                        ) : (
+                                                            <div className="flex h-full w-full items-center justify-center text-[#a39082]">
+                                                                <EmptyBagIllustration size={36} />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className="line-clamp-2 text-[1rem] font-semibold text-[#2f2925]">
+                                                        {draft.title?.trim() || "Untitled draft"}
+                                                    </p>
+                                                    <p className="mt-1 text-[0.85rem] text-[#8a7667]">
+                                                        {photoCount} {photoCount === 1 ? "photo" : "photos"} · saved {savedDate.toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                                                    </p>
+                                                    <div className="mt-3 flex gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleResumeDraft(draft)}
+                                                            className="inline-flex h-9 items-center rounded-full bg-[#7a5a45] px-4 text-[13px] font-medium text-white hover:bg-[#684a38]"
+                                                        >
+                                                            Resume
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => { void handleDeleteDraft(draft.id); }}
+                                                            className="inline-flex h-9 items-center rounded-full border border-[#ddd3cb] bg-white px-4 text-[13px] text-[#5f4a3c] hover:bg-[#f4efea]"
+                                                        >
+                                                            Delete
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </article>
+                                    );
+                                })}
+                            </div>
+                        )}
                     </div>
                 ) : (
                 <div className="space-y-3 px-4">

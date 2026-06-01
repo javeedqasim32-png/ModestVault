@@ -45,21 +45,50 @@ export default async function SellPage({
         redirect("/login?callbackUrl=/sell");
     }
 
-    const listings = await prisma.listing.findMany({
-        where: { user_id: session.user.id },
-        orderBy: { created_at: "desc" },
-        include: {
-            images: {
-                orderBy: { imageOrder: "asc" },
-                take: 1,
-                select: { imageUrl: true, thumbUrl: true, mediumUrl: true, imageOrder: true },
+    const [listings, draftRows] = await Promise.all([
+        prisma.listing.findMany({
+            where: { user_id: session.user.id },
+            orderBy: { created_at: "desc" },
+            include: {
+                images: {
+                    orderBy: { imageOrder: "asc" },
+                    take: 1,
+                    select: { imageUrl: true, thumbUrl: true, mediumUrl: true, imageOrder: true },
+                },
+                purchases: {
+                    include: { order: true },
+                    take: 1
+                }
             },
-            purchases: {
-                include: { order: true },
-                take: 1
-            }
-        },
-    });
+        }),
+        prisma.draft.findMany({
+            where: { user_id: session.user.id },
+            orderBy: { updated_at: "desc" },
+        }),
+    ]);
+
+    // Drafts are server-rendered alongside listings so they're always present
+    // on the initial paint of /sell. Previously they were hydrated client-side
+    // via useEffect, which could lose the race with auth-cookie hydration
+    // after a logout/login round-trip and leave the drafts list empty until
+    // pull-to-refresh.
+    const initialDrafts = draftRows.map((row) => ({
+        id: row.id,
+        title: row.title ?? "",
+        style: row.style ?? "",
+        category: row.category ?? "",
+        subcategory: row.subcategory ?? "",
+        listingType: row.type ?? "",
+        price: row.price ?? "",
+        brand: row.brand ?? "",
+        description: row.description ?? "",
+        condition: row.condition ?? "",
+        size: row.size ?? "",
+        measurements: row.measurements ?? "",
+        photoUrls: row.photo_urls,
+        generatedImageUrls: row.generated_image_urls,
+        savedAt: row.updated_at.getTime(),
+    }));
 
     const safeListings = listings.map((listing) => {
         const order = listing.purchases?.[0]?.order;
@@ -117,6 +146,7 @@ export default async function SellPage({
         <SellPageClient
             currentUserId={session.user.id}
             listings={safeListings}
+            initialDrafts={initialDrafts}
             openCreateInitially={openCreateInitially}
             openManageInitially={openManageInitially}
             editListingIdInitially={editListingIdInitially}

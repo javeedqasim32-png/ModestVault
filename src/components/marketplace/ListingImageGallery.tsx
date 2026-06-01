@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useMemo, useState, useRef } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import ListingLightbox from "./ListingLightbox";
 
 type ListingGalleryImage = {
     originalUrl: string;
@@ -23,6 +24,8 @@ export default function ListingImageGallery({ images, title, isSold }: ListingIm
     );
     
     const [activeIndex, setActiveIndex] = useState(0);
+    const [lightboxOpen, setLightboxOpen] = useState(false);
+    const [lightboxIndex, setLightboxIndex] = useState(0);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const isScrollingRef = useRef(false);
 
@@ -78,9 +81,15 @@ export default function ListingImageGallery({ images, title, isSold }: ListingIm
                     }}
                 >
                     {safeImages.map((image, index) => (
-                        <div 
+                        <button
+                            type="button"
                             key={`main-${index}`}
-                            className="relative h-full w-full flex-shrink-0 snap-center"
+                            onClick={() => {
+                                setLightboxIndex(index);
+                                setLightboxOpen(true);
+                            }}
+                            aria-label={`Open image ${index + 1} of ${safeImages.length} fullscreen`}
+                            className="relative h-full w-full flex-shrink-0 snap-center cursor-zoom-in bg-transparent p-0"
                         >
                             <Image
                                 src={image.mediumUrl || image.originalUrl || image.thumbUrl}
@@ -91,7 +100,7 @@ export default function ListingImageGallery({ images, title, isSold }: ListingIm
                                 sizes="(max-width: 760px) 100vw, 760px"
                                 draggable={false}
                             />
-                        </div>
+                        </button>
                     ))}
                 </div>
 
@@ -170,6 +179,16 @@ export default function ListingImageGallery({ images, title, isSold }: ListingIm
                     })}
                 </div>
             )}
+
+            <ListingLightbox
+                open={lightboxOpen}
+                index={lightboxIndex}
+                onClose={() => setLightboxOpen(false)}
+                images={safeImages.map((img, i) => ({
+                    src: img.originalUrl || img.mediumUrl || img.thumbUrl,
+                    alt: `${title} - image ${i + 1}`,
+                }))}
+            />
         </div>
     );
 }

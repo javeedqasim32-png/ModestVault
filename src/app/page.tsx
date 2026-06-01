@@ -377,7 +377,7 @@ export default async function Home() {
                       </div>
                     </div>
                   </div>
-                  
+
                   <div className="flex min-w-0 flex-col px-[10px] pb-[10px] pt-[8px]">
                     <div className="mb-[2px] truncate text-[9px] uppercase tracking-[0.1em] text-[#8a7667]">
                       {listing.category}

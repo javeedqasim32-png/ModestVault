@@ -38,6 +38,12 @@ function extractGeneratedImageUrlsFromFormData(formData: FormData) {
         .filter((item): item is string => typeof item === "string" && item.trim().length > 0);
 }
 
+function extractKeptDraftPhotoUrlsFromFormData(formData: FormData) {
+    return formData
+        .getAll("keptDraftPhotoUrls")
+        .filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+}
+
 function getFileExtension(image: File) {
     const originalName = image.name || "upload";
     const filenameParts = originalName.split(".");
@@ -142,8 +148,10 @@ export async function createListing(formData: FormData) {
     const size = formData.get("size") as string;
     const images = extractImagesFromFormData(formData);
     const generatedImageUrls = extractGeneratedImageUrlsFromFormData(formData);
+    const keptDraftPhotoUrls = extractKeptDraftPhotoUrlsFromFormData(formData);
+    const totalPhotoCount = images.length + generatedImageUrls.length + keptDraftPhotoUrls.length;
 
-    if (!title || !description || !priceStr || !style || !category || !condition || !size || (images.length === 0 && generatedImageUrls.length === 0)) {
+    if (!title || !description || !priceStr || !style || !category || !condition || !size || totalPhotoCount === 0) {
         logCreateListingReject("missing_required_fields", {
             userId: session.user.id,
             hasTitle: Boolean(title),
@@ -153,13 +161,13 @@ export async function createListing(formData: FormData) {
             hasCategory: Boolean(category),
             hasCondition: Boolean(condition),
             hasSize: Boolean(size),
-            imageCount: images.length + generatedImageUrls.length,
+            imageCount: totalPhotoCount,
         });
         return { error: "Title, description, price, style, category, condition, size, and at least one image are required." };
     }
 
-    if (images.length + generatedImageUrls.length > MAX_LISTING_IMAGES) {
-        logCreateListingReject("too_many_images", { userId: session.user.id, imageCount: images.length + generatedImageUrls.length });
+    if (totalPhotoCount > MAX_LISTING_IMAGES) {
+        logCreateListingReject("too_many_images", { userId: session.user.id, imageCount: totalPhotoCount });
         return { error: "You can upload a maximum of 6 images per listing." };
     }
 
@@ -230,18 +238,62 @@ export async function createListing(formData: FormData) {
         const listingId = randomUUID();
         const uploadedImages = await uploadImagesForListing({ listingId, images, bucket });
 
-        const generatedListingImages = generatedImageUrls.map((url, index) => ({
+        // Build the listingImages array. If the client sent an explicit
+        // `itemOrder` (unified draft + new uploads from the create form), honor
+        // it so the seller's drag-arranged order is preserved. Otherwise fall
+        // back to the legacy grouping: resumed-draft photos, then AI cover URLs,
+        // then freshly uploaded photos.
+        const itemOrderRaw = formData.get("itemOrder") as string | null;
+        let itemOrder: Array<{ kind: "draft" | "new"; url?: string; index?: number }> | null = null;
+        if (itemOrderRaw) {
+            try {
+                const parsed = JSON.parse(itemOrderRaw);
+                if (Array.isArray(parsed)) itemOrder = parsed;
+            } catch {
+                itemOrder = null;
+            }
+        }
+
+        const newImage = (url: string) => ({
             id: randomUUID(),
             imageUrl: url,
             thumbUrl: null,
             mediumUrl: null,
-            imageOrder: index + 1,
-        }));
+        });
 
-        const listingImages = [...generatedListingImages, ...uploadedImages.map((image, index) => ({
-            ...image,
-            imageOrder: generatedListingImages.length + index + 1,
-        }))];
+        const listingImages: Array<{
+            id: string;
+            imageUrl: string;
+            thumbUrl: string | null;
+            mediumUrl: string | null;
+            imageOrder: number;
+        }> = [];
+
+        if (itemOrder && itemOrder.length === keptDraftPhotoUrls.length + uploadedImages.length) {
+            // Unified order: place each draft url or new upload at its requested position.
+            itemOrder.forEach((entry, position) => {
+                if (entry.kind === "draft" && entry.url && keptDraftPhotoUrls.includes(entry.url)) {
+                    listingImages.push({ ...newImage(entry.url), imageOrder: position + 1 });
+                } else if (entry.kind === "new" && typeof entry.index === "number" && uploadedImages[entry.index]) {
+                    listingImages.push({ ...uploadedImages[entry.index], imageOrder: position + 1 });
+                }
+            });
+            // AI cover URLs always slot in AFTER the unified grid (they're rendered separately in the UI).
+            generatedImageUrls.forEach((url, i) => {
+                listingImages.push({ ...newImage(url), imageOrder: itemOrder!.length + i + 1 });
+            });
+        } else {
+            // Legacy ordering: kept drafts → AI covers → new uploads.
+            keptDraftPhotoUrls.forEach((url, i) => {
+                listingImages.push({ ...newImage(url), imageOrder: i + 1 });
+            });
+            generatedImageUrls.forEach((url, i) => {
+                listingImages.push({ ...newImage(url), imageOrder: keptDraftPhotoUrls.length + i + 1 });
+            });
+            uploadedImages.forEach((img, i) => {
+                listingImages.push({ ...img, imageOrder: keptDraftPhotoUrls.length + generatedImageUrls.length + i + 1 });
+            });
+        }
 
         const coverImage = listingImages[0]?.imageUrl;
         if (!coverImage) {
@@ -645,6 +697,248 @@ export async function getListingImages(listingId: string) {
     } catch (error) {
         console.error("Failed to get listing images:", error);
         return [];
+    }
+}
+
+/**
+ * Upload product photos to a per-draft S3 prefix so a "Save as Draft"
+ * persists the actual image bytes (File objects can't be JSON-serialized).
+ * Returns the public S3 URLs in upload order. Drafts skip thumb/medium
+ * generation — Next.js Image optimizer handles resizing for thumbnail
+ * rendering in the Draft tab; thumbs get reconciled when the draft is
+ * published (createListing leaves thumbUrl/mediumUrl null, matching the
+ * existing generatedImageUrls path).
+ */
+export async function uploadDraftPhotos(formData: FormData) {
+    const session = await auth();
+    if (!session?.user?.id) {
+        return { error: "You must be logged in to save a draft." };
+    }
+
+    const draftId = String(formData.get("draftId") || "").trim();
+    if (!draftId) {
+        return { error: "draftId is required." };
+    }
+
+    const images = extractImagesFromFormData(formData);
+    if (images.length === 0) {
+        return { urls: [] };
+    }
+    if (images.length > MAX_LISTING_IMAGES) {
+        return { error: "You can save a maximum of 6 photos per draft." };
+    }
+    const totalBytes = images.reduce((sum, img) => sum + img.size, 0);
+    if (totalBytes > MAX_TOTAL_IMAGE_BYTES) {
+        return { error: "Total photo size is too large. Keep all photos under 18MB combined." };
+    }
+    for (const image of images) {
+        if (!ALLOWED_IMAGE_TYPES.has(image.type)) {
+            return { error: "Only JPEG, PNG, WEBP, and GIF photos are allowed." };
+        }
+        if (image.size > MAX_IMAGE_BYTES) {
+            return { error: "One or more photos exceed the 10MB limit." };
+        }
+    }
+
+    const bucket = getS3BucketName();
+    if (!bucket) {
+        return { error: "S3 bucket is not configured. Set AWS_S3_BUCKET_NAME." };
+    }
+
+    try {
+        const urls: string[] = [];
+        for (const [index, image] of images.entries()) {
+            const ext = getFileExtension(image);
+            const key = `drafts/${session.user.id}/${draftId}/${index}-${randomUUID()}.${ext}`;
+            const bytes = await image.arrayBuffer();
+            await uploadFile(Buffer.from(bytes), key, image.type || "application/octet-stream", bucket);
+            urls.push(buildS3ImageUrl(key, bucket));
+        }
+        return { urls };
+    } catch (error) {
+        console.error("Upload draft photos error:", error);
+        return { error: "An unexpected error occurred while saving the draft photos." };
+    }
+}
+
+/**
+ * Best-effort cleanup of all photos under a given draft's S3 prefix. Called
+ * when the seller deletes a draft from the Draft tab. Does NOT touch
+ * localStorage — that's the caller's job.
+ */
+// --- DB-backed draft listings ---
+
+export type DraftRecord = {
+    id: string;
+    title: string;
+    style: string;
+    category: string;
+    subcategory: string;
+    listingType: string;
+    price: string;
+    brand: string;
+    description: string;
+    condition: string;
+    size: string;
+    measurements: string;
+    photoUrls: string[];
+    generatedImageUrls: string[];
+    savedAt: number;
+};
+
+export type DraftInput = Omit<DraftRecord, "id" | "savedAt"> & {
+    id?: string | null;
+};
+
+type DraftRow = {
+    id: string;
+    user_id: string;
+    title: string | null;
+    style: string | null;
+    category: string | null;
+    subcategory: string | null;
+    type: string | null;
+    price: string | null;
+    brand: string | null;
+    description: string | null;
+    condition: string | null;
+    size: string | null;
+    measurements: string | null;
+    photo_urls: string[];
+    generated_image_urls: string[];
+    updated_at: Date;
+};
+
+function toDraftRecord(row: DraftRow): DraftRecord {
+    return {
+        id: row.id,
+        title: row.title ?? "",
+        style: row.style ?? "",
+        category: row.category ?? "",
+        subcategory: row.subcategory ?? "",
+        listingType: row.type ?? "",
+        price: row.price ?? "",
+        brand: row.brand ?? "",
+        description: row.description ?? "",
+        condition: row.condition ?? "",
+        size: row.size ?? "",
+        measurements: row.measurements ?? "",
+        photoUrls: row.photo_urls,
+        generatedImageUrls: row.generated_image_urls,
+        savedAt: row.updated_at.getTime(),
+    };
+}
+
+export async function listMyDrafts(): Promise<{ drafts: DraftRecord[] } | { error: string }> {
+    const session = await auth();
+    if (!session?.user?.id) return { error: "You must be logged in." };
+    try {
+        const rows = (await prisma.draft.findMany({
+            where: { user_id: session.user.id },
+            orderBy: { updated_at: "desc" },
+        })) as unknown as DraftRow[];
+        return { drafts: rows.map(toDraftRecord) };
+    } catch (error) {
+        console.error("List drafts error:", error);
+        return { error: "Failed to load drafts." };
+    }
+}
+
+export async function saveDraft(input: DraftInput): Promise<{ draft: DraftRecord } | { error: string }> {
+    const session = await auth();
+    if (!session?.user?.id) return { error: "You must be logged in." };
+
+    const data = {
+        title: input.title || null,
+        style: input.style || null,
+        category: input.category || null,
+        subcategory: input.subcategory || null,
+        type: input.listingType || null,
+        price: input.price || null,
+        brand: input.brand || null,
+        description: input.description || null,
+        condition: input.condition || null,
+        size: input.size || null,
+        measurements: input.measurements || null,
+        photo_urls: input.photoUrls,
+        generated_image_urls: input.generatedImageUrls,
+    };
+
+    try {
+        if (input.id) {
+            // Upsert: the client generates a draft id up-front so it can
+            // upload photos to drafts/<userId>/<draftId>/ on S3 BEFORE the DB
+            // row exists. If a row with this id already exists, verify
+            // ownership and update; otherwise create with the given id.
+            const existing = await prisma.draft.findUnique({ where: { id: input.id } });
+            if (existing && existing.user_id !== session.user.id) {
+                return { error: "Draft not found." };
+            }
+            const saved = existing
+                ? ((await prisma.draft.update({
+                      where: { id: input.id },
+                      data,
+                  })) as unknown as DraftRow)
+                : ((await prisma.draft.create({
+                      data: { id: input.id, ...data, user_id: session.user.id },
+                  })) as unknown as DraftRow);
+            return { draft: toDraftRecord(saved) };
+        }
+        // No id provided — let Prisma generate one.
+        const created = (await prisma.draft.create({
+            data: { ...data, user_id: session.user.id },
+        })) as unknown as DraftRow;
+        return { draft: toDraftRecord(created) };
+    } catch (error) {
+        console.error("Save draft error:", error);
+        return { error: "Failed to save draft." };
+    }
+}
+
+/**
+ * Full delete — removes the draft row AND the S3 photos under
+ * drafts/<userId>/<draftId>/. Used when the seller explicitly deletes a
+ * draft from the Draft tab.
+ */
+export async function deleteDraft(draftId: string): Promise<{ success: true } | { error: string }> {
+    const session = await auth();
+    if (!session?.user?.id) return { error: "You must be logged in." };
+    if (!draftId) return { error: "draftId is required." };
+    const bucket = getS3BucketName();
+    if (!bucket) return { error: "S3 bucket is not configured." };
+
+    try {
+        const existing = await prisma.draft.findUnique({ where: { id: draftId } });
+        if (existing && existing.user_id === session.user.id) {
+            await prisma.draft.delete({ where: { id: draftId } });
+        }
+        await deleteS3Directory(`drafts/${session.user.id}/${draftId}/`, bucket);
+        return { success: true };
+    } catch (error) {
+        console.error("Delete draft error:", error);
+        return { error: "Failed to delete draft." };
+    }
+}
+
+/**
+ * Row-only delete — removes the draft from the DB but leaves the S3 photos
+ * alone. Used after publishing a resumed draft: the photo URLs are now
+ * referenced by the new listing's ListingImage rows, so deleting them would
+ * break the listing.
+ */
+export async function clearDraftRecord(draftId: string): Promise<{ success: true } | { error: string }> {
+    const session = await auth();
+    if (!session?.user?.id) return { error: "You must be logged in." };
+    if (!draftId) return { error: "draftId is required." };
+    try {
+        const existing = await prisma.draft.findUnique({ where: { id: draftId } });
+        if (existing && existing.user_id === session.user.id) {
+            await prisma.draft.delete({ where: { id: draftId } });
+        }
+        return { success: true };
+    } catch (error) {
+        console.error("Clear draft record error:", error);
+        return { error: "Failed to clear draft record." };
     }
 }
 
