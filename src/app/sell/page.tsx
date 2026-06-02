@@ -118,7 +118,9 @@ export default async function SellPage({
     const analytics: SellAnalytics = (() => {
         const totalListings = listings.length;
         const activeListings = listings.filter(
-            (listing) => listing.status === "AVAILABLE" && listing.moderation_status === "APPROVED"
+            (listing) =>
+                listing.status === "AVAILABLE" &&
+                (listing.moderation_status === "APPROVED" || listing.moderation_status === "PARTIAL_APPROVED")
         ).length;
         const soldListings = listings.filter((listing) => listing.status === "SOLD").length;
         const pendingListings = listings.filter((listing) => listing.moderation_status === "PENDING").length;

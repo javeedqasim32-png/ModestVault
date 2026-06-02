@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { BuySuccessClient } from "@/components/marketplace/BuySuccessClient";
 import { purchaseLabel } from "@/lib/shippo";
 import { sendOrderConfirmationEmail, sendSaleNotificationEmail } from "@/lib/email";
+import { createNotification } from "@/app/actions/notifications";
 
 export const dynamic = "force-dynamic";
 
@@ -137,6 +138,14 @@ export default async function BuySuccessPage({ searchParams }: { searchParams: P
                         { needsStripeConnect: !listing.user.stripe_account_id }
                     );
                 }
+
+                await createNotification({
+                    userId: listing.user.id,
+                    type: "ITEM_SOLD",
+                    title: `Your item sold: ${listing.title}`,
+                    body: `Sold for $${Number(listing.price).toFixed(2)} — ship soon to keep your buyer happy.`,
+                    linkUrl: "/dashboard/sales",
+                });
             } catch (error: any) {
                 if (error.message === "ALREADY_SOLD") {
                     return (

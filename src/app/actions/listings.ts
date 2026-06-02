@@ -269,29 +269,33 @@ export async function createListing(formData: FormData) {
             imageOrder: number;
         }> = [];
 
+        // AI-generated cover photo(s) always go first — when a seller generates
+        // a studio cover we treat it as the cover. The user's drag-arranged
+        // grid and any draft/new uploads follow it. This matches buyer
+        // expectations: the polished AI cover is the first thing they see in
+        // browse/Home rails.
+        const aiCoverOffset = generatedImageUrls.length;
+        generatedImageUrls.forEach((url, i) => {
+            listingImages.push({ ...newImage(url), imageOrder: i + 1 });
+        });
+
         if (itemOrder && itemOrder.length === keptDraftPhotoUrls.length + uploadedImages.length) {
-            // Unified order: place each draft url or new upload at its requested position.
+            // Unified order: place each draft url or new upload at its requested
+            // position, shifted by the AI cover slot(s).
             itemOrder.forEach((entry, position) => {
                 if (entry.kind === "draft" && entry.url && keptDraftPhotoUrls.includes(entry.url)) {
-                    listingImages.push({ ...newImage(entry.url), imageOrder: position + 1 });
+                    listingImages.push({ ...newImage(entry.url), imageOrder: aiCoverOffset + position + 1 });
                 } else if (entry.kind === "new" && typeof entry.index === "number" && uploadedImages[entry.index]) {
-                    listingImages.push({ ...uploadedImages[entry.index], imageOrder: position + 1 });
+                    listingImages.push({ ...uploadedImages[entry.index], imageOrder: aiCoverOffset + position + 1 });
                 }
             });
-            // AI cover URLs always slot in AFTER the unified grid (they're rendered separately in the UI).
-            generatedImageUrls.forEach((url, i) => {
-                listingImages.push({ ...newImage(url), imageOrder: itemOrder!.length + i + 1 });
-            });
         } else {
-            // Legacy ordering: kept drafts → AI covers → new uploads.
+            // Legacy ordering: AI covers (already placed above) → kept drafts → new uploads.
             keptDraftPhotoUrls.forEach((url, i) => {
-                listingImages.push({ ...newImage(url), imageOrder: i + 1 });
-            });
-            generatedImageUrls.forEach((url, i) => {
-                listingImages.push({ ...newImage(url), imageOrder: keptDraftPhotoUrls.length + i + 1 });
+                listingImages.push({ ...newImage(url), imageOrder: aiCoverOffset + i + 1 });
             });
             uploadedImages.forEach((img, i) => {
-                listingImages.push({ ...img, imageOrder: keptDraftPhotoUrls.length + generatedImageUrls.length + i + 1 });
+                listingImages.push({ ...img, imageOrder: aiCoverOffset + keptDraftPhotoUrls.length + i + 1 });
             });
         }
 
@@ -756,8 +760,19 @@ export async function uploadDraftPhotos(formData: FormData) {
         }
         return { urls };
     } catch (error) {
+        // Log the full error server-side, and surface the AWS error code + a
+        // short message to the client so the Save-as-Draft toast actually
+        // tells the seller what went wrong (e.g. AccessDenied → S3 IAM /
+        // bucket policy doesn't allow PutObject on drafts/*).
         console.error("Upload draft photos error:", error);
-        return { error: "An unexpected error occurred while saving the draft photos." };
+        const awsName = (error as { name?: string } | null)?.name;
+        const awsMessage = (error as { message?: string } | null)?.message;
+        const detail = awsName ? `${awsName}${awsMessage ? `: ${awsMessage}` : ""}` : awsMessage;
+        return {
+            error: detail
+                ? `Could not save draft photos (${detail}).`
+                : "An unexpected error occurred while saving the draft photos.",
+        };
     }
 }
 

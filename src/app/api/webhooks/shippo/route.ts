@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendTrackingUpdateEmail, sendDeliveryNotificationEmail } from "@/lib/email";
+import { createNotification } from "@/app/actions/notifications";
 
 export async function POST(req: Request) {
     try {
@@ -41,7 +42,9 @@ export async function POST(req: Request) {
         }
 
         const buyerEmail = order.purchase.buyer.email;
+        const buyerId = order.purchase.buyer.id;
         const sellerEmail = order.purchase.listing.user.email;
+        const sellerId = order.purchase.listing.user.id;
         const listingTitle = order.purchase.listing.title;
 
         // 2. Map Shippo status to our database status
@@ -72,6 +75,20 @@ export async function POST(req: Request) {
         // 4. Send the appropriate email
         if (status === "DELIVERED") {
             await sendDeliveryNotificationEmail(buyerEmail, sellerEmail, listingTitle);
+            await createNotification({
+                userId: sellerId,
+                type: "ITEM_DELIVERED",
+                title: `Delivered: ${listingTitle}`,
+                body: "Payout releases in 3 days per the standard refund hold.",
+                linkUrl: "/dashboard/sales",
+            });
+            await createNotification({
+                userId: buyerId,
+                type: "ORDER_DELIVERED",
+                title: `Delivered: ${listingTitle}`,
+                body: "Your order has arrived. Enjoy!",
+                linkUrl: "/dashboard/purchases",
+            });
         } else {
             const displayStatus = trackData.tracking_status?.status_details || status;
             await sendTrackingUpdateEmail(buyerEmail, listingTitle, displayStatus, trackingNumber, carrier);

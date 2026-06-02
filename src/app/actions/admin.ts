@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { sendListingApprovedEmail, sendListingRejectedEmail } from "@/lib/email";
+import { createNotification } from "@/app/actions/notifications";
 
 /**
  * Verifies the current user is an admin. Throws if not.
@@ -47,9 +48,10 @@ export async function approveListing(listingId: string) {
             rejection_reason: null,
         },
         select: {
+            id: true,
             title: true,
             user: {
-                select: { email: true }
+                select: { id: true, email: true }
             }
         }
     });
@@ -57,6 +59,103 @@ export async function approveListing(listingId: string) {
     if (updated.user?.email) {
         void sendListingApprovedEmail(updated.user.email, updated.title);
     }
+
+    await createNotification({
+        userId: updated.user.id,
+        type: "LISTING_APPROVED",
+        title: `Listing approved: ${updated.title}`,
+        body: "Your listing is now live on the marketplace.",
+        linkUrl: `/listings/${updated.id}`,
+    });
+
+    revalidatePath("/admin/listings");
+    revalidatePath("/browse");
+    revalidatePath("/");
+    return { success: true };
+}
+
+/**
+ * Approve + curate onto the Home "New In" rail in one click. Same email and
+ * same LISTING_APPROVED notification as plain approveListing — "featured" is
+ * admin-side curation metadata, not customer-facing.
+ */
+export async function approveAndFeatureListing(listingId: string) {
+    const admin = await requireAdmin();
+
+    const updated = await prisma.listing.update({
+        where: { id: listingId },
+        data: {
+            moderation_status: "APPROVED",
+            status: "AVAILABLE",
+            is_featured: true,
+            reviewed_at: new Date(),
+            reviewed_by_id: admin.id,
+            rejection_reason: null,
+        },
+        select: {
+            id: true,
+            title: true,
+            user: {
+                select: { id: true, email: true }
+            }
+        }
+    });
+
+    if (updated.user?.email) {
+        void sendListingApprovedEmail(updated.user.email, updated.title);
+    }
+
+    await createNotification({
+        userId: updated.user.id,
+        type: "LISTING_APPROVED",
+        title: `Listing approved: ${updated.title}`,
+        body: "Your listing is now live on the marketplace.",
+        linkUrl: `/listings/${updated.id}`,
+    });
+
+    revalidatePath("/admin/listings");
+    revalidatePath("/browse");
+    revalidatePath("/");
+    return { success: true };
+}
+
+/**
+ * Admin-only curation toggle: promote/demote a listing from the Home "New In"
+ * rail without touching moderation_status. No email, no notification — this
+ * is a purely admin-facing curation flip.
+ */
+export async function setListingFeatured(listingId: string, featured: boolean) {
+    await requireAdmin();
+
+    await prisma.listing.update({
+        where: { id: listingId },
+        data: { is_featured: featured },
+    });
+
+    revalidatePath("/admin/listings");
+    revalidatePath("/");
+    return { success: true };
+}
+
+/**
+ * Partial-accept: listing becomes visible on Explore (pushed to the end) but
+ * is excluded from the Home page feeds. No email is sent and the seller sees
+ * the listing as "Active" in their dashboard — same surface area as a fully
+ * approved listing, with only ranking differences.
+ */
+export async function partiallyApproveListing(listingId: string) {
+    const admin = await requireAdmin();
+
+    await prisma.listing.update({
+        where: { id: listingId },
+        data: {
+            moderation_status: "PARTIAL_APPROVED",
+            status: "AVAILABLE",
+            reviewed_at: new Date(),
+            reviewed_by_id: admin.id,
+            rejection_reason: null,
+        },
+    });
 
     revalidatePath("/admin/listings");
     revalidatePath("/browse");
@@ -79,9 +178,10 @@ export async function rejectListing(listingId: string, reason?: string) {
             rejection_reason: reason || null,
         },
         select: {
+            id: true,
             title: true,
             user: {
-                select: { email: true }
+                select: { id: true, email: true }
             }
         }
     });
@@ -89,6 +189,14 @@ export async function rejectListing(listingId: string, reason?: string) {
     if (updated.user?.email && reason) {
         void sendListingRejectedEmail(updated.user.email, updated.title, reason);
     }
+
+    await createNotification({
+        userId: updated.user.id,
+        type: "LISTING_REJECTED",
+        title: `Listing rejected: ${updated.title}`,
+        body: reason ? `Reason: ${reason}` : "Edit the listing and resubmit for review.",
+        linkUrl: "/sell",
+    });
 
     revalidatePath("/admin/listings");
     revalidatePath("/browse");

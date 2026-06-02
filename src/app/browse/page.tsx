@@ -79,9 +79,24 @@ export default async function BrowsePage({
         }
     }
 
-    const [filteredListings, availableListings] = await Promise.all([
+    // Split into two queries so partial-accepted listings always rank after
+    // fully-approved ones regardless of sort mode (newest / most viewed).
+    // Within each tier the orderBy is respected; we concat with approved first.
+    const baseWhere = buildListingBrowseWhere(filters);
+    const [approvedListings, partialListings, availableListings] = await Promise.all([
         prisma.listing.findMany({
-            where: buildListingBrowseWhere(filters),
+            where: baseWhere,
+            orderBy,
+            include: {
+                images: {
+                    orderBy: { imageOrder: "asc" },
+                    take: 1,
+                    select: { imageUrl: true, thumbUrl: true, mediumUrl: true, imageOrder: true },
+                },
+            },
+        }),
+        prisma.listing.findMany({
+            where: { ...baseWhere, moderation_status: "PARTIAL_APPROVED" },
             orderBy,
             include: {
                 images: {
@@ -94,7 +109,7 @@ export default async function BrowsePage({
         prisma.listing.findMany({
             where: {
                 status: "AVAILABLE",
-                moderation_status: "APPROVED",
+                moderation_status: { in: ["APPROVED", "PARTIAL_APPROVED"] },
             },
             select: {
                 style: true,
@@ -106,6 +121,7 @@ export default async function BrowsePage({
             },
         }),
     ]);
+    const filteredListings = [...approvedListings, ...partialListings];
 
     const listingsWithCover = filteredListings.map((listing) => ({
         ...serializeListing(listing),

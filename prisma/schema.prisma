@@ -44,6 +44,22 @@ model User {
   followers          Follow[] @relation("UserFollowing")
   following          Follow[] @relation("UserFollowers")
   drafts             Draft[]
+  notifications      Notification[] @relation("UserNotifications")
+}
+
+model Notification {
+  id         String    @id @default(uuid())
+  user_id    String
+  user       User      @relation("UserNotifications", fields: [user_id], references: [id], onDelete: Cascade)
+  type       String    // ITEM_SOLD, ITEM_DELIVERED (v1) — extensible
+  title      String
+  body       String
+  link_url   String?
+  read_at    DateTime?
+  created_at DateTime  @default(now())
+
+  @@index([user_id, created_at])
+  @@index([user_id, read_at])
 }
 
 model Draft {
@@ -87,7 +103,8 @@ model Listing {
   brand             String?
   size              String?
   status            String    @default("AVAILABLE") // AVAILABLE, SOLD
-  moderation_status String    @default("PENDING")   // PENDING, APPROVED, REJECTED
+  moderation_status String    @default("PENDING")   // PENDING, APPROVED, PARTIAL_APPROVED, REJECTED
+  is_featured       Boolean   @default(false)       // curation: surfaces on Home "New In" rail when true
   reviewed_at       DateTime?
   reviewed_by_id    String?
   reviewedBy        User?     @relation("ListingReviewer", fields: [reviewed_by_id], references: [id])

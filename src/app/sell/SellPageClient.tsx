@@ -21,6 +21,7 @@ import {
     sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
 import SortableImageCard from "@/components/sell/SortableImageCard";
+import ListingSubmittedModal from "@/components/sell/ListingSubmittedModal";
 import { createListing, deleteListing, replaceListingImages, updateListing, getListingImages, uploadDraftPhotos, saveDraft, listMyDrafts, deleteDraft, clearDraftRecord, type DraftRecord } from "../actions/listings";
 import { Tag, UploadCloud, ChevronLeft, ChevronRight, Heart, PackagePlus, X, Printer, TrendingUp, Users, ShieldCheck, CreditCard, Sparkles, Plus, GripHorizontal } from "lucide-react";
 import EmptyBagIllustration from "@/components/ui/EmptyBagIllustration";
@@ -97,6 +98,7 @@ const MAX_OPTIMIZED_DIMENSION = 2000;
 const MAX_MEASUREMENTS_CHARS = 300;
 const MEASUREMENTS_MARKER = "\n\nMeasurements:\n";
 const SOLD_VIEWED_KEY_PREFIX = "sell-viewed-sold";
+const REJECTED_VIEWED_KEY_PREFIX = "sell-viewed-rejected";
 const cormorantHeading = localFont({
     src: [
         { path: "../../fonts/CormorantGaramond-Regular.ttf", weight: "400", style: "normal" },
@@ -271,6 +273,7 @@ export default function SellPageClient({
     const getFileId = (file: File) => `${file.name}-${file.size}-${file.lastModified}`;
     const [mobileTab, setMobileTab] = useState<SellTab>("ACTIVE");
     const [showCreateForm, setShowCreateForm] = useState(openCreateInitially);
+    const [showSubmittedModal, setShowSubmittedModal] = useState(false);
     const [editingListing, setEditingListing] = useState<ListingItem | null>(null);
     const [deletingListingId, setDeletingListingId] = useState<string | null>(null);
     const [savingEdit, setSavingEdit] = useState(false);
@@ -303,6 +306,7 @@ export default function SellPageClient({
     const [taxonomyErrors, setTaxonomyErrors] = useState<ListingTaxonomyErrors>({});
     const [editTaxonomyErrors, setEditTaxonomyErrors] = useState<ListingTaxonomyErrors>({});
     const [viewedSoldListingIds, setViewedSoldListingIds] = useState<Set<string>>(new Set());
+    const [viewedRejectedListingIds, setViewedRejectedListingIds] = useState<Set<string>>(new Set());
     const [isOptimizing, setIsOptimizing] = useState(false);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const mobileMyListingsRef = useRef<HTMLHeadingElement | null>(null);
@@ -338,13 +342,14 @@ export default function SellPageClient({
         const byUpdatedDesc = (a: ListingItem, b: ListingItem) =>
             new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime();
 
-        if (mobileTab === "ACTIVE") return listings.filter((listing) => listing.moderation_status === "APPROVED" && listing.status !== "SOLD").sort(byCreatedDesc);
-        if (mobileTab === "PENDING") return listings.filter((listing) => listing.moderation_status === "PENDING").sort(byCreatedDesc);
+        if (mobileTab === "ACTIVE") return listings.filter((listing) => (listing.moderation_status === "APPROVED" || listing.moderation_status === "PARTIAL_APPROVED") && listing.status !== "SOLD").sort(byCreatedDesc);
+        if (mobileTab === "PENDING") return listings.filter((listing) => listing.moderation_status === "PENDING" || listing.moderation_status === "REJECTED").sort(byCreatedDesc);
         if (mobileTab === "SOLD") return listings.filter((listing) => listing.status === "SOLD").sort(byUpdatedDesc);
         return [];
     }, [listings, mobileTab]);
 
     const soldViewedStorageKey = `${SOLD_VIEWED_KEY_PREFIX}:${currentUserId}`;
+    const rejectedViewedStorageKey = `${REJECTED_VIEWED_KEY_PREFIX}:${currentUserId}`;
 
     useEffect(() => {
         try {
@@ -361,6 +366,22 @@ export default function SellPageClient({
             setViewedSoldListingIds(new Set());
         }
     }, [soldViewedStorageKey]);
+
+    useEffect(() => {
+        try {
+            const raw = window.localStorage.getItem(rejectedViewedStorageKey);
+            if (!raw) {
+                setViewedRejectedListingIds(new Set());
+                return;
+            }
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+                setViewedRejectedListingIds(new Set(parsed.filter((item): item is string => typeof item === "string")));
+            }
+        } catch {
+            setViewedRejectedListingIds(new Set());
+        }
+    }, [rejectedViewedStorageKey]);
 
     // Drafts are seeded from the server-rendered `initialDrafts` prop so the
     // list is correct on first paint. We still re-fetch on mount as a
@@ -436,6 +457,16 @@ export default function SellPageClient({
         }
     }, [showCreateForm]);
 
+    // Clear any stale validation error when the user changes context — opening
+    // or closing the create form, or switching between Active / Pending / Sold
+    // tabs. Without this, an error like "Please add 2 more photos" set inside
+    // the create form leaks into the listings-view error banner at line ~1979
+    // (both banners share the same `error` state) and only goes away on a
+    // full page refresh.
+    useEffect(() => {
+        setError("");
+    }, [showCreateForm, mobileTab]);
+
     useEffect(() => {
         const handleBeforeUnload = (e: BeforeUnloadEvent) => {
             if (isGenerating || loading) {
@@ -478,6 +509,53 @@ export default function SellPageClient({
 
     const isNewSoldListing = (listing: ListingItem) =>
         listing.status === "SOLD" && !viewedSoldListingIds.has(listing.id);
+
+    const markRejectedListingsViewed = (listingIds: string[]) => {
+        if (listingIds.length === 0) return;
+        setViewedRejectedListingIds((prev) => {
+            const next = new Set(prev);
+            let changed = false;
+            for (const listingId of listingIds) {
+                if (!next.has(listingId)) {
+                    next.add(listingId);
+                    changed = true;
+                }
+            }
+            if (changed) {
+                window.localStorage.setItem(rejectedViewedStorageKey, JSON.stringify(Array.from(next)));
+            }
+            return changed ? next : prev;
+        });
+    };
+
+    // When the seller opens the Pending tab, clear the unseen-rejected badge —
+    // they've now had a chance to see the rejected listings (which we surface
+    // in this tab alongside genuinely pending ones).
+    useEffect(() => {
+        if (mobileTab !== "PENDING") return;
+        const rejectedIds = listings
+            .filter((listing) => listing.moderation_status === "REJECTED")
+            .map((listing) => listing.id);
+        markRejectedListingsViewed(rejectedIds);
+    }, [mobileTab, listings]);
+
+    // Counts surfaced as a small red pill on the tab labels. New sold listings
+    // (the seller hasn't visited the Sold tab yet) and new rejected listings
+    // (admin just rejected, seller hasn't seen the Pending tab) both drive a
+    // tab-level signal so the seller knows where action is needed.
+    const newSoldCount = useMemo(
+        () => listings.filter((listing) => listing.status === "SOLD" && !viewedSoldListingIds.has(listing.id)).length,
+        [listings, viewedSoldListingIds]
+    );
+    const newRejectedCount = useMemo(
+        () => listings.filter((listing) => listing.moderation_status === "REJECTED" && !viewedRejectedListingIds.has(listing.id)).length,
+        [listings, viewedRejectedListingIds]
+    );
+    const tabBadgeCount = (key: SellTab) => {
+        if (key === "SOLD") return newSoldCount;
+        if (key === "PENDING") return newRejectedCount;
+        return 0;
+    };
 
     useEffect(() => {
         if (!subcategory) {
@@ -998,6 +1076,7 @@ export default function SellPageClient({
                         setTaxonomyErrors(taxonomyValidation.errors);
                         setError(taxonomyValidation.message);
                         setLoading(false);
+                        window.scrollTo({ top: 0, behavior: "smooth" });
                         return;
                     }
 
@@ -1011,9 +1090,17 @@ export default function SellPageClient({
                     formData.set("subcategory", taxonomyValidation.normalized.subcategory || "");
                     formData.set("type", taxonomyValidation.normalized.type || "");
                     const submissionFiles = selectedFiles;
-                    if (submissionFiles.length === 0 && restoredPhotoUrls.length === 0 && generatedImageUrls.length === 0) {
-                        setError("Please upload at least one image.");
+                    const totalPhotoCount = submissionFiles.length + restoredPhotoUrls.length + generatedImageUrls.length;
+                    const MIN_PHOTOS_TO_PUBLISH = 3;
+                    if (totalPhotoCount < MIN_PHOTOS_TO_PUBLISH) {
+                        const needed = MIN_PHOTOS_TO_PUBLISH - totalPhotoCount;
+                        setError(
+                            totalPhotoCount === 0
+                                ? "Please add at least 3 photos before publishing your listing."
+                                : `Please add ${needed} more photo${needed === 1 ? "" : "s"}. Listings need at least 3 photos to publish.`
+                        );
                         setLoading(false);
+                        window.scrollTo({ top: 0, behavior: "smooth" });
                         return;
                     }
                     submissionFiles.forEach((file) => formData.append("images", file));
@@ -1048,6 +1135,7 @@ export default function SellPageClient({
                             void clearDraftRecord(publishedDraftId);
                             setDrafts((prev) => prev.filter((d) => d.id !== publishedDraftId));
                         }
+                        setShowSubmittedModal(true);
                         router.refresh();
                     }
                 } catch (err) {
@@ -1060,13 +1148,13 @@ export default function SellPageClient({
 
                 <section className="space-y-4">
                     <h2 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-                        Product Photos (Up to 6)
+                        Product Photos (3 required, up to 6)
                         <span className="ml-0.5 text-red-600" aria-hidden="true">*</span>
                     </h2>
 
                     {generatedImageUrls.length > 0 && (
                         <div className="rounded-lg border border-border bg-card p-3">
-                            <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">AI Cover</p>
+                            <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Cover Photo</p>
                             <div className="flex flex-wrap gap-3">
                                 {generatedImageUrls.map((url, index) => (
                                     <div key={`${url}-${index}`} className="relative w-40">
@@ -1180,10 +1268,10 @@ export default function SellPageClient({
                             <div className="flex items-start gap-3">
                                 <Sparkles className="mt-0.5 h-5 w-5 flex-shrink-0 text-[#cfb79f]" />
                                 <div>
-                                    <p className="text-sm font-semibold text-[#4a3328]">Generate an AI cover photo</p>
+                                    <p className="text-sm font-semibold text-[#4a3328]">Generate Professional Cover Photo</p>
                                     <p className="mt-1 text-[12px] text-[#8a7667] leading-relaxed">
                                         {generatedImageUrls.length > 0
-                                            ? "AI cover photo generated! Limit: 1 generated cover per listing."
+                                            ? "Cover photo generated! Limit: 1 per listing."
                                             : "Create a studio-quality cover from your uploaded photos. Takes 2–4 minutes. Limit: 1 cover per listing."}
                                     </p>
                                 </div>
@@ -1330,7 +1418,7 @@ export default function SellPageClient({
                         {isGenerating && (
                             <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-white/85 backdrop-blur-[2px] p-6 text-center">
                                 <div className="h-10 w-10 animate-spin rounded-full border-3 border-[#cfb79f]/20 border-t-[#cfb79f]" />
-                                <p className="mt-3 text-sm font-semibold text-foreground">AI Studio active...</p>
+                                <p className="mt-3 text-sm font-semibold text-foreground">Studio active...</p>
                                 <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed max-w-[240px] mx-auto">
                                     Generating cover photo (takes 2-4 minutes). Feel free to fill in the item details below!
                                 </p>
@@ -1933,24 +2021,34 @@ export default function SellPageClient({
             >
                 <div className="border-b border-[#ddd3cb] bg-background px-7">
                     <div className="flex items-center justify-evenly pt-0">
-                        {mobileTabs.map((tab) => (
-                            <button
-                                key={tab.key}
-                                type="button"
-                                onClick={() => setMobileTab(tab.key)}
-                                className={`relative whitespace-nowrap pb-2.5 text-[1.05rem] ${
-                                    mobileTab === tab.key ? "font-semibold text-[#2f2925]" : "font-normal text-[#8a7667]"
-                                }`}
-                            >
-                                {tab.label}
-                                {mobileTab === tab.key ? (
-                                    <span
-                                        className="pointer-events-none absolute left-[8px] right-[8px] h-[2px] rounded-full bg-[#4a3328]"
-                                        style={{ bottom: 0 }}
-                                    />
-                                ) : null}
-                            </button>
-                        ))}
+                        {mobileTabs.map((tab) => {
+                            const badge = tabBadgeCount(tab.key);
+                            return (
+                                <button
+                                    key={tab.key}
+                                    type="button"
+                                    onClick={() => setMobileTab(tab.key)}
+                                    className={`relative whitespace-nowrap pb-2.5 text-[1.05rem] ${
+                                        mobileTab === tab.key ? "font-semibold text-[#2f2925]" : "font-normal text-[#8a7667]"
+                                    }`}
+                                >
+                                    <span className="inline-flex items-center gap-1.5">
+                                        {tab.label}
+                                        {badge > 0 ? (
+                                            <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
+                                                {badge > 99 ? "99+" : badge}
+                                            </span>
+                                        ) : null}
+                                    </span>
+                                    {mobileTab === tab.key ? (
+                                        <span
+                                            className="pointer-events-none absolute left-[8px] right-[8px] h-[2px] rounded-full bg-[#4a3328]"
+                                            style={{ bottom: 0 }}
+                                        />
+                                    ) : null}
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
 
@@ -2113,7 +2211,9 @@ export default function SellPageClient({
                     ) : (
                         filteredListings.map((listing) => {
                             const modStatus = listing.moderation_status || "PENDING";
-                            const isApproved = modStatus === "APPROVED";
+                            // PARTIAL_APPROVED is admin-side curation only — the seller sees
+                            // it as a normal Active listing (no surfacing of the partial state).
+                            const isApproved = modStatus === "APPROVED" || modStatus === "PARTIAL_APPROVED";
                             const isRejected = modStatus === "REJECTED";
                             const statusClass = isApproved
                                 ? "bg-[#efe6dd] text-[#6f5647]"
@@ -2307,20 +2407,30 @@ export default function SellPageClient({
 
                             {/* Desktop Tabs */}
                             <div className="flex border border-[#ddd3cb] bg-[#f7f2ed] p-1 rounded-xl">
-                                {mobileTabs.filter(t => t.key !== "INSIGHTS").map((tab) => (
-                                    <button
-                                        key={tab.key}
-                                        type="button"
-                                        onClick={() => setMobileTab(tab.key)}
-                                        className={`flex-1 py-2.5 text-center text-sm font-semibold rounded-lg transition-all ${
-                                            mobileTab === tab.key
-                                                ? "bg-[#2f2925] text-white shadow-sm"
-                                                : "text-[#8a7667] hover:text-[#2f2925]"
-                                        }`}
-                                    >
-                                        {tab.label}
-                                    </button>
-                                ))}
+                                {mobileTabs.filter(t => t.key !== "INSIGHTS").map((tab) => {
+                                    const badge = tabBadgeCount(tab.key);
+                                    return (
+                                        <button
+                                            key={tab.key}
+                                            type="button"
+                                            onClick={() => setMobileTab(tab.key)}
+                                            className={`flex-1 py-2.5 text-center text-sm font-semibold rounded-lg transition-all ${
+                                                mobileTab === tab.key
+                                                    ? "bg-[#2f2925] text-white shadow-sm"
+                                                    : "text-[#8a7667] hover:text-[#2f2925]"
+                                            }`}
+                                        >
+                                            <span className="inline-flex items-center gap-1.5">
+                                                {tab.label}
+                                                {badge > 0 ? (
+                                                    <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
+                                                        {badge > 99 ? "99+" : badge}
+                                                    </span>
+                                                ) : null}
+                                            </span>
+                                        </button>
+                                    );
+                                })}
                             </div>
 
                             {/* Listings Grid/List */}
@@ -2351,7 +2461,7 @@ export default function SellPageClient({
                                 ) : (
                                     filteredListings.map((listing) => {
                                         const modStatus = listing.moderation_status || "PENDING";
-                                        const isApproved = modStatus === "APPROVED";
+                                        const isApproved = modStatus === "APPROVED" || modStatus === "PARTIAL_APPROVED";
                                         const isRejected = modStatus === "REJECTED";
                                         const statusClass = isApproved
                                             ? "bg-[#e7ddd3] text-[#4a3328]"
@@ -2451,7 +2561,7 @@ export default function SellPageClient({
                         title="Please wait for AI cover generation to complete before leaving"
                     >
                         <span className="bg-background/95 border border-border px-3 py-1 rounded-full text-[10px] font-semibold text-primary shadow-sm tracking-wider uppercase">
-                            AI Cover Studio Active • Navigation Blocked
+                            Studio Active • Navigation Blocked
                         </span>
                     </div>
 
@@ -2461,7 +2571,7 @@ export default function SellPageClient({
                         title="Please wait for AI cover generation to complete before leaving"
                     >
                         <span className="bg-background/95 border border-border px-3 py-1 rounded-full text-[10px] font-semibold text-primary shadow-sm tracking-wider uppercase">
-                            AI Cover Studio Active • Navigation Blocked
+                            Studio Active • Navigation Blocked
                         </span>
                     </div>
                 </>
@@ -2478,6 +2588,11 @@ export default function SellPageClient({
                     </div>
                 </div>
             )}
+
+            <ListingSubmittedModal
+                open={showSubmittedModal}
+                onClose={() => setShowSubmittedModal(false)}
+            />
         </>
     );
 }

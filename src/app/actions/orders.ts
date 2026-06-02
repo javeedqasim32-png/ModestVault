@@ -7,6 +7,7 @@ import { getShipmentRates, getShipmentRateById, purchaseLabel } from "@/lib/ship
 import { normalizeUsPhoneInput } from "@/lib/phone";
 import { hasCarrierPhoneLength } from "@/lib/phone";
 import { revalidatePath } from "next/cache";
+import { createNotification } from "@/app/actions/notifications";
 
 function normalizeShippingAddress(address: {
     name: string;
@@ -394,7 +395,7 @@ export async function purchaseSelectedShippingLabel(orderId: string) {
 
         const order = await (prisma as any).order.findUnique({
             where: { id: orderId },
-            include: { purchase: { include: { listing: true } } }
+            include: { purchase: { include: { listing: true, buyer: true } } }
         });
 
         if (!order) throw new Error("Order not found");
@@ -431,6 +432,14 @@ export async function purchaseSelectedShippingLabel(orderId: string) {
                     label_url: labelData.label_url
                 }
             });
+        });
+
+        await createNotification({
+            userId: order.purchase.buyer.id,
+            type: "ORDER_SHIPPED",
+            title: `Shipped: ${order.purchase.listing.title}`,
+            body: `Tracking ${labelData.tracking_number} (${selectedCarrier || "carrier"}). Updates will appear here.`,
+            linkUrl: "/dashboard/purchases",
         });
 
         revalidatePath("/buy/success");

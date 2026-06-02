@@ -36,7 +36,7 @@ const sellerSelect = {
   profile_image: true,
   created_at: true,
   listings: {
-    where: { moderation_status: "APPROVED" as const },
+    where: { moderation_status: { in: ["APPROVED", "PARTIAL_APPROVED"] } },
     orderBy: { created_at: "desc" as const },
     include: {
       images: {

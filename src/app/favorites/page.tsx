@@ -64,7 +64,7 @@ export default async function FavoritesPage() {
       user_id: session.user.id,
       listing: {
         status: "AVAILABLE",
-        moderation_status: "APPROVED",
+        moderation_status: { in: ["APPROVED", "PARTIAL_APPROVED"] },
       },
     },
     orderBy: { created_at: "desc" },

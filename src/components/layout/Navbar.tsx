@@ -3,17 +3,22 @@ import { auth } from "@/auth";
 import { getCartCountForSessionUser } from "@/app/actions/cart";
 import { getFavoriteCountForSessionUser } from "@/app/actions/favorites";
 import { getUnreadMessageCountForSessionUser } from "@/app/actions/messages";
+import { getUnreadNotificationCountForSessionUser } from "@/app/actions/notifications";
 import { Search } from "lucide-react";
 import Image from "next/image";
 import MessageNavButton from "@/components/layout/MessageNavButton";
 import BagNavButton from "@/components/layout/BagNavButton";
 import FavoritesNavButton from "@/components/layout/FavoritesNavButton";
+import NotificationsBellButton from "@/components/layout/NotificationsBellButton";
 
 export default async function Navbar() {
     const session = await auth();
-    const cartCount = await getCartCountForSessionUser();
-    const favoriteCount = await getFavoriteCountForSessionUser();
-    const unreadMessageCount = await getUnreadMessageCountForSessionUser();
+    const [cartCount, favoriteCount, unreadMessageCount, unreadNotificationCount] = await Promise.all([
+        getCartCountForSessionUser(),
+        getFavoriteCountForSessionUser(),
+        getUnreadMessageCountForSessionUser(),
+        getUnreadNotificationCountForSessionUser(),
+    ]);
 
     return (
         <header className="sticky top-0 z-50 w-full border-b border-border/80 bg-background">
@@ -43,6 +48,7 @@ export default async function Navbar() {
                 <div className="ml-auto flex items-center gap-1 sm:gap-2">
                     <FavoritesNavButton favoriteCount={favoriteCount} />
                     <MessageNavButton unreadMessageCount={unreadMessageCount} />
+                    {session?.user ? <NotificationsBellButton unreadCount={unreadNotificationCount} /> : null}
                     <BagNavButton cartCount={cartCount} />
                     {session?.user ? (
                         null

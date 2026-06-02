@@ -96,7 +96,7 @@ export default async function Home() {
   const recentViewedIds = Array.from(new Set([...recentUserIds, ...recentGuestIds]));
 
   const featuredListings = await prisma.listing.findMany({
-    where: { status: "AVAILABLE", moderation_status: "APPROVED" },
+    where: { status: "AVAILABLE", moderation_status: "APPROVED", is_featured: true },
     orderBy: { created_at: "desc" },
     take: 8,
     include: {
