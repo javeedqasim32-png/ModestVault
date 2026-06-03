@@ -78,6 +78,73 @@ export async function startConversationWithSeller(input: { sellerId: string; lis
   return { success: true, conversationId: conversation.id } as const;
 }
 
+/**
+ * Buyer-initiated chat with platform support. Reuses Conversation table:
+ * the buyer is `buyer_id`, the founding admin is `seller_id`, `listing_id` is
+ * NULL (support threads aren't listing-scoped). Find-or-create so a buyer
+ * always lands in the same ongoing support thread no matter how many times
+ * they click the headphones icon.
+ */
+export async function startConversationWithSupport() {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) return { error: "Please sign in to contact support." } as const;
+
+  // Admins are support — they can't open a support thread to themselves.
+  const me = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { is_admin: true },
+  });
+  if (me?.is_admin) {
+    return { error: "Admins handle support — you can't message yourself." } as const;
+  }
+
+  // Founding admin handles all support traffic. Deterministic pick by oldest
+  // `is_admin: true` user; for the 1-admin case (the common one) this just
+  // picks them. If multi-admin fan-out is needed later that's a schema change.
+  const supportAdmin = await prisma.user.findFirst({
+    where: { is_admin: true },
+    orderBy: { created_at: "asc" },
+    select: { id: true },
+  });
+  if (!supportAdmin) {
+    return { error: "Support is currently unavailable. Please try again later." } as const;
+  }
+
+  const conversationDelegate = getConversationDelegate();
+  if (!conversationDelegate) {
+    return { error: "Messaging is not available in this environment yet." } as const;
+  }
+
+  // Bidirectional OR-clause so admin-initiated chats (future) merge with the
+  // same row instead of creating a duplicate from the opposite side.
+  let conversation = await conversationDelegate.findFirst({
+    where: {
+      OR: [
+        { buyer_id: userId, seller_id: supportAdmin.id },
+        { buyer_id: supportAdmin.id, seller_id: userId },
+      ],
+    },
+    select: { id: true },
+  });
+  if (!conversation) {
+    conversation = await conversationDelegate.create({
+      data: {
+        buyer_id: userId,
+        seller_id: supportAdmin.id,
+        // listing_id omitted intentionally — support threads aren't
+        // listing-scoped (unique constraint is per buyer+seller pair).
+      },
+      select: { id: true },
+    });
+  }
+
+  revalidatePath("/messages");
+  revalidatePath(`/messages/${conversation.id}`);
+
+  return { success: true, conversationId: conversation.id } as const;
+}
+
 export async function sendConversationMessage(input: { conversationId: string; body: string }) {
   const session = await auth();
   const userId = session?.user?.id;

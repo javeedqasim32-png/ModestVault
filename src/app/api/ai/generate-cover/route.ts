@@ -88,6 +88,7 @@ export async function POST(req: NextRequest) {
     let modelSkinTone: SkinTone = DEFAULT_SKIN_TONE;
     let hijabRequired = false;
     let rawHijab = "";
+    let garmentTitle = "";
     const contentType = req.headers.get("content-type") || "";
     if (contentType.includes("multipart/form-data")) {
       try {
@@ -104,6 +105,17 @@ export async function POST(req: NextRequest) {
         }
         rawHijab = form.get("hijabRequired")?.toString() ?? "";
         hijabRequired = rawHijab === "true";
+        // Sanitize the seller-supplied title before it goes into the prompt:
+        // strip control chars/newlines (defend against prompt injection), cap
+        // length, and ignore very-short titles (e.g., "Test") that wouldn't
+        // give the model useful context anyway.
+        const rawTitle = form.get("garmentTitle")?.toString() ?? "";
+        const cleaned = rawTitle
+          .replace(/[\x00-\x1f\x7f]+/g, " ")
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 120);
+        if (cleaned.length >= 4) garmentTitle = cleaned;
       } catch (formErr) {
         console.error("[AI COVER] Failed to parse multipart form data:", formErr);
         return NextResponse.json({ error: "Invalid form data payload." }, { status: 400 });
@@ -245,6 +257,12 @@ export async function POST(req: NextRequest) {
     };
 
     const imageRoleLines = sentSlots.map((slot, idx) => `- Image ${idx + 2}: ${roleDescriptionFor(slot)}`).join("\n");
+    // Soft hint only. The uploaded reference photos remain the source of truth
+    // for color, embroidery, silhouette, and material — the title just helps
+    // the model recognize garment type when references are ambiguous.
+    const titleHintBlock = garmentTitle
+      ? `\n\nSELLER'S TITLE FOR THIS LISTING:\n"${garmentTitle}"\nUse this only as a soft hint about garment type or material. If anything in the title conflicts with the uploaded reference images (color, print, silhouette, etc.), the reference images always win.`
+      : "";
     const promptText = `Create an ultra-realistic luxury Pakistani fashion editorial cover photo.
 
 CRITICAL:
@@ -280,7 +298,7 @@ AVOID:
 - AI beauty perfection (no plastic/3D-render appearance, no mannequin pose)
 - Unrealistic anatomy, distorted hands, or fantasy couture redesigns
 
-The final result should look like the model in Image 1 simply changed outfits — same person, same room, same pose, same lighting — just wearing the garment from the uploaded references.`;
+The final result should look like the model in Image 1 simply changed outfits — same person, same room, same pose, same lighting — just wearing the garment from the uploaded references.${titleHintBlock}`;
 
     formData.append("model", "gpt-image-2-2026-04-21");
     formData.append("prompt", promptText);

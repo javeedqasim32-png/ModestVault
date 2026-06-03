@@ -1,10 +1,12 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { ChevronRight, CircleHelp, CreditCard, FileText, Package, ShieldCheck, ShoppingBag, Tag, TrendingUp, UserRound, Wallet } from "lucide-react";
+import { ChevronRight, CircleHelp, CreditCard, FileText, MessageCircle, Package, ShieldCheck, ShoppingBag, Tag, TrendingUp, UserRound, Wallet } from "lucide-react";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { getUserSlugMap } from "@/lib/user-slugs";
 import ProfileAvatarUploader from "@/components/profile/ProfileAvatarUploader";
+import { startConversationWithSupport } from "@/app/actions/messages";
 
 export default async function ProfileDashboard() {
     const session = await auth();
@@ -90,6 +92,29 @@ export default async function ProfileDashboard() {
                                 </Link>
                             );
                         })}
+                        {/* Live Chat tile — rendered as a form because it needs to
+                            trigger the support-conversation server action, but
+                            styled identically to the Link tiles above. */}
+                        <form
+                            action={async () => {
+                                "use server";
+                                const res = await startConversationWithSupport();
+                                if ("success" in res && res.conversationId) {
+                                    redirect(`/messages/${res.conversationId}`);
+                                }
+                            }}
+                        >
+                            <button
+                                type="submit"
+                                className="block w-full rounded-[30px] border border-[#e3d9d1] bg-[#f7f2ed] px-6 py-5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.68)] transition hover:bg-[#f2ebe4]"
+                            >
+                                <div className="mb-2 flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-[#8f6e59]">
+                                    <MessageCircle className="h-[15px] w-[15px] stroke-[1.7]" />
+                                    Live Chat
+                                </div>
+                                <p className="text-[14px] leading-[1.25] text-[#2f2925]">Chat with an agent</p>
+                            </button>
+                        </form>
                     </div>
                 </section>
 

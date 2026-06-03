@@ -104,7 +104,8 @@ model Listing {
   size              String?
   status            String    @default("AVAILABLE") // AVAILABLE, SOLD
   moderation_status String    @default("PENDING")   // PENDING, APPROVED, PARTIAL_APPROVED, REJECTED
-  is_featured       Boolean   @default(false)       // curation: surfaces on Home "New In" rail when true
+  is_featured       Boolean   @default(false)       // curation: surfaces on Home "Featured" rail when true
+  featured_order    Int?                            // admin-set sort order for the Home "Featured" rail; lower first, NULLs last
   reviewed_at       DateTime?
   reviewed_by_id    String?
   reviewedBy        User?     @relation("ListingReviewer", fields: [reviewed_by_id], references: [id])
@@ -184,10 +185,16 @@ model Order {
   seller_transfer_currency String?
   seller_transfer_released_at DateTime?
   unclaimed_reminder_sent_at DateTime?
+  // Soft link for same-seller bundled checkout. NULL = legacy single-item order.
+  // When set, Orders sharing this id ship in one parcel with one Shippo label
+  // and one tracking number — the seller buys the label once and all sibling
+  // Orders inherit the label_url / tracking_number / shipping_status.
+  batch_id              String?
   created_at            DateTime  @default(now())
   updated_at            DateTime  @updatedAt
 
   @@index([seller_transfer_status])
+  @@index([batch_id])
 }
 
 model ListingImage {

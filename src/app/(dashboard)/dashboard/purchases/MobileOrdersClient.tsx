@@ -6,6 +6,7 @@ import localFont from "next/font/local";
 import { useMemo, useState } from "react";
 import { ChevronRight, ShoppingCart, Sparkles } from "lucide-react";
 import EmptyBagIllustration from "@/components/ui/EmptyBagIllustration";
+import { getBuyerOrderStatusLabel } from "@/lib/order-status-labels";
 
 type MobileOrderItem = {
     id: string;
@@ -85,17 +86,12 @@ function getTrackingUrl(order: MobileOrderItem) {
 }
 
 function getOrderStatusLabel(order: MobileOrderItem) {
-    const status = normalizeOrderStatus(order.status);
-    if (status === "DELIVERED") return "Delivered";
-    if (status === "SHIPPED") return "Shipped";
-    if (status === "NOT_SHIPPED" || status === "PENDING") return "Processing";
-    if (status === "PROCESSING") return "Waiting Shipment";
-    if (status === "CANCELLED") return "Cancelled";
-    if (status === "RETURNED") return "Returned";
-    return order.status
-        .toLowerCase()
-        .replace(/_/g, " ")
-        .replace(/\b\w/g, (c) => c.toUpperCase());
+    // Delegates to the shared buyer-side helper so the mobile pill, the
+    // desktop pill, and any future surface that shows order status all use
+    // the exact same wording. See src/lib/order-status-labels.ts for the
+    // canonical mapping (NOT_SHIPPED → "Order placed", PROCESSING →
+    // "Processed", SHIPPED → "Shipped", DELIVERED → "Delivered", etc.)
+    return getBuyerOrderStatusLabel(order.status);
 }
 
 function getOrderStatusTone(order: MobileOrderItem) {
@@ -310,7 +306,13 @@ export default function MobileOrdersClient({ orders, cartCount }: { orders: Mobi
                     </div>
                 </div>
             ) : (
-                <div className="space-y-3 px-4 pt-4">
+                <>
+                    <div className="px-4 pt-4">
+                        <h2 className={`${cormorantHeading.className} mb-4 text-[23px] font-medium leading-[1.05] text-foreground`}>
+                            My Orders
+                        </h2>
+                    </div>
+                    <div className="space-y-3 px-4">
                     {filtered.length === 0 ? (
                         <div className="rounded-[1.5rem] border border-dashed border-[#d4c7bb] bg-transparent px-6 py-20 text-center">
                             <div className="relative mx-auto mb-8 inline-flex h-20 w-20 items-center justify-center">
@@ -338,31 +340,38 @@ export default function MobileOrdersClient({ orders, cartCount }: { orders: Mobi
                                 <div className="grid grid-cols-[96px_1fr] gap-3">
                                     <Link href={`/listings/${order.listing_id}`} className="relative overflow-hidden rounded-[1.05rem] border border-[#e3d8cf] bg-[#f2ebe4]">
                                         <div className="relative aspect-[2/3]">
-                                            <Image src={order.listing.image_url} alt={order.listing.title} fill className="object-cover object-top" sizes="110px" />
+                                            {/* `object-cover` only — matches the seller's Active card.
+                                                The earlier `object-top` shifted the crop unevenly. */}
+                                            <Image src={order.listing.image_url} alt={order.listing.title} fill className="object-cover" sizes="110px" />
                                         </div>
                                     </Link>
 
                                     <div className="min-w-0">
-                                        <p className="text-[0.76rem] uppercase tracking-[0.15em] text-[#8a7667]">{getOrderLabel(order.id)}</p>
-                                        <Link href={`/listings/${order.listing_id}`} className="mt-1 block line-clamp-2 text-[1.05rem] font-semibold text-[#2f2925]">
+                                        <p className="text-[0.72rem] uppercase tracking-[0.15em] text-[#8a7667]">{getOrderLabel(order.id)}</p>
+                                        {/* Title font + leading aligned with the seller's Active card. */}
+                                        <Link href={`/listings/${order.listing_id}`} className="mt-1 block line-clamp-2 text-[1.04rem] leading-[1.2] font-semibold text-[#2f2925]">
                                             {order.listing.title}
                                         </Link>
-                                        <p className="mt-1 text-[0.86rem] text-[#8a7667]">
+                                        {/* Seller-name subtitle: same font size as the category/size meta on Active. */}
+                                        <p className="mt-1 truncate text-[0.8rem] text-[#8a7667]">
                                             {order.listing.user.first_name} {order.listing.user.last_name}
                                         </p>
-
-                                        <div className="mt-2 flex items-center gap-2">
-                                            <p className="text-[0.98rem] font-semibold leading-none text-[#2f2925]">
-                                                ${Number(order.amount).toLocaleString()}
-                                            </p>
+                                        {/* Price on its own line, matching Active. */}
+                                        <p className="mt-1.5 text-[0.98rem] leading-none font-semibold text-[#2f2925]">
+                                            ${Number(order.amount).toLocaleString()}
+                                        </p>
+                                        {/* Status pill on its own line — same shape as Active (no border,
+                                            font-medium, px-2.5 py-[3px]). Color tone still comes from
+                                            getOrderStatusTone so the buyer sees Delivered/Shipped/etc.
+                                            color-coded; we just drop the visible border ring. */}
+                                        <div className="mt-2">
                                             <span
-                                                className={`inline-flex rounded-full border px-3 py-[3px] text-[0.8rem] font-semibold ${getOrderStatusTone(order)}`}
+                                                className={`inline-flex rounded-full px-2.5 py-[3px] text-[0.8rem] font-medium ${getOrderStatusTone(order)}`}
                                             >
                                                 {getOrderStatusLabel(order)}
                                             </span>
                                         </div>
-
-                                        <p className="mt-2 text-[0.86rem] text-[#8a7667]">
+                                        <p className="mt-2 text-[0.8rem] text-[#8a7667]">
                                             {new Date(order.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
                                         </p>
                                     </div>
@@ -400,7 +409,8 @@ export default function MobileOrdersClient({ orders, cartCount }: { orders: Mobi
                             </article>
                         ))
                     )}
-                </div>
+                    </div>
+                </>
             )}
 
             <Link

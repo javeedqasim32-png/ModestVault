@@ -82,8 +82,14 @@ export default async function BrowsePage({
     // Split into two queries so partial-accepted listings always rank after
     // fully-approved ones regardless of sort mode (newest / most viewed).
     // Within each tier the orderBy is respected; we concat with approved first.
+    //
+    // We also boost "featured overflow" — listings the admin marked featured
+    // but didn't fit in the Home rail's top 8 — to the top of Explore. The
+    // top 8 IDs come from a tiny ID-only query that hits the partial index
+    // `Listing_is_featured_featured_order_idx`, so the extra DB cost is
+    // sub-millisecond. Partitioning is in-memory over rows we already fetch.
     const baseWhere = buildListingBrowseWhere(filters);
-    const [approvedListings, partialListings, availableListings] = await Promise.all([
+    const [approvedListings, partialListings, availableListings, homeTopFeaturedIds] = await Promise.all([
         prisma.listing.findMany({
             where: baseWhere,
             orderBy,
@@ -120,8 +126,27 @@ export default async function BrowsePage({
                 condition: true,
             },
         }),
+        prisma.listing.findMany({
+            where: { is_featured: true, moderation_status: "APPROVED", status: "AVAILABLE" },
+            orderBy: [{ featured_order: { sort: "asc", nulls: "last" } }, { created_at: "desc" }],
+            take: 8,
+            select: { id: true },
+        }),
     ]);
-    const filteredListings = [...approvedListings, ...partialListings];
+
+    // Partition approved into "featured overflow" (admin-marked featured but
+    // ranked below the Home top 8) and everything else. Overflow gets the
+    // top-of-Explore slot so those listings still surface despite not fitting
+    // on Home. Listings inside the top 8 stay in their natural date order on
+    // Explore — they're already prominent on Home.
+    const homeTopFeaturedSet = new Set(homeTopFeaturedIds.map((row) => row.id));
+    const featuredOverflowListings = approvedListings.filter(
+        (listing) => listing.is_featured && !homeTopFeaturedSet.has(listing.id)
+    );
+    const otherApprovedListings = approvedListings.filter(
+        (listing) => !listing.is_featured || homeTopFeaturedSet.has(listing.id)
+    );
+    const filteredListings = [...featuredOverflowListings, ...otherApprovedListings, ...partialListings];
 
     const listingsWithCover = filteredListings.map((listing) => ({
         ...serializeListing(listing),

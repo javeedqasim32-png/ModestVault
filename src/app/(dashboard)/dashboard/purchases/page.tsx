@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/Button";
 import EmptyBagIllustration from "@/components/ui/EmptyBagIllustration";
 import ListingCard from "@/components/marketplace/ListingCard";
 import MobileOrdersClient from "./MobileOrdersClient";
+import { getBuyerOrderStatusLabel } from "@/lib/order-status-labels";
 
 import { getUserSlugMap } from "@/lib/user-slugs";
 
@@ -154,7 +155,7 @@ export default async function PurchasesPage() {
                                         description={purchase.listing.description}
                                         price={Number(purchase.amount)}
                                         category={purchase.listing.category}
-                                        status={purchase.order?.shipping_status.replace("_", " ") || "PROCESSING"}
+                                        status={getBuyerOrderStatusLabel(purchase.order?.shipping_status)}
                                         sellerName={`Sold by ${purchase.listing.user.first_name} ${purchase.listing.user.last_name}`}
                                         dateText={new Date(purchase.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
                                         compact

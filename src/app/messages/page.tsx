@@ -46,8 +46,8 @@ export default async function MessagesInboxPage() {
     },
     orderBy: { updated_at: "desc" },
     include: {
-      buyer: { select: { id: true, first_name: true, last_name: true } },
-      seller: { select: { id: true, first_name: true, last_name: true } },
+      buyer: { select: { id: true, first_name: true, last_name: true, is_admin: true } },
+      seller: { select: { id: true, first_name: true, last_name: true, is_admin: true } },
       listing: { select: { id: true, title: true } },
       messages: {
         orderBy: { created_at: "desc" },
@@ -83,6 +83,10 @@ export default async function MessagesInboxPage() {
               const otherUser = conversation.buyer_id === userId ? conversation.seller : conversation.buyer;
               const name = `${otherUser.first_name} ${otherUser.last_name?.[0] ? `${otherUser.last_name[0].toUpperCase()}.` : ""}`.trim();
               const latest = conversation.messages[0];
+              // Support thread = the other party is admin AND there's no
+              // listing context. Differentiates platform support chats from
+              // ordinary buyer↔seller listing inquiries.
+              const isSupportThread = Boolean(otherUser?.is_admin) && conversation.listing_id == null;
 
               return (
                 <Link
@@ -91,7 +95,14 @@ export default async function MessagesInboxPage() {
                   className="block rounded-[14px] border border-[#ddd3cb] bg-[#fbf8f5] px-4 py-3 transition hover:bg-[#f6f0ea]"
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-[16px] font-semibold text-[#2f2925]">{name}</p>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <p className="text-[16px] font-semibold text-[#2f2925] truncate">{name}</p>
+                      {isSupportThread ? (
+                        <span className="inline-flex shrink-0 items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                          Support
+                        </span>
+                      ) : null}
+                    </div>
                     <span className="text-[12px] text-[#8a7667]">{latest ? formatTime(latest.created_at) : formatTime(conversation.updated_at)}</span>
                   </div>
                   <p className="mt-1 truncate text-[13px] text-[#6f6054]">{latest?.body || "Open conversation"}</p>

@@ -138,6 +138,42 @@ export async function setListingFeatured(listingId: string, featured: boolean) {
 }
 
 /**
+ * Persists the admin-chosen ordering of the Home "Featured" rail. `orderedIds`
+ * is the full ordered list the admin wants — index 0 is shown first on Home.
+ * Each listing's `featured_order` is set to its array index; rows not in the
+ * list are reset to NULL so they fall to the end of the rail (or off it once
+ * more than 8 listings are featured). Runs in a transaction so the rail never
+ * lands in a half-reordered state.
+ */
+export async function setFeaturedListingsOrder(orderedIds: string[]) {
+    await requireAdmin();
+
+    if (!Array.isArray(orderedIds)) {
+        throw new Error("orderedIds must be an array.");
+    }
+    const cleanIds = Array.from(new Set(orderedIds.filter((id) => typeof id === "string" && id.length > 0)));
+
+    await prisma.$transaction([
+        // Reset every currently-ordered featured row first so any listing the
+        // admin dropped from the rail loses its old slot.
+        prisma.listing.updateMany({
+            where: { is_featured: true },
+            data: { featured_order: null },
+        }),
+        ...cleanIds.map((id, index) =>
+            prisma.listing.update({
+                where: { id },
+                data: { featured_order: index, is_featured: true },
+            })
+        ),
+    ]);
+
+    revalidatePath("/admin/featured");
+    revalidatePath("/");
+    return { success: true };
+}
+
+/**
  * Partial-accept: listing becomes visible on Explore (pushed to the end) but
  * is excluded from the Home page feeds. No email is sent and the seller sees
  * the listing as "Active" in their dashboard — same surface area as a fully

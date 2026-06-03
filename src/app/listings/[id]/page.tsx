@@ -169,7 +169,7 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                                 key={`${pill.label}-${pill.value}`}
                                 className="inline-flex min-h-[44px] items-center whitespace-nowrap rounded-full border border-[#ddd3cb] bg-[#fbf8f5] px-[14px] py-[10px] text-[12px] font-normal leading-none text-[#8a7667]"
                             >
-                                {pill.label ? <span>{pill.label}: </span> : null}
+                                {pill.label ? <span>{pill.label}:&nbsp;</span> : null}
                                 <span className="font-semibold text-[#2f2925]">{pill.value}</span>
                             </div>
                         ))}
@@ -242,7 +242,7 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                 </div>
 
                 <div className="fixed inset-x-0 bottom-[86px] z-[70] border-t border-[#ddd3cb] bg-[#fbf8f5]/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-[#fbf8f5]/80 md:bottom-0">
-                    <div className="mx-auto flex w-full max-w-[480px] items-center justify-between gap-3">
+                    <div className="mx-auto flex w-full max-w-[480px] items-center justify-between gap-4">
                         <FavoriteButton
                             listingId={listing.id}
                             initialFavorited={favoriteListingIds.has(listing.id)}
@@ -277,11 +277,11 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                                     "use server";
                                     await addToCartAndRedirect(listing.id);
                                 }}
-                                className="w-[180px]"
+                                className="w-[170px]"
                             >
                                 <button
                                     type="submit"
-                                    className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full border border-[#a07c61] bg-[#a07c61] px-4 text-[13px] font-medium text-white whitespace-nowrap"
+                                    className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-full border border-[#a07c61] bg-[#a07c61] px-3 text-[12px] font-medium text-white whitespace-nowrap"
                                 >
                                     <ShoppingBag className="h-4 w-4" />
                                     Add to Bag
@@ -291,7 +291,7 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                             <button
                                 type="button"
                                 disabled
-                                className="inline-flex h-11 w-[180px] items-center justify-center rounded-full border border-[#cdbfb3] bg-[#cdbfb3] px-4 text-[13px] font-medium text-white whitespace-nowrap disabled:opacity-80"
+                                className="inline-flex h-9 w-[170px] items-center justify-center rounded-full border border-[#cdbfb3] bg-[#cdbfb3] px-3 text-[12px] font-medium text-white whitespace-nowrap disabled:opacity-80"
                             >
                                 {isOwner ? "Your listing" : "Sold Out"}
                             </button>

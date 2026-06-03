@@ -42,8 +42,8 @@ export default async function ConversationPage({ params }: { params: Promise<{ i
   const conversation = await conversationDelegate.findUnique({
     where: { id },
     include: {
-      buyer: { select: { id: true, first_name: true, last_name: true } },
-      seller: { select: { id: true, first_name: true, last_name: true } },
+      buyer: { select: { id: true, first_name: true, last_name: true, is_admin: true } },
+      seller: { select: { id: true, first_name: true, last_name: true, is_admin: true } },
       listing: { select: { id: true, title: true } },
       messages: {
         orderBy: { created_at: "asc" },
@@ -67,6 +67,8 @@ export default async function ConversationPage({ params }: { params: Promise<{ i
 
   const otherUser = conversation.buyer_id === userId ? conversation.seller : conversation.buyer;
   const otherName = `${otherUser.first_name} ${otherUser.last_name?.[0] ? `${otherUser.last_name[0].toUpperCase()}.` : ""}`.trim();
+  // Support thread = the other party is admin AND there's no listing context.
+  const isSupportThread = Boolean(otherUser?.is_admin) && conversation.listing_id == null;
 
   const sendMessage = async (formData: FormData) => {
     "use server";
@@ -88,6 +90,11 @@ export default async function ConversationPage({ params }: { params: Promise<{ i
           <ChevronLeft className="h-5 w-5" />
         </Link>
         <p className="text-[16px] font-semibold text-[#2f2925]">{otherName}</p>
+        {isSupportThread ? (
+          <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+            Support
+          </span>
+        ) : null}
       </div>
 
       {/* Scrollable messages area */}

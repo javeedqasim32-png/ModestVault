@@ -1,7 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { createCheckoutSessionWithShipping, getShippingRatesForListing } from "@/app/actions/checkout";
+import {
+    createBundledCheckoutSessionWithShipping,
+    createCheckoutSessionWithShipping,
+    getShippingRatesForBundle,
+    getShippingRatesForListing,
+} from "@/app/actions/checkout";
 import { ShippingAddressFormData } from "./ShippingAddressForm";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -39,17 +44,34 @@ type CheckoutResponse = {
     error?: string;
 };
 
+type BundleItem = { id: string; title: string; price: number };
+
 export function PreCheckoutClient({
     listingId,
     listingTitle,
     listingPrice,
-    initialAddress
+    initialAddress,
+    bundleItems,
 }: {
     listingId: string;
     listingTitle: string;
     listingPrice: number;
     initialAddress?: ShippingAddressFormData;
+    /**
+     * When set (length >= 2), the component runs in BUNDLE mode: one address
+     * + one rate selection drives a multi-item Stripe session with consolidated
+     * shipping. Single-item callers omit this prop and the existing flow runs
+     * unchanged. The single `listingId` / `listingTitle` / `listingPrice` props
+     * are still required for backwards compatibility with the single-item
+     * cancel URL pattern, but in bundle mode the summary lists every item.
+     */
+    bundleItems?: BundleItem[];
 }) {
+    const isBundle = !!bundleItems && bundleItems.length >= 2;
+    const items: BundleItem[] = isBundle
+        ? bundleItems!
+        : [{ id: listingId, title: listingTitle, price: listingPrice }];
+    const itemsSubtotal = items.reduce((sum, item) => sum + item.price, 0);
     const [step, setStep] = useState<"ADDRESS" | "RATES">("ADDRESS");
     const [address, setAddress] = useState<ShippingAddressFormData>(initialAddress || {
         name: "",
@@ -70,7 +92,7 @@ export function PreCheckoutClient({
 
     const selectedRate = useMemo(() => rates.find((r) => r.id === selectedRateId) || null, [rates, selectedRateId]);
     const shippingCost = Number(selectedRate?.amount || 0);
-    const total = Number(listingPrice) + (Number.isFinite(shippingCost) ? shippingCost : 0);
+    const total = itemsSubtotal + (Number.isFinite(shippingCost) ? shippingCost : 0);
 
     const fetchRates = async () => {
         setLoadingRates(true);
@@ -81,7 +103,9 @@ export function PreCheckoutClient({
                 phone: normalizeUsPhoneInput(address.phone),
             };
             setAddress(normalizedAddress);
-            const res = await getShippingRatesForListing(listingId, normalizedAddress) as ListingRatesResponse;
+            const res = (isBundle
+                ? await getShippingRatesForBundle(items.map((i) => i.id), normalizedAddress)
+                : await getShippingRatesForListing(listingId, normalizedAddress)) as ListingRatesResponse;
             if (res.error) {
                 setError(res.error);
                 return;
@@ -107,19 +131,18 @@ export function PreCheckoutClient({
                 phone: normalizeUsPhoneInput(address.phone),
             };
             setAddress(normalizedAddress);
-            const res = await createCheckoutSessionWithShipping(
-                listingId,
-                normalizedAddress,
-                {
-                    rateId: selectedRate.id,
-                    carrier: selectedRate.carrier,
-                    serviceLevel: selectedRate.serviceLevel,
-                    amount: selectedRate.amount,
-                    currency: selectedRate.currency,
-                    estimatedDays: selectedRate.estimatedDays,
-                    shipmentId: shipmentId || undefined
-                }
-            ) as CheckoutResponse;
+            const rateInput = {
+                rateId: selectedRate.id,
+                carrier: selectedRate.carrier,
+                serviceLevel: selectedRate.serviceLevel,
+                amount: selectedRate.amount,
+                currency: selectedRate.currency,
+                estimatedDays: selectedRate.estimatedDays,
+                shipmentId: shipmentId || undefined,
+            };
+            const res = (isBundle
+                ? await createBundledCheckoutSessionWithShipping(items.map((i) => i.id), normalizedAddress, rateInput)
+                : await createCheckoutSessionWithShipping(listingId, normalizedAddress, rateInput)) as CheckoutResponse;
 
             if (res.error) {
                 setError(res.error);
@@ -208,13 +231,29 @@ export function PreCheckoutClient({
             ) : (
                 <div className="space-y-4">
                     <Card className="p-6 rounded-[1.5rem]">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-sm text-muted-foreground">Item</p>
-                                <p className="font-serif text-xl">{listingTitle}</p>
+                        {isBundle ? (
+                            <>
+                                <p className="text-sm text-muted-foreground mb-3">
+                                    {items.length} items from the same seller — one package, one shipping fee
+                                </p>
+                                <ul className="space-y-2">
+                                    {items.map((item) => (
+                                        <li key={item.id} className="flex items-center justify-between gap-3">
+                                            <span className="font-serif text-base truncate">{item.title}</span>
+                                            <span className="font-semibold text-base shrink-0">${item.price.toFixed(2)}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </>
+                        ) : (
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-sm text-muted-foreground">Item</p>
+                                    <p className="font-serif text-xl">{listingTitle}</p>
+                                </div>
+                                <p className="font-black text-xl">${listingPrice.toFixed(2)}</p>
                             </div>
-                            <p className="font-black text-xl">${listingPrice.toFixed(2)}</p>
-                        </div>
+                        )}
                     </Card>
 
                     <div className="grid gap-3">
@@ -245,8 +284,10 @@ export function PreCheckoutClient({
 
                     <Card className="p-5 rounded-[1.5rem]">
                         <div className="flex items-center justify-between text-sm">
-                            <span className="text-muted-foreground">Item subtotal</span>
-                            <span>${listingPrice.toFixed(2)}</span>
+                            <span className="text-muted-foreground">
+                                {isBundle ? `Items subtotal (${items.length})` : "Item subtotal"}
+                            </span>
+                            <span>${itemsSubtotal.toFixed(2)}</span>
                         </div>
                         <div className="mt-2 flex items-center justify-between text-sm">
                             <span className="text-muted-foreground">Shipping</span>

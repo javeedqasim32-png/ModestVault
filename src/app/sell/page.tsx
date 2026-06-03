@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { getPrimaryListingImage } from "@/lib/listing-images";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
+import { getUnreadNotificationCountsByType } from "@/app/actions/notifications";
 import SellPageClient from "./SellPageClient";
 
 type SellAnalytics = {
@@ -45,7 +46,7 @@ export default async function SellPage({
         redirect("/login?callbackUrl=/sell");
     }
 
-    const [listings, draftRows] = await Promise.all([
+    const [listings, draftRows, unreadCountsByType] = await Promise.all([
         prisma.listing.findMany({
             where: { user_id: session.user.id },
             orderBy: { created_at: "desc" },
@@ -65,6 +66,12 @@ export default async function SellPage({
             where: { user_id: session.user.id },
             orderBy: { updated_at: "desc" },
         }),
+        // Server-side unread counts that drive the Sold and Pending tab
+        // badges on the client. Replaces a brittle localStorage scheme that
+        // didn't survive iOS Safari storage eviction. Counts come from the
+        // Notification table so they're per-user, persistent, and sync across
+        // devices.
+        getUnreadNotificationCountsByType(["ITEM_SOLD", "LISTING_REJECTED"]),
     ]);
 
     // Drafts are server-rendered alongside listings so they're always present
@@ -112,6 +119,10 @@ export default async function SellPage({
             rejection_reason: serialized.rejection_reason,
             image_url: getPrimaryListingImage(listing, "card"),
             label_url: order?.label_url || null,
+            // Shipping status from the associated Order — used by the seller's
+            // sold-listing pill to show actual delivery progress (Processed /
+            // Shipped / Delivered) instead of a plain "Sold" label.
+            shipping_status: order?.shipping_status ?? null,
         };
     });
 
@@ -149,6 +160,8 @@ export default async function SellPage({
             currentUserId={session.user.id}
             listings={safeListings}
             initialDrafts={initialDrafts}
+            initialUnreadSoldCount={unreadCountsByType["ITEM_SOLD"] ?? 0}
+            initialUnreadRejectedCount={unreadCountsByType["LISTING_REJECTED"] ?? 0}
             openCreateInitially={openCreateInitially}
             openManageInitially={openManageInitially}
             editListingIdInitially={editListingIdInitially}

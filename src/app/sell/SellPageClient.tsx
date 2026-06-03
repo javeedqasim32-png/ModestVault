@@ -22,6 +22,7 @@ import {
 } from "@dnd-kit/sortable";
 import SortableImageCard from "@/components/sell/SortableImageCard";
 import ListingSubmittedModal from "@/components/sell/ListingSubmittedModal";
+import { markNotificationsTypeRead } from "@/app/actions/notifications";
 import { createListing, deleteListing, replaceListingImages, updateListing, getListingImages, uploadDraftPhotos, saveDraft, listMyDrafts, deleteDraft, clearDraftRecord, type DraftRecord } from "../actions/listings";
 import { Tag, UploadCloud, ChevronLeft, ChevronRight, Heart, PackagePlus, X, Printer, TrendingUp, Users, ShieldCheck, CreditCard, Sparkles, Plus, GripHorizontal } from "lucide-react";
 import EmptyBagIllustration from "@/components/ui/EmptyBagIllustration";
@@ -51,12 +52,18 @@ type ListingItem = {
     moderation_status?: string;
     rejection_reason?: string | null;
     label_url?: string | null;
+    // Shipping status from the associated Order — drives the per-row pill on
+    // SOLD listings so the seller sees the actual delivery progress
+    // (Processed / Shipped / Delivered) instead of a plain "Sold" label.
+    shipping_status?: string | null;
 };
 
 type SellPageClientProps = {
     currentUserId: string;
     listings: ListingItem[];
     initialDrafts: DraftRecord[];
+    initialUnreadSoldCount: number;
+    initialUnreadRejectedCount: number;
     openCreateInitially?: boolean;
     openManageInitially?: boolean;
     editListingIdInitially?: string | null;
@@ -97,8 +104,29 @@ const COMPRESSIBLE_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "ima
 const MAX_OPTIMIZED_DIMENSION = 2000;
 const MAX_MEASUREMENTS_CHARS = 300;
 const MEASUREMENTS_MARKER = "\n\nMeasurements:\n";
-const SOLD_VIEWED_KEY_PREFIX = "sell-viewed-sold";
-const REJECTED_VIEWED_KEY_PREFIX = "sell-viewed-rejected";
+
+// Once the package is in transit or terminal, the shipping label is no longer
+// actionable — hide the "Print Shipping Label" button to keep the action row
+// clean. Sellers can still re-download the label via the order detail or
+// dashboard if they really need it (label_url is preserved on the row).
+const POST_SHIP_STATUSES = new Set(["SHIPPED", "DELIVERED", "CANCELLED", "RETURNED"]);
+
+// Maps the Order.shipping_status enum to the label shown on a sold listing's
+// pill. Falls back to "Sold" when the order hasn't been created yet (race
+// during checkout) or the status is unknown — so the pill never shows a raw
+// enum value to the seller.
+function getSoldStageLabel(shippingStatus: string | null | undefined): string {
+    switch (shippingStatus) {
+        case "PROCESSING": return "Processed";
+        case "SHIPPED": return "Shipped";
+        case "DELIVERED": return "Delivered";
+        case "CANCELLED": return "Cancelled";
+        case "RETURNED": return "Returned";
+        case "NOT_SHIPPED":
+        default:
+            return "Sold";
+    }
+}
 const cormorantHeading = localFont({
     src: [
         { path: "../../fonts/CormorantGaramond-Regular.ttf", weight: "400", style: "normal" },
@@ -235,6 +263,8 @@ export default function SellPageClient({
     currentUserId,
     listings,
     initialDrafts,
+    initialUnreadSoldCount,
+    initialUnreadRejectedCount,
     openCreateInitially = false,
     openManageInitially = false,
     editListingIdInitially = null,
@@ -249,6 +279,9 @@ export default function SellPageClient({
     const [isGenerating, setIsGenerating] = useState(false);
     const [modelSkinTone, setModelSkinTone] = useState<SkinTone>(DEFAULT_SKIN_TONE);
     const [hijabRequired, setHijabRequired] = useState<boolean | null>(null);
+    const [previewTitleError, setPreviewTitleError] = useState("");
+    const [previewPhotosError, setPreviewPhotosError] = useState("");
+    const [previewHijabError, setPreviewHijabError] = useState("");
     // Explicit "Save as Draft" state. `drafts` mirrors localStorage; `restoredPhotoUrls`
     // holds the S3 URLs of photos from a resumed draft (shown in the photo grid alongside
     // newly uploaded selectedFiles); `currentDraftId` tracks the draft being resumed so
@@ -305,8 +338,14 @@ export default function SellPageClient({
     const [editListingType, setEditListingType] = useState("");
     const [taxonomyErrors, setTaxonomyErrors] = useState<ListingTaxonomyErrors>({});
     const [editTaxonomyErrors, setEditTaxonomyErrors] = useState<ListingTaxonomyErrors>({});
-    const [viewedSoldListingIds, setViewedSoldListingIds] = useState<Set<string>>(new Set());
-    const [viewedRejectedListingIds, setViewedRejectedListingIds] = useState<Set<string>>(new Set());
+    // Server-driven unread counts that drive the Sold and Pending tab badges.
+    // Seed from RSC props so the badge is correct on first paint, then update
+    // locally on tab clicks (with a fire-and-forget server action that
+    // bulk-marks the corresponding notifications read). This replaces a
+    // localStorage-based scheme that was unreliable on mobile (iOS Safari
+    // storage eviction wiped the "viewed" set between sessions).
+    const [unreadSoldCount, setUnreadSoldCount] = useState(initialUnreadSoldCount);
+    const [unreadRejectedCount, setUnreadRejectedCount] = useState(initialUnreadRejectedCount);
     const [isOptimizing, setIsOptimizing] = useState(false);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const mobileMyListingsRef = useRef<HTMLHeadingElement | null>(null);
@@ -347,41 +386,6 @@ export default function SellPageClient({
         if (mobileTab === "SOLD") return listings.filter((listing) => listing.status === "SOLD").sort(byUpdatedDesc);
         return [];
     }, [listings, mobileTab]);
-
-    const soldViewedStorageKey = `${SOLD_VIEWED_KEY_PREFIX}:${currentUserId}`;
-    const rejectedViewedStorageKey = `${REJECTED_VIEWED_KEY_PREFIX}:${currentUserId}`;
-
-    useEffect(() => {
-        try {
-            const raw = window.localStorage.getItem(soldViewedStorageKey);
-            if (!raw) {
-                setViewedSoldListingIds(new Set());
-                return;
-            }
-            const parsed = JSON.parse(raw);
-            if (Array.isArray(parsed)) {
-                setViewedSoldListingIds(new Set(parsed.filter((item): item is string => typeof item === "string")));
-            }
-        } catch {
-            setViewedSoldListingIds(new Set());
-        }
-    }, [soldViewedStorageKey]);
-
-    useEffect(() => {
-        try {
-            const raw = window.localStorage.getItem(rejectedViewedStorageKey);
-            if (!raw) {
-                setViewedRejectedListingIds(new Set());
-                return;
-            }
-            const parsed = JSON.parse(raw);
-            if (Array.isArray(parsed)) {
-                setViewedRejectedListingIds(new Set(parsed.filter((item): item is string => typeof item === "string")));
-            }
-        } catch {
-            setViewedRejectedListingIds(new Set());
-        }
-    }, [rejectedViewedStorageKey]);
 
     // Drafts are seeded from the server-rendered `initialDrafts` prop so the
     // list is correct on first paint. We still re-fetch on mount as a
@@ -471,7 +475,7 @@ export default function SellPageClient({
         const handleBeforeUnload = (e: BeforeUnloadEvent) => {
             if (isGenerating || loading) {
                 e.preventDefault();
-                e.returnValue = "Your listing or AI cover photo is currently being created. Are you sure you want to leave?";
+                e.returnValue = "Your listing or styled preview is currently being created. Are you sure you want to leave?";
                 return e.returnValue;
             }
         };
@@ -481,80 +485,27 @@ export default function SellPageClient({
         };
     }, [isGenerating, loading]);
 
-    const markSoldListingsViewed = (listingIds: string[]) => {
-        if (listingIds.length === 0) return;
-        setViewedSoldListingIds((prev) => {
-            const next = new Set(prev);
-            let changed = false;
-            for (const listingId of listingIds) {
-                if (!next.has(listingId)) {
-                    next.add(listingId);
-                    changed = true;
-                }
-            }
-            if (changed) {
-                window.localStorage.setItem(soldViewedStorageKey, JSON.stringify(Array.from(next)));
-            }
-            return changed ? next : prev;
-        });
-    };
-
-    useEffect(() => {
-        if (mobileTab !== "SOLD") return;
-        const soldIds = filteredListings
-            .filter((listing) => listing.status === "SOLD")
-            .map((listing) => listing.id);
-        markSoldListingsViewed(soldIds);
-    }, [mobileTab, filteredListings]);
-
-    const isNewSoldListing = (listing: ListingItem) =>
-        listing.status === "SOLD" && !viewedSoldListingIds.has(listing.id);
-
-    const markRejectedListingsViewed = (listingIds: string[]) => {
-        if (listingIds.length === 0) return;
-        setViewedRejectedListingIds((prev) => {
-            const next = new Set(prev);
-            let changed = false;
-            for (const listingId of listingIds) {
-                if (!next.has(listingId)) {
-                    next.add(listingId);
-                    changed = true;
-                }
-            }
-            if (changed) {
-                window.localStorage.setItem(rejectedViewedStorageKey, JSON.stringify(Array.from(next)));
-            }
-            return changed ? next : prev;
-        });
-    };
-
-    // When the seller opens the Pending tab, clear the unseen-rejected badge —
-    // they've now had a chance to see the rejected listings (which we surface
-    // in this tab alongside genuinely pending ones).
-    useEffect(() => {
-        if (mobileTab !== "PENDING") return;
-        const rejectedIds = listings
-            .filter((listing) => listing.moderation_status === "REJECTED")
-            .map((listing) => listing.id);
-        markRejectedListingsViewed(rejectedIds);
-    }, [mobileTab, listings]);
-
-    // Counts surfaced as a small red pill on the tab labels. New sold listings
-    // (the seller hasn't visited the Sold tab yet) and new rejected listings
-    // (admin just rejected, seller hasn't seen the Pending tab) both drive a
-    // tab-level signal so the seller knows where action is needed.
-    const newSoldCount = useMemo(
-        () => listings.filter((listing) => listing.status === "SOLD" && !viewedSoldListingIds.has(listing.id)).length,
-        [listings, viewedSoldListingIds]
-    );
-    const newRejectedCount = useMemo(
-        () => listings.filter((listing) => listing.moderation_status === "REJECTED" && !viewedRejectedListingIds.has(listing.id)).length,
-        [listings, viewedRejectedListingIds]
-    );
+    // Map a tab key to its server-driven unread count. Replaces the old
+    // localStorage-based "viewed" tracking which was unreliable on mobile.
     const tabBadgeCount = (key: SellTab) => {
-        if (key === "SOLD") return newSoldCount;
-        if (key === "PENDING") return newRejectedCount;
+        if (key === "SOLD") return unreadSoldCount;
+        if (key === "PENDING") return unreadRejectedCount;
         return 0;
+    };
+
+    // Tab click handler. Optimistically clears the badge and fires a
+    // bulk-mark-read against the corresponding notification type. The server
+    // action revalidates `/` and `/sell` so the bell-icon unread count and
+    // the badge stay in sync across paint cycles.
+    const handleTabClick = (tabKey: SellTab) => {
+        setMobileTab(tabKey);
+        if (tabKey === "SOLD" && unreadSoldCount > 0) {
+            setUnreadSoldCount(0);
+            void markNotificationsTypeRead("ITEM_SOLD");
+        } else if (tabKey === "PENDING" && unreadRejectedCount > 0) {
+            setUnreadRejectedCount(0);
+            void markNotificationsTypeRead("LISTING_REJECTED");
+        }
     };
 
     useEffect(() => {
@@ -659,6 +610,7 @@ export default function SellPageClient({
                 ...prev,
                 ...newlyOptimized.map((file) => `new:${getFileId(file)}`),
             ]);
+            if (candidateFiles.length >= 3) setPreviewPhotosError("");
         } catch (err) {
             console.error("Optimization error:", err);
             setError("Failed to process images.");
@@ -1051,12 +1003,12 @@ export default function SellPageClient({
                     <p className="text-sm text-muted-foreground">New listing</p>
                 </div>
             ) : null}
-            <div className="mb-8 rounded-[1.75rem] bg-[linear-gradient(135deg,#f3e7de_0%,#ecdccf_55%,#e2cab9_100%)] px-6 pb-6 pt-4 sm:px-8 sm:pb-8 sm:pt-5">
-                <h1 className={`${cormorantHeading.className} mt-0 text-3xl font-semibold text-foreground md:text-4xl mb-1.5`}>
+            <div className="mb-8 rounded-[1.75rem] border border-border/80 bg-[linear-gradient(180deg,#faf5f1_0%,#f1e7e0_100%)] p-6 sm:p-8">
+                <h1 className={`${cormorantHeading.className} mt-0 mb-1.5 text-[23px] font-medium leading-[1.05] text-foreground`}>
                     Create Listing
                 </h1>
-                <p className="text-muted-foreground">
-                    If possible, make your cover photo, a photo of the model wearing the article from the website OR a full-length photo of you wearing the article.
+                <p className="text-sm text-muted-foreground">
+                    If possible, make your first photo a shot of the model wearing the article from the website OR a full-length photo of you wearing the article.
                 </p>
             </div>
 
@@ -1147,27 +1099,51 @@ export default function SellPageClient({
             }} className="space-y-8">
 
                 <section className="space-y-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="title" required>Title</Label>
+                        <Input
+                            id="title"
+                            name="title"
+                            required
+                            placeholder="e.g., Silk Floral Abaya"
+                            className={`h-12 ${previewTitleError ? "border-red-400 focus:border-red-500" : ""}`}
+                            value={title}
+                            onChange={(e) => {
+                                setTitle(e.target.value);
+                                if (previewTitleError) setPreviewTitleError("");
+                            }}
+                        />
+                        {previewTitleError ? (
+                            <p className="text-xs text-red-600">{previewTitleError}</p>
+                        ) : null}
+                    </div>
+                </section>
+
+                <section id="preview-photos-anchor" className="space-y-4 scroll-mt-24">
                     <h2 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
                         Product Photos (3 required, up to 6)
                         <span className="ml-0.5 text-red-600" aria-hidden="true">*</span>
                     </h2>
+                    {previewPhotosError ? (
+                        <p className="text-xs text-red-600">{previewPhotosError}</p>
+                    ) : null}
 
                     {generatedImageUrls.length > 0 && (
                         <div className="rounded-lg border border-border bg-card p-3">
-                            <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Cover Photo</p>
+                            <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Styled Preview</p>
                             <div className="flex flex-wrap gap-3">
                                 {generatedImageUrls.map((url, index) => (
                                     <div key={`${url}-${index}`} className="relative w-40">
                                         {/* eslint-disable-next-line @next/next/no-img-element */}
                                         <img
                                             src={url}
-                                            alt={`AI cover ${index + 1}`}
+                                            alt={`Styled preview ${index + 1}`}
                                             className="aspect-[2/3] w-full rounded-md object-cover"
                                         />
                                         <button
                                             type="button"
                                             onClick={() => removeGeneratedImage(index)}
-                                            aria-label="Remove AI cover"
+                                            aria-label="Remove styled preview"
                                             className="absolute right-1.5 top-1.5 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full bg-black/70 text-white"
                                         >
                                             <X className="h-4 w-4" />
@@ -1268,11 +1244,11 @@ export default function SellPageClient({
                             <div className="flex items-start gap-3">
                                 <Sparkles className="mt-0.5 h-5 w-5 flex-shrink-0 text-[#cfb79f]" />
                                 <div>
-                                    <p className="text-sm font-semibold text-[#4a3328]">Generate Professional Cover Photo</p>
+                                    <p className="text-sm font-semibold text-[#4a3328]">Create Styled Preview</p>
                                     <p className="mt-1 text-[12px] text-[#8a7667] leading-relaxed">
                                         {generatedImageUrls.length > 0
-                                            ? "Cover photo generated! Limit: 1 per listing."
-                                            : "Create a studio-quality cover from your uploaded photos. Takes 2–4 minutes. Limit: 1 cover per listing."}
+                                            ? "Styled preview created! Limit: 1 per listing."
+                                            : "Create a studio-quality preview from your uploaded photos. Takes 2–4 minutes. Limit: 1 preview per listing."}
                                     </p>
                                 </div>
                             </div>
@@ -1297,7 +1273,7 @@ export default function SellPageClient({
                                 </div>
                             </div>
 
-                            <div className="border-t border-[#e8ddd1] pt-5">
+                            <div id="preview-hijab-anchor" className="border-t border-[#e8ddd1] pt-5 scroll-mt-24">
                                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7667]">Hijab</p>
                                 <div className="mt-4 flex items-center gap-3">
                                     {[
@@ -1310,7 +1286,10 @@ export default function SellPageClient({
                                                 key={opt.label}
                                                 type="button"
                                                 aria-pressed={selected}
-                                                onClick={() => setHijabRequired(opt.value)}
+                                                onClick={() => {
+                                                    setHijabRequired(opt.value);
+                                                    if (previewHijabError) setPreviewHijabError("");
+                                                }}
                                                 className={`min-w-[88px] rounded-full px-6 py-2.5 text-sm font-medium transition ${
                                                     selected
                                                         ? "bg-[#a89180] text-white"
@@ -1322,21 +1301,40 @@ export default function SellPageClient({
                                         );
                                     })}
                                 </div>
+                                {previewHijabError ? (
+                                    <p className="mt-2 text-xs text-red-600">{previewHijabError}</p>
+                                ) : null}
                             </div>
 
                             <Button
                                 type="button"
                                 onClick={async () => {
                                     if (generatedImageUrls.length > 0) {
-                                        setError("You have already generated an AI cover photo for this listing.");
+                                        setError("You have already created a styled preview for this listing.");
                                         return;
                                     }
-                                    if (selectedFiles.length === 0) {
-                                        setError("Please upload at least one product photo first before generating a cover.");
+                                    setPreviewTitleError("");
+                                    setPreviewPhotosError("");
+                                    setPreviewHijabError("");
+                                    if (!title.trim()) {
+                                        setPreviewTitleError("Please add a title before creating a preview.");
+                                        const el = document.getElementById("title");
+                                        el?.scrollIntoView({ behavior: "smooth", block: "center" });
+                                        setTimeout(() => (el as HTMLInputElement | null)?.focus(), 350);
+                                        return;
+                                    }
+                                    if (selectedFiles.length < 3) {
+                                        setPreviewPhotosError(
+                                            selectedFiles.length === 0
+                                                ? "Please upload at least 3 product photos first."
+                                                : `Please upload ${3 - selectedFiles.length} more photo${3 - selectedFiles.length === 1 ? "" : "s"} (3 required).`
+                                        );
+                                        document.getElementById("preview-photos-anchor")?.scrollIntoView({ behavior: "smooth", block: "center" });
                                         return;
                                     }
                                     if (hijabRequired === null) {
-                                        setError("Please choose whether the model wears a hijab.");
+                                        setPreviewHijabError("Please choose whether the model wears a hijab.");
+                                        document.getElementById("preview-hijab-anchor")?.scrollIntoView({ behavior: "smooth", block: "center" });
                                         return;
                                     }
                                     try {
@@ -1352,6 +1350,7 @@ export default function SellPageClient({
                                         });
                                         apiFormData.set("modelSkinTone", modelSkinTone);
                                         apiFormData.set("hijabRequired", String(hijabRequired));
+                                        apiFormData.set("garmentTitle", title.trim());
 
                                         const res = await fetch("/api/ai/generate-cover", {
                                             method: "POST",
@@ -1397,12 +1396,12 @@ export default function SellPageClient({
                                         setIsGenerating(false);
                                     }
                                 }}
-                                disabled={isGenerating || selectedFiles.length === 0 || generatedImageUrls.length > 0 || hijabRequired === null}
+                                disabled={isGenerating || generatedImageUrls.length > 0}
                                 isLoading={isGenerating}
                                 className="w-full rounded-[28px] bg-[#5f4437] text-white hover:bg-[#4a3328] disabled:bg-[#5f4437]/40 disabled:text-white/80"
                             >
                                 <span className="inline-flex items-center justify-center gap-2 uppercase tracking-[0.12em]">
-                                    {isGenerating ? "Generating…" : "Generate Cover"}
+                                    {isGenerating ? "Creating…" : "Create Preview"}
                                     {!isGenerating ? <Sparkles className="h-4 w-4" strokeWidth={1.8} /> : null}
                                 </span>
                             </Button>
@@ -1420,7 +1419,7 @@ export default function SellPageClient({
                                 <div className="h-10 w-10 animate-spin rounded-full border-3 border-[#cfb79f]/20 border-t-[#cfb79f]" />
                                 <p className="mt-3 text-sm font-semibold text-foreground">Studio active...</p>
                                 <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed max-w-[240px] mx-auto">
-                                    Generating cover photo (takes 2-4 minutes). Feel free to fill in the item details below!
+                                    Creating your styled preview (takes 2-4 minutes). Feel free to fill in the item details below!
                                 </p>
                             </div>
                         )}
@@ -1440,15 +1439,7 @@ export default function SellPageClient({
                 </section>
 
                 <section className="space-y-6">
-                    <h2 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-                        Item Details
-                    </h2>
-
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                        <div className="space-y-2">
-                            <Label htmlFor="title" required>Title</Label>
-                            <Input id="title" name="title" required placeholder="e.g., Silk Floral Abaya" className="h-12" value={title} onChange={(e) => setTitle(e.target.value)} />
-                        </div>
                         <div className="space-y-2">
                             <Label htmlFor="style" required>Style</Label>
                             <select
@@ -1994,7 +1985,7 @@ export default function SellPageClient({
                                                 </div>
                                             </SortableContext>
                                         </DndContext>
-                                        <p className="mt-3 text-xs text-muted-foreground">Drag photos to reorder. The first image is your cover.</p>
+                                        <p className="mt-3 text-xs text-muted-foreground">Drag photos to reorder. The first image is shown first to buyers.</p>
                                     </>
                                 ) : null}
                             </div>
@@ -2027,7 +2018,7 @@ export default function SellPageClient({
                                 <button
                                     key={tab.key}
                                     type="button"
-                                    onClick={() => setMobileTab(tab.key)}
+                                    onClick={() => handleTabClick(tab.key)}
                                     className={`relative whitespace-nowrap pb-2.5 text-[1.05rem] ${
                                         mobileTab === tab.key ? "font-semibold text-[#2f2925]" : "font-normal text-[#8a7667]"
                                     }`}
@@ -2220,7 +2211,9 @@ export default function SellPageClient({
                                 : isRejected
                                     ? "bg-red-100 text-red-700"
                                     : "bg-yellow-100 text-yellow-700";
-                            const label = isApproved ? (listing.status === "SOLD" ? "Sold" : "Active") : modStatus;
+                            const label = isApproved
+                                ? (listing.status === "SOLD" ? getSoldStageLabel(listing.shipping_status) : "Active")
+                                : modStatus;
 
                             return (
                                 <article key={listing.id} className="rounded-[1.45rem] border border-[#ddd3cb] bg-[#fbf8f5] p-3.5">
@@ -2228,9 +2221,6 @@ export default function SellPageClient({
                                         <Link
                                             href={`/listings/${listing.id}`}
                                             className="col-span-1"
-                                            onClick={() => {
-                                                if (listing.status === "SOLD") markSoldListingsViewed([listing.id]);
-                                            }}
                                         >
                                             <div className="relative overflow-hidden rounded-[1.05rem] border border-[#e3d8cf] bg-[#f2ebe4]">
                                                 <div className="relative aspect-[2/3]">
@@ -2242,9 +2232,6 @@ export default function SellPageClient({
                                             <Link
                                                 href={`/listings/${listing.id}`}
                                                 className="block"
-                                                onClick={() => {
-                                                    if (listing.status === "SOLD") markSoldListingsViewed([listing.id]);
-                                                }}
                                             >
                                                 <h3 className="line-clamp-2 text-[1.04rem] leading-[1.2] font-semibold text-[#2f2925]">{listing.title}</h3>
                                                 <p className="mt-1 truncate text-[0.8rem] text-[#8a7667]">
@@ -2258,16 +2245,9 @@ export default function SellPageClient({
                                                 </p>
                                             </Link>
                                             <div className="mt-2">
-                                                <div className="flex items-center gap-2">
-                                                    <span className={`inline-flex rounded-full px-2.5 py-[3px] text-[0.8rem] font-medium ${statusClass}`}>
-                                                        {label}
-                                                    </span>
-                                                    {isNewSoldListing(listing) ? (
-                                                        <span className="inline-flex rounded-full bg-[#4a3328] px-2 py-[3px] text-[0.67rem] font-semibold uppercase tracking-[0.08em] text-white">
-                                                            NEW
-                                                        </span>
-                                                    ) : null}
-                                                </div>
+                                                <span className={`inline-flex rounded-full px-2.5 py-[3px] text-[0.8rem] font-medium ${statusClass}`}>
+                                                    {label}
+                                                </span>
                                             </div>
                                             <div className="mt-2.5 flex items-center gap-2.5">
                                                 {listing.status !== "SOLD" ? (
@@ -2296,7 +2276,7 @@ export default function SellPageClient({
                                     {isRejected && listing.rejection_reason && (
                                         <p className="mt-2 text-sm text-red-600 font-medium">Reason: {listing.rejection_reason}</p>
                                     )}
-                                    {listing.label_url && (
+                                    {listing.label_url && !POST_SHIP_STATUSES.has(listing.shipping_status || "") && (
                                         <div className="mt-2">
                                             <button
                                                 type="button"
@@ -2413,7 +2393,7 @@ export default function SellPageClient({
                                         <button
                                             key={tab.key}
                                             type="button"
-                                            onClick={() => setMobileTab(tab.key)}
+                                            onClick={() => handleTabClick(tab.key)}
                                             className={`flex-1 py-2.5 text-center text-sm font-semibold rounded-lg transition-all ${
                                                 mobileTab === tab.key
                                                     ? "bg-[#2f2925] text-white shadow-sm"
@@ -2468,16 +2448,15 @@ export default function SellPageClient({
                                             : isRejected
                                                 ? "bg-red-100 text-red-700"
                                                 : "bg-yellow-100 text-yellow-700";
-                                        const label = isApproved ? (listing.status === "SOLD" ? "Sold" : "Active") : modStatus;
+                                        const label = isApproved
+                                ? (listing.status === "SOLD" ? getSoldStageLabel(listing.shipping_status) : "Active")
+                                : modStatus;
 
                                         return (
                                             <article key={listing.id} className="rounded-[1.6rem] border border-[#ddd3cb] bg-[#fbf8f5] p-4 shadow-sm hover:shadow-md transition-all">
                                                 <Link
                                                     href={`/listings/${listing.id}`}
                                                     className="grid grid-cols-[140px_1fr] gap-4"
-                                                    onClick={() => {
-                                                        if (listing.status === "SOLD") markSoldListingsViewed([listing.id]);
-                                                    }}
                                                 >
                                                     <div className="relative overflow-hidden rounded-[1.05rem] border border-[#e3d8cf] bg-[#f2ebe4]">
                                                         <div className="relative aspect-[3/4]">
@@ -2496,16 +2475,9 @@ export default function SellPageClient({
                                                             ${Number(listing.price).toLocaleString()}
                                                         </p>
                                                         <div className="mt-3">
-                                                            <div className="flex items-center gap-2">
-                                                                <span className={`inline-flex rounded-full px-3 py-1 text-[0.95rem] font-semibold ${statusClass}`}>
-                                                                    {label}
-                                                                </span>
-                                                                {isNewSoldListing(listing) ? (
-                                                                    <span className="inline-flex rounded-full bg-[#4a3328] px-2.5 py-1 text-[0.74rem] font-semibold uppercase tracking-[0.08em] text-white">
-                                                                        NEW
-                                                                    </span>
-                                                                ) : null}
-                                                            </div>
+                                                            <span className={`inline-flex rounded-full px-3 py-1 text-[0.95rem] font-semibold ${statusClass}`}>
+                                                                {label}
+                                                            </span>
                                                         </div>
                                                     </div>
                                                 </Link>
@@ -2528,7 +2500,7 @@ export default function SellPageClient({
                                                     >
                                                         {deletingListingId === listing.id ? "Deleting..." : "Delete"}
                                                     </button>
-                                                    {listing.label_url ? (
+                                                    {listing.label_url && !POST_SHIP_STATUSES.has(listing.shipping_status || "") ? (
                                                         <a
                                                             href={listing.label_url}
                                                             target="_blank"
@@ -2558,7 +2530,7 @@ export default function SellPageClient({
                     {/* Top Header Blocker */}
                     <div 
                         className="fixed top-0 left-0 right-0 h-24 z-[9999] cursor-not-allowed bg-black/5 backdrop-blur-[2px] flex items-center justify-center border-b border-border/40"
-                        title="Please wait for AI cover generation to complete before leaving"
+                        title="Please wait for the styled preview to finish before leaving"
                     >
                         <span className="bg-background/95 border border-border px-3 py-1 rounded-full text-[10px] font-semibold text-primary shadow-sm tracking-wider uppercase">
                             Studio Active • Navigation Blocked
@@ -2568,7 +2540,7 @@ export default function SellPageClient({
                     {/* Bottom Tab Bar Blocker */}
                     <div 
                         className="fixed bottom-0 left-0 right-0 h-24 z-[9999] cursor-not-allowed bg-black/5 backdrop-blur-[2px] flex items-center justify-center border-t border-border/40"
-                        title="Please wait for AI cover generation to complete before leaving"
+                        title="Please wait for the styled preview to finish before leaving"
                     >
                         <span className="bg-background/95 border border-border px-3 py-1 rounded-full text-[10px] font-semibold text-primary shadow-sm tracking-wider uppercase">
                             Studio Active • Navigation Blocked

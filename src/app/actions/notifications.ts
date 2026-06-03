@@ -110,6 +110,60 @@ export async function getUnreadNotificationCountForSessionUser() {
     });
 }
 
+/**
+ * Per-type unread counts for the current user. Used to drive the Sold and
+ * Pending tab badges on the sell dashboard (server-side, cross-device,
+ * replaces the localStorage-based "viewed" tracking that didn't survive
+ * iOS Safari storage eviction).
+ *
+ * Returns a Record<type, count> with zeros filled in for any requested type
+ * that has no unread rows, so the caller never has to deal with missing keys.
+ */
+export async function getUnreadNotificationCountsByType(types: string[]): Promise<Record<string, number>> {
+    const result: Record<string, number> = Object.fromEntries(types.map((t) => [t, 0]));
+    const session = await auth();
+    if (!session?.user?.id) return result;
+    const delegate = getNotificationDelegate();
+    if (!delegate) return result;
+    if (types.length === 0) return result;
+
+    // One count per type. We could use a single groupBy via $queryRaw, but
+    // n parallel COUNTs against an already-indexed (user_id, read_at) is
+    // simple and fast for the 2-3 types we care about.
+    const userId = session.user.id;
+    const counts = await Promise.all(
+        types.map((type) =>
+            delegate.count({
+                where: { user_id: userId, type, read_at: null },
+            })
+        )
+    );
+    types.forEach((type, idx) => {
+        result[type] = counts[idx];
+    });
+    return result;
+}
+
+/**
+ * Bulk-mark every unread notification of a given type as read for the
+ * current user. Called from the seller dashboard when the seller clicks the
+ * Sold or Pending tab — they've now "seen" that batch of activity, so the
+ * tab badge AND the corresponding bell-icon entries both quiet down.
+ */
+export async function markNotificationsTypeRead(type: string): Promise<{ success: true } | { error: string }> {
+    const session = await auth();
+    if (!session?.user?.id) return { error: "Not signed in." };
+    const delegate = getNotificationDelegate();
+    if (!delegate) return { error: "Notifications unavailable." };
+    await delegate.updateMany({
+        where: { user_id: session.user.id, type, read_at: null },
+        data: { read_at: new Date() },
+    });
+    revalidatePath("/");
+    revalidatePath("/sell");
+    return { success: true };
+}
+
 export async function markNotificationRead(notificationId: string): Promise<{ success: true } | { error: string }> {
     const session = await auth();
     if (!session?.user?.id) return { error: "Not signed in." };

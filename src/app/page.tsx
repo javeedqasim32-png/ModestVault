@@ -97,7 +97,9 @@ export default async function Home() {
 
   const featuredListings = await prisma.listing.findMany({
     where: { status: "AVAILABLE", moderation_status: "APPROVED", is_featured: true },
-    orderBy: { created_at: "desc" },
+    // Admin-curated order first (set via /admin/featured); rows without an
+    // explicit order fall to the end and are tied-broken by newest first.
+    orderBy: [{ featured_order: { sort: "asc", nulls: "last" } }, { created_at: "desc" }],
     take: 8,
     include: {
       images: {
@@ -348,9 +350,9 @@ export default async function Home() {
             </div>
           )}
 
-          {/* New In Section */}
+          {/* Featured Section */}
           <div className="flex items-baseline justify-between pb-[10px] pt-[8px]">
-            <h2 className={`${cormorantHeading.className} text-[23px] font-medium leading-[1.05] text-foreground`}>New In</h2>
+            <h2 className={`${cormorantHeading.className} text-[23px] font-medium leading-[1.05] text-foreground`}>Featured</h2>
             <Link href="/browse" className="text-[12px] font-normal text-muted-foreground transition-colors hover:text-primary hover:underline">
               See all
             </Link>

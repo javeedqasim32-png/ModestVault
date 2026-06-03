@@ -416,31 +416,56 @@ export async function purchaseSelectedShippingLabel(orderId: string) {
         }
 
         const labelData = await purchaseLabel(selectedRateId);
+        // Bundle-aware: if this Order is part of a same-seller multi-item
+        // bundle, the label covers all sibling Orders. We buy the label once
+        // and stamp the tracking_number / label_url / carrier onto every
+        // sibling so the seller dashboard, the buyer's tracking, and the
+        // Shippo webhook all converge on the same shipment.
         await prisma.$transaction(async (tx: any) => {
             const latest = await tx.order.findUnique({ where: { id: orderId } });
             if (!latest) throw new Error("Order not found");
             if (latest.label_url || latest.shipping_stage === "LABEL_PURCHASED") return;
 
-            await tx.order.update({
-                where: { id: orderId },
-                data: {
-                    shipping_stage: "LABEL_PURCHASED",
-                    shipping_status: "PROCESSING",
-                    tracking_number: labelData.tracking_number,
-                    carrier: selectedCarrier || "Carrier",
-                    shippo_transaction_id: labelData.shippo_transaction_id,
-                    label_url: labelData.label_url
-                }
-            });
+            const labelFields = {
+                shipping_stage: "LABEL_PURCHASED",
+                shipping_status: "PROCESSING",
+                tracking_number: labelData.tracking_number,
+                carrier: selectedCarrier || "Carrier",
+                shippo_transaction_id: labelData.shippo_transaction_id,
+                label_url: labelData.label_url,
+            };
+
+            if (latest.batch_id) {
+                await tx.order.updateMany({
+                    where: { batch_id: latest.batch_id },
+                    data: labelFields,
+                });
+            } else {
+                await tx.order.update({
+                    where: { id: orderId },
+                    data: labelFields,
+                });
+            }
         });
 
-        await createNotification({
-            userId: order.purchase.buyer.id,
-            type: "ORDER_SHIPPED",
-            title: `Shipped: ${order.purchase.listing.title}`,
-            body: `Tracking ${labelData.tracking_number} (${selectedCarrier || "carrier"}). Updates will appear here.`,
-            linkUrl: "/dashboard/purchases",
-        });
+        // Notify every buyer in the bundle (in practice the same buyer for
+        // every Order in a bundle, but the loop keeps semantics clean even if
+        // future bundles span buyers).
+        const ordersToNotify = order.batch_id
+            ? await (prisma as any).order.findMany({
+                where: { batch_id: order.batch_id },
+                include: { purchase: { include: { listing: true, buyer: true } } },
+            })
+            : [order];
+        for (const o of ordersToNotify) {
+            await createNotification({
+                userId: o.purchase.buyer.id,
+                type: "ORDER_SHIPPED",
+                title: `Shipped: ${o.purchase.listing.title}`,
+                body: `Tracking ${labelData.tracking_number} (${selectedCarrier || "carrier"}). Updates will appear here.`,
+                linkUrl: "/dashboard/purchases",
+            });
+        }
 
         revalidatePath("/buy/success");
         revalidatePath("/dashboard/purchases");
