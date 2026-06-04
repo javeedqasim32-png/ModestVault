@@ -1,8 +1,14 @@
 "use server";
 
+import { randomUUID } from "crypto";
+import sharp from "sharp";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { buildS3ImageUrl, getS3BucketName, uploadFile } from "@/lib/s3";
+
+const MESSAGE_IMAGE_ALLOWED_MIME = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
+const MESSAGE_IMAGE_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
 
 function trimBody(input: string) {
   return input.trim().replace(/\s+/g, " ");
@@ -145,16 +151,20 @@ export async function startConversationWithSupport() {
   return { success: true, conversationId: conversation.id } as const;
 }
 
-export async function sendConversationMessage(input: { conversationId: string; body: string }) {
+export async function sendConversationMessage(input: { conversationId: string; body: string; imageFile?: File | null }) {
   const session = await auth();
   const userId = session?.user?.id;
   if (!userId) return { error: "Please sign in to send messages." } as const;
 
   const conversationId = input.conversationId;
   const body = trimBody(input.body || "");
+  const imageFile = input.imageFile && typeof input.imageFile.arrayBuffer === "function" && input.imageFile.size > 0
+    ? input.imageFile
+    : null;
 
   if (!conversationId) return { error: "Conversation is required." } as const;
-  if (!body) return { error: "Message cannot be empty." } as const;
+  // Image-only sends are allowed; require either text or a photo.
+  if (!body && !imageFile) return { error: "Message cannot be empty." } as const;
   if (body.length > 1000) return { error: "Message must be 1000 characters or fewer." } as const;
 
   const conversationDelegate = getConversationDelegate();
@@ -174,11 +184,46 @@ export async function sendConversationMessage(input: { conversationId: string; b
     return { error: "You do not have access to this conversation." } as const;
   }
 
+  // Optional image attachment. Mirrors the sharp + S3 pipeline used by the
+  // listings and AI-cover endpoints: validate, downscale, upload, then store
+  // the URL on the message row.
+  let imageUrl: string | null = null;
+  if (imageFile) {
+    const mime = imageFile.type || "";
+    if (!MESSAGE_IMAGE_ALLOWED_MIME.includes(mime)) {
+      return { error: "Only PNG, JPEG, and WebP images are allowed." } as const;
+    }
+    if (imageFile.size > MESSAGE_IMAGE_MAX_BYTES) {
+      return { error: "Image must be 10MB or smaller." } as const;
+    }
+    const bucket = getS3BucketName();
+    if (!bucket) {
+      return { error: "Image uploads are not configured on this server." } as const;
+    }
+    try {
+      const raw = Buffer.from(await imageFile.arrayBuffer());
+      // Auto-rotate per EXIF, cap to 1200px wide, output JPEG q85. Brings a
+      // 10MB phone photo down to ~150-400KB for fast bubble rendering.
+      const processed = await sharp(raw)
+        .rotate()
+        .resize({ width: 1200, withoutEnlargement: true })
+        .jpeg({ quality: 85 })
+        .toBuffer();
+      const key = `messages/${conversation.id}/${randomUUID()}.jpg`;
+      await uploadFile(processed, key, "image/jpeg", bucket);
+      imageUrl = buildS3ImageUrl(key, bucket);
+    } catch (err) {
+      console.error("Message image upload failed:", err);
+      return { error: "Failed to upload the image. Please try again." } as const;
+    }
+  }
+
   await messageDelegate.create({
     data: {
       conversation_id: conversation.id,
       sender_id: userId,
       body,
+      ...(imageUrl ? { image_url: imageUrl } : {}),
     },
   });
 

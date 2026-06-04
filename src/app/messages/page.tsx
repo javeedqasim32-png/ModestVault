@@ -52,7 +52,7 @@ export default async function MessagesInboxPage() {
       messages: {
         orderBy: { created_at: "desc" },
         take: 1,
-        select: { body: true, created_at: true },
+        select: { body: true, image_url: true, created_at: true },
       },
     },
   });
@@ -105,7 +105,7 @@ export default async function MessagesInboxPage() {
                     </div>
                     <span className="text-[12px] text-[#8a7667]">{latest ? formatTime(latest.created_at) : formatTime(conversation.updated_at)}</span>
                   </div>
-                  <p className="mt-1 truncate text-[13px] text-[#6f6054]">{latest?.body || "Open conversation"}</p>
+                  <p className="mt-1 truncate text-[13px] text-[#6f6054]">{latest?.body ? latest.body : latest?.image_url ? "📷 Photo" : "Open conversation"}</p>
                 </Link>
               );
             })}

@@ -50,6 +50,7 @@ export default async function ConversationPage({ params }: { params: Promise<{ i
         select: {
           id: true,
           body: true,
+          image_url: true,
           created_at: true,
           sender_id: true,
           sender: { select: { first_name: true, last_name: true } },
@@ -73,7 +74,9 @@ export default async function ConversationPage({ params }: { params: Promise<{ i
   const sendMessage = async (formData: FormData) => {
     "use server";
     const body = String(formData.get("body") || "");
-    await sendConversationMessage({ conversationId: conversation.id, body });
+    const rawImage = formData.get("imageFile");
+    const imageFile = rawImage && rawImage instanceof File && rawImage.size > 0 ? rawImage : null;
+    await sendConversationMessage({ conversationId: conversation.id, body, imageFile });
   };
 
   return (
@@ -108,19 +111,38 @@ export default async function ConversationPage({ params }: { params: Promise<{ i
             conversation.messages.map((message: {
               id: string;
               body: string;
+              image_url: string | null;
               created_at: Date;
               sender_id: string;
               sender: { first_name: string; last_name: string | null };
             }) => {
               const mine = message.sender_id === userId;
               const senderName = `${message.sender.first_name} ${message.sender.last_name?.[0] ? `${message.sender.last_name[0].toUpperCase()}.` : ""}`.trim();
+              const hasBody = message.body && message.body.trim().length > 0;
               return (
                 <div key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
                   <div className={`max-w-[78%] rounded-[18px] px-3.5 py-2 ${mine ? "bg-[#a07c61] text-white" : "border border-[#ddd3cb] bg-[#fbf8f5] text-[#2f2925]"}`}>
                     {!mine ? (
                       <p className="text-[11px] text-[#8a7667]">{senderName}</p>
                     ) : null}
-                    <p className="whitespace-pre-wrap break-words text-[15px] leading-snug">{message.body}</p>
+                    {message.image_url ? (
+                      <a
+                        href={message.image_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={`block ${hasBody ? "mb-1.5" : ""}`}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={message.image_url}
+                          alt="Attached photo"
+                          className="block max-h-[320px] w-auto rounded-[14px] object-cover"
+                        />
+                      </a>
+                    ) : null}
+                    {hasBody ? (
+                      <p className="whitespace-pre-wrap break-words text-[15px] leading-snug">{message.body}</p>
+                    ) : null}
                     <p className={`mt-1 text-[10px] ${mine ? "text-white/80" : "text-[#8a7667]"}`}>{formatMessageTime(message.created_at)}</p>
                   </div>
                 </div>

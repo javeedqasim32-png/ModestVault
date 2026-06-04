@@ -273,6 +273,7 @@ model ConversationMessage {
   conversation_id String
   sender_id       String
   body            String
+  image_url       String?
   read_at         DateTime?
   created_at      DateTime @default(now())
   conversation    Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
