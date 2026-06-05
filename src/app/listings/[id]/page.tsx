@@ -4,12 +4,13 @@ import { auth } from "@/auth";
 import { addToCartAndRedirect } from "@/app/actions/cart";
 import { getFavoriteListingIdsForSessionUser } from "@/app/actions/favorites";
 import { getOrderedListingGallery } from "@/lib/listing-images";
-import { MessageCircle, Pencil, ShoppingBag, Star, ChevronRight, ChevronLeft } from "lucide-react";
+import { MessageCircle, Pencil, ShoppingBag, Star, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import RecentlyViewedTracker from "@/components/marketplace/RecentlyViewedTracker";
 import FavoriteButton from "@/components/marketplace/FavoriteButton";
 import ListingImageGallery from "@/components/marketplace/ListingImageGallery";
 import ShareListingButton from "@/components/marketplace/ShareListingButton";
+import SmartBackButton from "@/components/layout/SmartBackButton";
 
 import { getUserSlugMap } from "@/lib/user-slugs";
 
@@ -115,10 +116,10 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
             <RecentlyViewedTracker listingId={listing.id} viewerId={session?.user?.id ?? null} />
             <div className="mx-auto w-full max-w-[760px] pb-36">
                 <div className="px-4 pb-3 pt-4">
-                    <Link href="/browse" className="inline-flex items-center gap-1 text-[12px] text-[#8a7667] hover:text-[#2f2925]">
-                        <ChevronLeft className="h-4 w-4" />
-                        Back
-                    </Link>
+                    <SmartBackButton
+                        fallbackHref="/browse"
+                        className="inline-flex items-center gap-1 text-[12px] text-[#8a7667] hover:text-[#2f2925]"
+                    />
                 </div>
 
                 <ListingImageGallery

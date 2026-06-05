@@ -55,11 +55,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 token.isAdmin = (user as { isAdmin?: boolean }).isAdmin ?? false;
             }
             if (token.id) {
+                // Same query, two columns — used by getCachedSession() callers
+                // (Navbar, UnpaidEarningsBanner) to gate seller-only UI without
+                // an additional DB hit.
                 const dbUser = await prisma.user.findUnique({
                     where: { id: token.id as string },
-                    select: { is_admin: true },
+                    select: { is_admin: true, seller_enabled: true },
                 });
                 token.isAdmin = dbUser?.is_admin ?? false;
+                token.sellerEnabled = dbUser?.seller_enabled ?? false;
             }
             return token;
         },
@@ -67,6 +71,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             if (session.user && token.id) {
                 session.user.id = token.id as string;
                 (session.user as { isAdmin?: boolean }).isAdmin = token.isAdmin as boolean;
+                (session.user as { sellerEnabled?: boolean }).sellerEnabled = token.sellerEnabled as boolean;
             }
             return session;
         },

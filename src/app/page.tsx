@@ -327,14 +327,14 @@ export default async function Home() {
                     </div>
                   </div>
                   
-                  <div className="flex min-w-0 flex-col px-[10px] pb-[10px] pt-[8px]">
+                  <div className="flex min-w-0 flex-1 flex-col px-[10px] pb-[10px] pt-[8px]">
                     <div className="mb-[2px] truncate text-[9px] uppercase tracking-[0.1em] text-[#8a7667]">
                       {listing.category}
                     </div>
                     <h3 className="mb-[2px] line-clamp-2 text-[12px] font-normal leading-[1.3] text-[#2f2925]" title={listing.title}>
                       {listing.title}
                     </h3>
-                    <div className="mt-[1px] flex items-end justify-between gap-2">
+                    <div className="mt-auto flex items-end justify-between gap-2">
                       <p className="truncate text-[13px] font-semibold text-[#2f2925]">
                         ${Number(listing.price).toLocaleString()}
                       </p>
@@ -380,14 +380,14 @@ export default async function Home() {
                     </div>
                   </div>
 
-                  <div className="flex min-w-0 flex-col px-[10px] pb-[10px] pt-[8px]">
+                  <div className="flex min-w-0 flex-1 flex-col px-[10px] pb-[10px] pt-[8px]">
                     <div className="mb-[2px] truncate text-[9px] uppercase tracking-[0.1em] text-[#8a7667]">
                       {listing.category}
                     </div>
                     <h3 className="mb-[2px] line-clamp-2 text-[12px] font-normal leading-[1.3] text-[#2f2925]" title={listing.title}>
                       {listing.title}
                     </h3>
-                    <div className="mt-[1px] flex items-end justify-between gap-2">
+                    <div className="mt-auto flex items-end justify-between gap-2">
                       <p className="truncate text-[13px] font-semibold text-[#2f2925]">
                         ${Number(listing.price).toLocaleString()}
                       </p>

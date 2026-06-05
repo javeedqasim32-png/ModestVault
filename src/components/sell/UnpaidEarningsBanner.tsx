@@ -1,5 +1,6 @@
-import { auth } from "@/auth";
+import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { getCachedSession } from "@/lib/session";
 import { onboardSellerAction } from "@/app/actions/stripe";
 import { redirect } from "next/navigation";
 
@@ -10,7 +11,11 @@ type OrderAggregateDelegate = {
     }>;
 };
 
-async function getUnpaidEarnings(userId: string) {
+// 5-minute cache per seller — pending earnings only change when an Order
+// delivers and the payout cron runs, so a brief staleness is invisible to
+// users and turns "DB hit on every page load" into "once per 5 min per
+// seller." Keyed by userId so different sellers don't share results.
+async function getUnpaidEarningsUncached(userId: string) {
     const orderDelegate = (prisma as unknown as { order: OrderAggregateDelegate }).order;
     const result = await orderDelegate.aggregate({
         where: {
@@ -27,6 +32,13 @@ async function getUnpaidEarnings(userId: string) {
     };
 }
 
+const getUnpaidEarnings = (userId: string) =>
+    unstable_cache(
+        () => getUnpaidEarningsUncached(userId),
+        ["unpaid-earnings", userId],
+        { revalidate: 300, tags: [`unpaid-earnings:${userId}`] }
+    )();
+
 async function handleConnectStripe() {
     "use server";
     const result = await onboardSellerAction();
@@ -34,8 +46,13 @@ async function handleConnectStripe() {
 }
 
 export default async function UnpaidEarningsBanner() {
-    const session = await auth();
+    const session = await getCachedSession();
     if (!session?.user?.id) return null;
+
+    // Skip the earnings query entirely for non-sellers. session.user.sellerEnabled
+    // comes from the JWT (auth.ts) so this check costs zero queries.
+    const sellerEnabled = (session.user as { sellerEnabled?: boolean }).sellerEnabled;
+    if (!sellerEnabled) return null;
 
     const { totalCents, count } = await getUnpaidEarnings(session.user.id);
     if (count === 0 || totalCents <= 0) return null;

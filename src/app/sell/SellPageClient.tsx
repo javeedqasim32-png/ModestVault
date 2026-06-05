@@ -1329,12 +1329,12 @@ export default function SellPageClient({
                                                 ? "Please upload at least 3 product photos first."
                                                 : `Please upload ${3 - selectedFiles.length} more photo${3 - selectedFiles.length === 1 ? "" : "s"} (3 required).`
                                         );
-                                        document.getElementById("preview-photos-anchor")?.scrollIntoView({ behavior: "smooth", block: "center" });
+                                        document.getElementById("preview-photos-anchor")?.scrollIntoView({ behavior: "smooth", block: "start" });
                                         return;
                                     }
                                     if (hijabRequired === null) {
                                         setPreviewHijabError("Please choose whether the model wears a hijab.");
-                                        document.getElementById("preview-hijab-anchor")?.scrollIntoView({ behavior: "smooth", block: "center" });
+                                        document.getElementById("preview-hijab-anchor")?.scrollIntoView({ behavior: "smooth", block: "start" });
                                         return;
                                     }
                                     try {

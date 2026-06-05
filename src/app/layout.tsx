@@ -4,6 +4,7 @@ import localFont from "next/font/local";
 import "./globals.css";
 import Navbar from "@/components/layout/Navbar";
 import MobileBottomNav from "@/components/layout/MobileBottomNav";
+import ScrollToTopOnPathChange from "@/components/layout/ScrollToTopOnPathChange";
 import UnpaidEarningsBanner from "@/components/sell/UnpaidEarningsBanner";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
@@ -77,8 +78,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="scroll-smooth">
+    <html lang="en">
       <body className={`${inter.variable} ${playfair.variable} ${jostLocal.variable} ${cormorantLocal.variable} font-sans antialiased bg-background text-foreground min-h-screen flex flex-col`}>
+        <ScrollToTopOnPathChange />
         <Navbar />
         <main className="flex-1 flex flex-col w-full pb-24 lg:pb-0">
           <UnpaidEarningsBanner />

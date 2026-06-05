@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { auth } from "@/auth";
+import { getCachedSession } from "@/lib/session";
 import { getCartCountForSessionUser } from "@/app/actions/cart";
 import { getFavoriteCountForSessionUser } from "@/app/actions/favorites";
 import { getUnreadMessageCountForSessionUser } from "@/app/actions/messages";
@@ -12,7 +12,7 @@ import FavoritesNavButton from "@/components/layout/FavoritesNavButton";
 import NotificationsBellButton from "@/components/layout/NotificationsBellButton";
 
 export default async function Navbar() {
-    const session = await auth();
+    const session = await getCachedSession();
     const [cartCount, favoriteCount, unreadMessageCount, unreadNotificationCount] = await Promise.all([
         getCartCountForSessionUser(),
         getFavoriteCountForSessionUser(),
