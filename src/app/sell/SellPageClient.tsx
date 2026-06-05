@@ -1268,7 +1268,7 @@ export default function SellPageClient({
                                                 className="flex shrink-0 flex-col items-center gap-1.5"
                                             >
                                                 <div
-                                                    className={`relative h-[200px] w-[140px] overflow-hidden rounded-[12px] border-[1.5px] transition ${
+                                                    className={`relative h-[210px] w-[140px] overflow-hidden rounded-[12px] border-[1.5px] transition ${
                                                         selected
                                                             ? "border-[#7a5a45] ring-[2px] ring-offset-[2px] ring-[#7a5a45] ring-offset-[#faf6f0]"
                                                             : "border-[#ddd3cb]"
@@ -1276,7 +1276,7 @@ export default function SellPageClient({
                                                 >
                                                     {/* eslint-disable-next-line @next/next/no-img-element */}
                                                     <img
-                                                        src={opt.template}
+                                                        src={opt.thumbnail}
                                                         alt={`Model ${index + 1}`}
                                                         className="h-full w-full object-cover"
                                                         loading="lazy"

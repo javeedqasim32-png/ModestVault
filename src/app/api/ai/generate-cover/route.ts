@@ -460,20 +460,20 @@ PHOTOGRAPHY REQUIREMENTS
 
 ⸻
 
-COMPOSITION
+COMPOSITION (NON-NEGOTIABLE FRAMING RULES)
 
-* Full-length composition
-* Entire outfit visible
-* Entire dupatta visible
-* Full head visible
-* Full hair visible
-* Full hands visible
-* Full footwear visible
-* Full feet visible
+The model MUST be framed as a complete full-body figure inside the output. Nothing is permitted to be cropped at any edge.
 
-Leave comfortable space above the head and below the feet.
+Strict framing math (treat as hard constraints, not suggestions):
 
-Magazine-quality framing.
+* The model's TOP-OF-HEAD must sit between 6% and 12% from the TOP edge of the frame. Leave clear breathing room above the hair.
+* The model's FEET (including shoes and toes) must sit between 8% and 15% from the BOTTOM edge of the frame. The full sole of each shoe must be visible, with FLOOR / GROUND visible beneath the feet.
+* The model occupies the central 70%-85% of the frame's vertical height. Never zoom in tighter than this.
+* The model is centered horizontally with comfortable space on the left and right sides — no cropping at the side edges either.
+
+If the model would not fit fully within the frame at this composition, ZOOM OUT and re-render — do not crop. Cropped feet, cropped shoes, cropped head, cropped hair, cropped hands, or cropped dupatta corners are unacceptable and the image fails the assignment if any of those occur.
+
+Magazine-quality, full-body editorial framing — every editorial / lookbook reference for this type of campaign shows feet and floor.
 
 ⸻
 
@@ -491,8 +491,12 @@ STRICTLY AVOID
 * Changing expression
 * Missing garment pieces
 * Missing dupatta
-* Cropped feet
-* Cropped head
+* Cropped feet (even partial — entire feet AND shoes must be visible)
+* Feet touching or near the bottom edge of the frame (must have floor space below)
+* No floor / ground visible beneath the model
+* Cropped shoes / cropped toes
+* Cropped head, cropped hair, cropped dupatta corners
+* Tight portrait / mid-body framing (must be full-body, head-to-floor)
 * Extra fingers
 * Missing fingers
 * Distorted anatomy

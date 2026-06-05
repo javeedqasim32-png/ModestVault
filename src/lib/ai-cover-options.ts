@@ -12,13 +12,19 @@ export const SKIN_TONE_OPTIONS: {
     label: string;
     swatch: string;
     prompt: string;
+    // Full-body studio reference image sent to OpenAI as Image 1 — the AI uses
+    // this to lock onto the model's identity and generate a full-body cover.
     template: string;
+    // Preview-friendly image shown in the Sell page model picker. Separate
+    // from `template` so we can show a tighter, picker-optimized crop without
+    // changing the full-body reference the AI generates against.
+    thumbnail: string;
 }[] = [
-    { value: "fair", label: "Fair", swatch: "#F1D5BB", prompt: "fair skin tone with cool pink undertones", template: `${TEMPLATE_BASE}/fair.PNG` },
-    { value: "light", label: "Light", swatch: "#DDA984", prompt: "light olive skin tone with warm peach undertones", template: `${TEMPLATE_BASE}/Light.PNG` },
-    { value: "medium", label: "Medium", swatch: "#B9784F", prompt: "medium tan skin tone with warm bronze undertones", template: `${TEMPLATE_BASE}/Medium.PNG` },
-    { value: "tan", label: "Tan", swatch: "#8B5A2B", prompt: "deep tan skin tone with rich golden undertones", template: `${TEMPLATE_BASE}/Tan.PNG` },
-    { value: "deep", label: "Deep", swatch: "#3D2718", prompt: "deep brown skin tone with warm chocolate undertones", template: `${TEMPLATE_BASE}/deep.PNG` },
+    { value: "fair", label: "Fair", swatch: "#F1D5BB", prompt: "fair skin tone with cool pink undertones", template: `${TEMPLATE_BASE}/fair.PNG`, thumbnail: `${TEMPLATE_BASE}/1-2.png` },
+    { value: "light", label: "Light", swatch: "#DDA984", prompt: "light olive skin tone with warm peach undertones", template: `${TEMPLATE_BASE}/Light.PNG`, thumbnail: `${TEMPLATE_BASE}/2-2.png` },
+    { value: "medium", label: "Medium", swatch: "#B9784F", prompt: "medium tan skin tone with warm bronze undertones", template: `${TEMPLATE_BASE}/Medium.PNG`, thumbnail: `${TEMPLATE_BASE}/3-2.png` },
+    { value: "tan", label: "Tan", swatch: "#8B5A2B", prompt: "deep tan skin tone with rich golden undertones", template: `${TEMPLATE_BASE}/Tan.PNG`, thumbnail: `${TEMPLATE_BASE}/4-2.png` },
+    { value: "deep", label: "Deep", swatch: "#3D2718", prompt: "deep brown skin tone with warm chocolate undertones", template: `${TEMPLATE_BASE}/deep.PNG`, thumbnail: `${TEMPLATE_BASE}/5.2.png` },
 ];
 
 export const DEFAULT_SKIN_TONE: SkinTone = "medium";
