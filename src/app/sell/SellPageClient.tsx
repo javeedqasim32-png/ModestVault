@@ -1254,20 +1254,38 @@ export default function SellPageClient({
                             </div>
 
                             <div className="border-t border-[#e8ddd1] pt-5">
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7667]">Model Tone</p>
-                                <div className="mt-4 flex items-center justify-between px-1">
-                                    {SKIN_TONE_OPTIONS.map((opt) => {
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8a7667]">Choose Model</p>
+                                <div className="mt-4 flex items-start gap-2 overflow-x-auto pb-1">
+                                    {SKIN_TONE_OPTIONS.map((opt, index) => {
                                         const selected = modelSkinTone === opt.value;
                                         return (
                                             <button
                                                 key={opt.value}
                                                 type="button"
-                                                aria-label={`Skin tone: ${opt.label}`}
+                                                aria-label={`Use Model ${index + 1}`}
                                                 aria-pressed={selected}
                                                 onClick={() => setModelSkinTone(opt.value)}
-                                                className={`h-12 w-12 rounded-full transition ${selected ? "ring-[1.5px] ring-offset-[3px] ring-[#7a5a45] ring-offset-[#faf6f0]" : "ring-0"}`}
-                                                style={{ backgroundColor: opt.swatch }}
-                                            />
+                                                className="flex shrink-0 flex-col items-center gap-1.5"
+                                            >
+                                                <div
+                                                    className={`relative h-[200px] w-[140px] overflow-hidden rounded-[12px] border-[1.5px] transition ${
+                                                        selected
+                                                            ? "border-[#7a5a45] ring-[2px] ring-offset-[2px] ring-[#7a5a45] ring-offset-[#faf6f0]"
+                                                            : "border-[#ddd3cb]"
+                                                    }`}
+                                                >
+                                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                    <img
+                                                        src={opt.template}
+                                                        alt={`Model ${index + 1}`}
+                                                        className="h-full w-full object-cover"
+                                                        loading="lazy"
+                                                    />
+                                                </div>
+                                                <span className="text-[12px] text-[#5f4437]">
+                                                    Model {index + 1}
+                                                </span>
+                                            </button>
                                         );
                                     })}
                                 </div>
