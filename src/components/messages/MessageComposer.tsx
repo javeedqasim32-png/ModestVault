@@ -141,7 +141,7 @@ export default function MessageComposer({ action }: Props) {
             {imageError ? (
                 <p className="text-[12px] text-red-600">{imageError}</p>
             ) : null}
-            <div className="flex items-end gap-2">
+            <div className="flex min-w-0 items-end gap-2">
                 <input
                     ref={fileInputRef}
                     type="file"
@@ -158,7 +158,7 @@ export default function MessageComposer({ action }: Props) {
                 >
                     <Paperclip className="h-5 w-5" />
                 </button>
-                <div className="relative flex-1">
+                <div className="relative flex-1 min-w-0">
                     <div
                         ref={editorRef}
                         role="textbox"
