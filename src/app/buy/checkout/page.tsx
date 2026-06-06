@@ -1,11 +1,21 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
+import localFont from "next/font/local";
 import { PreCheckoutClient } from "@/components/marketplace/PreCheckoutClient";
+import { getPrimaryListingImage } from "@/lib/listing-images";
 
 export const dynamic = "force-dynamic";
 
 const BUNDLE_MAX_ITEMS = 10;
+
+const cormorantHeading = localFont({
+    src: [
+        { path: "../../../fonts/CormorantGaramond-Regular.ttf", weight: "400", style: "normal" },
+        { path: "../../../fonts/CormorantGaramond-SemiBold.ttf", weight: "600", style: "normal" },
+    ],
+    display: "swap",
+});
 
 export default async function BuyCheckoutPage({
     searchParams,
@@ -91,17 +101,22 @@ export default async function BuyCheckoutPage({
             id: l.id,
             title: l.title,
             price: Number(l.price),
+            imageUrl: getPrimaryListingImage(l, "card"),
         }));
 
         return (
-            <div className="container mx-auto px-6 py-12 min-h-[calc(100vh-100px)]">
-                <PreCheckoutClient
-                    listingId={listings[0].id}
-                    listingTitle={listings[0].title}
-                    listingPrice={Number(listings[0].price)}
-                    bundleItems={bundleItems}
-                    initialAddress={initialAddress}
-                />
+            <div className="min-h-screen overflow-x-hidden bg-[#f4efea] pb-24 pt-4 sm:pb-12 sm:pt-8">
+                <div className="mx-auto w-full max-w-[760px] px-4 sm:px-6">
+                    <PreCheckoutClient
+                        listingId={listings[0].id}
+                        listingTitle={listings[0].title}
+                        listingPrice={Number(listings[0].price)}
+                        listingImageUrl={getPrimaryListingImage(listings[0], "card")}
+                        bundleItems={bundleItems}
+                        initialAddress={initialAddress}
+                        headingClassName={cormorantHeading.className}
+                    />
+                </div>
             </div>
         );
     }
@@ -160,13 +175,17 @@ export default async function BuyCheckoutPage({
     } : undefined;
 
     return (
-        <div className="container mx-auto px-6 py-12 min-h-[calc(100vh-100px)]">
-            <PreCheckoutClient
-                listingId={listing.id}
-                listingTitle={listing.title}
-                listingPrice={Number(listing.price)}
-                initialAddress={initialAddress}
-            />
+        <div className="min-h-screen overflow-x-hidden bg-[#f4efea] pb-24 pt-4 sm:pb-12 sm:pt-8">
+            <div className="mx-auto w-full max-w-[760px] px-4 sm:px-6">
+                <PreCheckoutClient
+                    listingId={listing.id}
+                    listingTitle={listing.title}
+                    listingPrice={Number(listing.price)}
+                    listingImageUrl={getPrimaryListingImage(listing, "card")}
+                    initialAddress={initialAddress}
+                    headingClassName={cormorantHeading.className}
+                />
+            </div>
         </div>
     );
 }

@@ -24,7 +24,7 @@ import SortableImageCard from "@/components/sell/SortableImageCard";
 import ListingSubmittedModal from "@/components/sell/ListingSubmittedModal";
 import { markNotificationsTypeRead } from "@/app/actions/notifications";
 import { createListing, deleteListing, replaceListingImages, updateListing, getListingImages, uploadDraftPhotos, saveDraft, listMyDrafts, deleteDraft, clearDraftRecord, type DraftRecord } from "../actions/listings";
-import { Tag, UploadCloud, ChevronLeft, ChevronRight, Heart, PackagePlus, X, Printer, TrendingUp, Users, ShieldCheck, CreditCard, Sparkles, Plus, GripHorizontal } from "lucide-react";
+import { Tag, UploadCloud, ChevronLeft, ChevronRight, Heart, PackagePlus, X, Printer, TrendingUp, Users, ShieldCheck, CreditCard, Sparkles, Plus, GripHorizontal, MessageCircle } from "lucide-react";
 import EmptyBagIllustration from "@/components/ui/EmptyBagIllustration";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
@@ -56,6 +56,9 @@ type ListingItem = {
     // SOLD listings so the seller sees the actual delivery progress
     // (Processed / Shipped / Delivered) instead of a plain "Sold" label.
     shipping_status?: string | null;
+    // Buyer info — only present on SOLD listings; drives the "Message Buyer" CTA.
+    buyer_id?: string | null;
+    buyer_name?: string | null;
 };
 
 type SellPageClientProps = {
@@ -2267,7 +2270,7 @@ export default function SellPageClient({
                                                     {label}
                                                 </span>
                                             </div>
-                                            <div className="mt-2.5 flex items-center gap-2.5">
+                                            <div className="mt-2.5 flex flex-wrap items-center gap-2.5">
                                                 {listing.status !== "SOLD" ? (
                                                     <button
                                                         type="button"
@@ -2277,36 +2280,45 @@ export default function SellPageClient({
                                                         Edit
                                                     </button>
                                                 ) : null}
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        void handleDeleteListing(listing.id);
-                                                    }}
-                                                    disabled={deletingListingId === listing.id}
-                                                    className="inline-flex h-8 items-center rounded-full border border-[#d7cdc4] bg-white px-3.5 text-[0.84rem] font-medium text-[#5f4a3c] disabled:opacity-50"
-                                                >
-                                                    {deletingListingId === listing.id ? "Deleting..." : "Delete"}
-                                                </button>
+                                                {listing.status !== "SOLD" ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            void handleDeleteListing(listing.id);
+                                                        }}
+                                                        disabled={deletingListingId === listing.id}
+                                                        className="inline-flex h-8 items-center rounded-full border border-[#d7cdc4] bg-white px-3.5 text-[0.84rem] font-medium text-[#5f4a3c] disabled:opacity-50"
+                                                    >
+                                                        {deletingListingId === listing.id ? "Deleting..." : "Delete"}
+                                                    </button>
+                                                ) : null}
+                                                {listing.label_url && !POST_SHIP_STATUSES.has(listing.shipping_status || "") ? (
+                                                    <button
+                                                        type="button"
+                                                        className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[#d7cdc4] bg-white px-3.5 text-[0.84rem] font-medium text-[#5f4a3c]"
+                                                        onClick={() => {
+                                                            window.open(listing.label_url as string, "_blank", "noopener,noreferrer");
+                                                        }}
+                                                    >
+                                                        <PackagePlus className="h-3.5 w-3.5" />
+                                                        Print Label
+                                                    </button>
+                                                ) : null}
+                                                {listing.status === "SOLD" && listing.buyer_id ? (
+                                                    <Link
+                                                        href={`/messages/start?sellerId=${listing.buyer_id}&listingId=${listing.id}`}
+                                                        className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[#d7cdc4] bg-white px-3.5 text-[0.84rem] font-medium text-[#5f4a3c]"
+                                                    >
+                                                        <MessageCircle className="h-3.5 w-3.5" />
+                                                        Message
+                                                    </Link>
+                                                ) : null}
                                             </div>
                                         </div>
                                     </div>
 
                                     {isRejected && listing.rejection_reason && (
                                         <p className="mt-2 text-sm text-red-600 font-medium">Reason: {listing.rejection_reason}</p>
-                                    )}
-                                    {listing.label_url && !POST_SHIP_STATUSES.has(listing.shipping_status || "") && (
-                                        <div className="mt-2">
-                                            <button
-                                                type="button"
-                                                className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-1.5 text-xs font-semibold text-primary hover:bg-primary/20"
-                                                onClick={() => {
-                                                    window.open(listing.label_url as string, "_blank", "noopener,noreferrer");
-                                                }}
-                                            >
-                                                <PackagePlus className="h-4 w-4" />
-                                                Print Shipping Label
-                                            </button>
-                                        </div>
                                     )}
                                 </article>
                             );
@@ -2510,14 +2522,16 @@ export default function SellPageClient({
                                                             Edit
                                                         </button>
                                                     ) : null}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleDeleteListing(listing.id)}
-                                                        disabled={deletingListingId === listing.id}
-                                                        className="inline-flex h-10 items-center rounded-full border border-[#ddd3cb] bg-white px-4 text-[0.96rem] text-[#4a3328] disabled:opacity-50"
-                                                    >
-                                                        {deletingListingId === listing.id ? "Deleting..." : "Delete"}
-                                                    </button>
+                                                    {listing.status !== "SOLD" ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDeleteListing(listing.id)}
+                                                            disabled={deletingListingId === listing.id}
+                                                            className="inline-flex h-10 items-center rounded-full border border-[#ddd3cb] bg-white px-4 text-[0.96rem] text-[#4a3328] disabled:opacity-50"
+                                                        >
+                                                            {deletingListingId === listing.id ? "Deleting..." : "Delete"}
+                                                        </button>
+                                                    ) : null}
                                                     {listing.label_url && !POST_SHIP_STATUSES.has(listing.shipping_status || "") ? (
                                                         <a
                                                             href={listing.label_url}
@@ -2528,6 +2542,15 @@ export default function SellPageClient({
                                                             <Printer className="h-4 w-4" />
                                                             Print Label
                                                         </a>
+                                                    ) : null}
+                                                    {listing.status === "SOLD" && listing.buyer_id ? (
+                                                        <Link
+                                                            href={`/messages/start?sellerId=${listing.buyer_id}&listingId=${listing.id}`}
+                                                            className="inline-flex h-10 items-center gap-2 rounded-full border border-[#ddd3cb] bg-white px-4 text-[0.96rem] text-[#4a3328] hover:bg-[#fbf8f5]"
+                                                        >
+                                                            <MessageCircle className="h-4 w-4" />
+                                                            Message Buyer
+                                                        </Link>
                                                     ) : null}
                                                 </div>
                                                 {isRejected && listing.rejection_reason && (

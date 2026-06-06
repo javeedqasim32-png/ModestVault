@@ -92,28 +92,50 @@ export async function getShipmentRates({
         }))
         .sort((a, b) => parseFloat(a.amount) - parseFloat(b.amount));
 
-    if (allRates.length <= 4) {
-        return { shipmentId: shipment.objectId, rates: allRates };
+    // Product decision: surface exactly two UPS service levels — "UPS Ground"
+    // and "UPS 3 Day Select" — and nothing else. Avoids confusing buyers with
+    // multiple ground tiers (Ground vs Ground Saver vs Ground Advantage) that
+    // all look identical on the rate card.
+    const ALLOWED_UPS_SERVICES = new Set(["ground", "3 day select"]);
+    const normalizeServiceLevel = (sl: string) =>
+        (sl || "")
+            .toLowerCase()
+            .replace(/®/g, "")
+            .replace(/^ups\s*/, "")
+            .trim();
+    const isAllowedUps = (r: typeof allRates[number]) =>
+        (r.carrier || "").toUpperCase() === "UPS" &&
+        ALLOWED_UPS_SERVICES.has(normalizeServiceLevel(r.serviceLevel));
+
+    const sortByPrice = (arr: typeof allRates) =>
+        [...arr].sort((a, b) => parseFloat(a.amount) - parseFloat(b.amount));
+
+    let picks = sortByPrice(allRates.filter(isAllowedUps));
+
+    // Fallback ladder so checkout never breaks for addresses Shippo couldn't
+    // serve via the allowed UPS services (P.O. boxes, military APO, etc.).
+    if (picks.length === 0) {
+        const anyUps = allRates.filter(r => (r.carrier || "").toUpperCase() === "UPS");
+        if (anyUps.length > 0) {
+            console.warn("[shippo:rates] Allowed UPS services unavailable; using other UPS services", {
+                origin: addressFrom.zip,
+                destination: addressTo.zip,
+                upsServicesReturned: anyUps.map(r => r.serviceLevel),
+            });
+            picks = sortByPrice(anyUps).slice(0, 2);
+        } else {
+            console.warn("[shippo:rates] No UPS rates returned; falling back to all carriers", {
+                origin: addressFrom.zip,
+                destination: addressTo.zip,
+                carriersReturned: Array.from(new Set(allRates.map(r => r.carrier))),
+            });
+            picks = sortByPrice(allRates).slice(0, 2);
+        }
     }
-
-    // Always include the cheapest
-    const cheapest = allRates[0];
-    
-    // Find the fastest (excluding those without estimatedDays)
-    const fastest = [...allRates].sort((a, b) => a.estimatedDays - b.estimatedDays)[0];
-
-    // Get a few middle options that aren't the cheapest or fastest already
-    const remaining = allRates.filter(r => r.id !== cheapest.id && r.id !== fastest.id);
-    const middleOptions = remaining.slice(0, 2);
-
-    const curatedRates = [cheapest, fastest, ...middleOptions]
-        // Filter out duplicates (if cheapest is also fastest)
-        .filter((v, i, a) => a.findIndex(t => t.id === v.id) === i)
-        .sort((a, b) => parseFloat(a.amount) - parseFloat(b.amount));
 
     return {
         shipmentId: shipment.objectId,
-        rates: curatedRates
+        rates: picks,
     };
 }
 

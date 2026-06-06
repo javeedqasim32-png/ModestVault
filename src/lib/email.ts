@@ -279,3 +279,72 @@ export async function sendListingRejectedEmail(email: string, listingTitle: stri
     }
 }
 
+export async function sendRefundIssuedBuyerEmail(
+    email: string,
+    listingTitle: string,
+    amount: number,
+    reason: string
+): Promise<void> {
+    try {
+        const mailOptions = {
+            from: `"Modaire" <${process.env.EMAIL_USER}>`,
+            to: email,
+            subject: `Refund processed for "${listingTitle}"`,
+            html: `
+                <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 600px; margin: auto; border: 1px solid #eee; border-radius: 10px;">
+                    <h2 style="color: #2e7d32;">Your refund is on its way</h2>
+                    <p>We've processed a refund of <strong>$${amount.toFixed(2)}</strong> for your order of <strong>${listingTitle}</strong>.</p>
+                    <div style="background: #f1f8e9; border-left: 4px solid #66bb6a; padding: 15px; border-radius: 4px; margin: 20px 0;">
+                        <p style="margin: 0 0 5px 0; font-weight: bold; color: #2e7d32;">Reason:</p>
+                        <p style="margin: 0; color: #333;">${reason}</p>
+                    </div>
+                    <p>The refund will appear back on your original payment method within 5–10 business days, depending on your bank.</p>
+                    <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;" />
+                    <p style="font-size: 12px; color: #b0a89e;">If you have questions about this refund, reply to this email or contact support through your Modaire account.</p>
+                </div>
+            `
+        };
+        await transporter.sendMail(mailOptions);
+        console.log(`✉️ REFUND BUYER EMAIL SENT to ${email}`);
+    } catch (error) {
+        console.error("❌ Failed to send refund buyer email:", error);
+    }
+}
+
+export async function sendRefundIssuedSellerEmail(
+    email: string,
+    listingTitle: string,
+    amount: number,
+    reason: string,
+    transferReversed: boolean
+): Promise<void> {
+    try {
+        const reversalCopy = transferReversed
+            ? `<p>Because your payout for this order had already been released, the corresponding amount has been pulled back from your connected account.</p>`
+            : `<p>Your payout for this order was still on hold, so no funds have been transferred to you for this sale.</p>`;
+        const mailOptions = {
+            from: `"Modaire" <${process.env.EMAIL_USER}>`,
+            to: email,
+            subject: `An order was refunded: "${listingTitle}"`,
+            html: `
+                <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 600px; margin: auto; border: 1px solid #eee; border-radius: 10px;">
+                    <h2 style="color: #c62828;">An order has been refunded</h2>
+                    <p>The buyer of your listing <strong>${listingTitle}</strong> has been refunded <strong>$${amount.toFixed(2)}</strong>.</p>
+                    <div style="background: #ffebee; border-left: 4px solid #ef5350; padding: 15px; border-radius: 4px; margin: 20px 0;">
+                        <p style="margin: 0 0 5px 0; font-weight: bold; color: #c62828;">Reason:</p>
+                        <p style="margin: 0; color: #333;">${reason}</p>
+                    </div>
+                    ${reversalCopy}
+                    <p>If you believe this refund was issued in error, please reply to this email so our team can review.</p>
+                    <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;" />
+                    <p style="font-size: 12px; color: #b0a89e;">Thank you for selling on Modaire.</p>
+                </div>
+            `
+        };
+        await transporter.sendMail(mailOptions);
+        console.log(`✉️ REFUND SELLER EMAIL SENT to ${email}`);
+    } catch (error) {
+        console.error("❌ Failed to send refund seller email:", error);
+    }
+}
+

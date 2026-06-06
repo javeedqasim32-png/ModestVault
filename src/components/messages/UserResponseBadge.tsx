@@ -21,7 +21,7 @@ function formatResponse(minutes: number) {
 
 export default function UserResponseBadge({ medianMinutes }: Props) {
     return (
-        <span className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-[#5f4437]">
+        <span className="inline-flex items-center gap-1 text-[11px] font-normal text-[#5f4437]">
             <Zap className="h-3 w-3 fill-amber-500 text-amber-500" strokeWidth={2} />
             Avg. response: {formatResponse(medianMinutes)}
         </span>

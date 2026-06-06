@@ -57,7 +57,11 @@ export default async function SellPage({
                     select: { imageUrl: true, thumbUrl: true, mediumUrl: true, imageOrder: true },
                 },
                 purchases: {
-                    include: { order: true },
+                    include: {
+                        order: true,
+                        // buyer info powers the "Message Buyer" CTA on sold-tab cards
+                        buyer: { select: { id: true, first_name: true, last_name: true } },
+                    },
                     take: 1
                 }
             },
@@ -98,7 +102,9 @@ export default async function SellPage({
     }));
 
     const safeListings = listings.map((listing) => {
-        const order = listing.purchases?.[0]?.order;
+        const purchase = listing.purchases?.[0];
+        const order = purchase?.order;
+        const buyer = (purchase as unknown as { buyer?: { id: string; first_name: string | null; last_name: string | null } } | undefined)?.buyer;
         const serialized = serializeListing(listing);
         return {
             id: serialized.id,
@@ -123,6 +129,9 @@ export default async function SellPage({
             // sold-listing pill to show actual delivery progress (Processed /
             // Shipped / Delivered) instead of a plain "Sold" label.
             shipping_status: order?.shipping_status ?? null,
+            // Buyer info powers the "Message Buyer" button on sold cards.
+            buyer_id: buyer?.id ?? null,
+            buyer_name: buyer ? `${buyer.first_name ?? ""} ${buyer.last_name ?? ""}`.trim() || null : null,
         };
     });
 

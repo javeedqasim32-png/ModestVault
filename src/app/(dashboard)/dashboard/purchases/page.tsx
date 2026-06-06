@@ -4,7 +4,7 @@ import { getPrimaryListingImage } from "@/lib/listing-images";
 import { prisma } from "@/lib/prisma";
 import { getCartCountForSessionUser } from "@/app/actions/cart";
 import Link from "next/link";
-import { Sparkles } from "lucide-react";
+import { MessageCircle, Sparkles } from "lucide-react";
 import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import EmptyBagIllustration from "@/components/ui/EmptyBagIllustration";
@@ -172,6 +172,16 @@ export default async function PurchasesPage() {
                                             <span>{purchase.order?.tracking_number}</span>
                                             <span className="text-muted-foreground">({purchase.order?.carrier || "N/A"})</span>
                                         </a>
+                                    ) : null}
+
+                                    {purchase.listing.user?.id ? (
+                                        <Link
+                                            href={`/messages/start?sellerId=${purchase.listing.user.id}&listingId=${purchase.listing_id}`}
+                                            className="inline-flex h-8 w-fit items-center gap-1.5 rounded-full border border-[#d7cdc4] bg-white px-3.5 text-[0.84rem] font-medium text-[#5f4a3c]"
+                                        >
+                                            <MessageCircle className="h-3.5 w-3.5" />
+                                            Message Seller
+                                        </Link>
                                     ) : null}
 
                                     {canResumeBuyerShippingFlow ? (

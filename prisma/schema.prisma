@@ -185,6 +185,18 @@ model Order {
   seller_transfer_currency String?
   seller_transfer_released_at DateTime?
   unclaimed_reminder_sent_at DateTime?
+  // Refund / cancel state. Populated by admin's refundOrder() / cancelOrder()
+  // server actions. order_status flips to "REFUNDED" or "CANCELLED" when these
+  // fire; the columns below capture WHO / WHEN / WHY for auditability.
+  refund_id                    String?     // Stripe refund id (re_...)
+  refunded_at                  DateTime?
+  refund_reason                String?     // duplicate / fraudulent / requested_by_customer / other
+  refund_note                  String?     // free-text admin note
+  refund_initiator_id          String?     // admin user id who pressed the button
+  // If the seller transfer was already RELEASED at the time of refund, we
+  // pull funds back from the seller's connected account via transfers.createReversal.
+  seller_transfer_reversed_at  DateTime?
+  seller_transfer_reversal_id  String?     // Stripe transfer reversal id (trr_...)
   // Soft link for same-seller bundled checkout. NULL = legacy single-item order.
   // When set, Orders sharing this id ship in one parcel with one Shippo label
   // and one tracking number — the seller buys the label once and all sibling
@@ -195,6 +207,7 @@ model Order {
 
   @@index([seller_transfer_status])
   @@index([batch_id])
+  @@index([refunded_at])
 }
 
 model ListingImage {

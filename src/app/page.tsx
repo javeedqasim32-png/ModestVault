@@ -16,30 +16,38 @@ import { getUserSlugMap } from "@/lib/user-slugs";
 import WelcomeModal from "@/components/welcome/WelcomeModal";
 
 const categories = [
+  // `tightImage` flags source PNGs whose canvas hugs the model with little
+  // built-in padding. Those need a smaller CSS scale so the figure doesn't
+  // overflow the tile compared to the older padded category PNGs.
   {
     name: "Western",
     accent: "from-[#ead5c7] to-[#f4ece5]",
-    image: "/category-everyday-blend.png",
+    image: "/category-everyday-blend-v2.png",
+    tightImage: true,
   },
   {
     name: "Festive Pret",
     accent: "from-[#d8beab] to-[#f0e3d8]",
-    image: "/category-luxury-pret.png",
+    image: "/category-luxury-pret-v2.png",
+    tightImage: true,
   },
   {
     name: "Formals",
     accent: "from-[#c5b4ab] to-[#efe3dd]",
-    image: "/category-formal-wear.png",
+    image: "/category-formal-wear-v2.png",
+    tightImage: true,
   },
   {
     name: "Modest Wear",
     accent: "from-[#e6d9d1] to-[#f6efea]",
-    image: "/category-abayas.png",
+    image: "/category-abayas-v2.png",
+    tightImage: true,
   },
   {
     name: "Bridals",
     accent: "from-[#d7b9a8] to-[#f3e6dd]",
-    image: "/category-wedding.png",
+    image: "/category-wedding-v2.png",
+    tightImage: true,
   },
 ];
 
@@ -248,12 +256,16 @@ export default async function Home() {
                 className="group text-center lg:w-[152px] xl:w-[170px]"
               >
                 {category.image && (
-                  <div className="mx-auto mb-2 relative h-20 w-20 sm:h-28 sm:w-28 lg:h-36 lg:w-36">
+                  <div className="mx-auto mb-2 relative h-20 w-20 sm:h-28 sm:w-28 lg:h-36 lg:w-36 overflow-hidden rounded-full">
                     <Image
                       src={category.image}
                       alt={category.name}
                       fill
-                      className="object-contain mix-blend-multiply scale-[1.5] transition-transform duration-500 group-hover:scale-[1.55]"
+                      className={`object-contain mix-blend-multiply drop-shadow-md transition-transform duration-500 ${
+                        category.tightImage
+                          ? "scale-[1.0] group-hover:scale-[1.05]"
+                          : "scale-[1.5] group-hover:scale-[1.55]"
+                      }`}
                       sizes="144px"
                     />
                   </div>

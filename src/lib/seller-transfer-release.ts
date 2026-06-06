@@ -28,6 +28,10 @@ type CandidateOrder = {
     seller_transfer_currency: string | null;
     purchase: {
         listing_id: string;
+        // payment_intent_id is what we use to verify the buyer's payment fully
+        // settled on Stripe before releasing the seller transfer. Populated on
+        // every purchase by /buy/success when it finalizes the checkout session.
+        payment_intent_id: string | null;
         listing: {
             user: {
                 id: string;
@@ -36,6 +40,46 @@ type CandidateOrder = {
         };
     };
 };
+
+// Result of checking whether a buyer's Stripe payment has fully settled.
+type PaymentSettledResult =
+    | { ok: true }
+    | { ok: false; reason: "PAYMENT_NOT_SUCCEEDED" | "REFUNDED" | "DISPUTED" | "STRIPE_ERROR"; detail?: string };
+
+/**
+ * Ask Stripe whether the buyer's payment for this order has actually cleared.
+ * Called right before stripe.transfers.create() so we never push seller funds
+ * out for a payment that's still processing, has been refunded, or has an
+ * open dispute. PAYMENT_NOT_SUCCEEDED + STRIPE_ERROR are TRANSIENT (caller
+ * should retry next cron tick); REFUNDED + DISPUTED are TERMINAL (caller
+ * should mark FAILED and surface for manual review).
+ */
+async function verifyStripePaymentSettled(paymentIntentId: string): Promise<PaymentSettledResult> {
+    try {
+        const intent = await stripe.paymentIntents.retrieve(paymentIntentId, {
+            expand: ["latest_charge"],
+        });
+        if (intent.status !== "succeeded") {
+            return { ok: false, reason: "PAYMENT_NOT_SUCCEEDED", detail: `status=${intent.status}` };
+        }
+        const charge = intent.latest_charge && typeof intent.latest_charge !== "string"
+            ? intent.latest_charge
+            : null;
+        if (!charge) {
+            return { ok: false, reason: "PAYMENT_NOT_SUCCEEDED", detail: "no charge" };
+        }
+        if (charge.refunded || (charge.amount_refunded ?? 0) > 0) {
+            return { ok: false, reason: "REFUNDED" };
+        }
+        if (charge.disputed) {
+            return { ok: false, reason: "DISPUTED" };
+        }
+        return { ok: true };
+    } catch (error) {
+        const detail = error instanceof Error ? error.message : "unknown stripe error";
+        return { ok: false, reason: "STRIPE_ERROR", detail };
+    }
+}
 
 type OrderDelegate = {
     findMany: (args: unknown) => Promise<CandidateOrder[]>;
@@ -59,6 +103,42 @@ export async function attemptTransfer(order: CandidateOrder, destination: string
             data: { seller_transfer_status: TRANSFER_STATUS_FAILED },
         });
         return { ok: false as const, reason: "Invalid transfer amount." };
+    }
+
+    // Gate the transfer on Stripe confirming the buyer's payment cleared.
+    // Without this, slow-settling payments (ACH, some international cards) or
+    // refunds/disputes raised during the 3-day hold could let us push seller
+    // funds out before we actually have the money.
+    const paymentIntentId = order.purchase?.payment_intent_id;
+    if (!paymentIntentId) {
+        // Terminal: we have no way to verify this payment. Mark FAILED so an
+        // admin can investigate. The cron will keep picking it up but the
+        // check will keep blocking — surfacing it via the cron summary.
+        await orderDelegate.update({
+            where: { id: order.id },
+            data: { seller_transfer_status: TRANSFER_STATUS_FAILED },
+        });
+        return { ok: false as const, reason: "Missing payment_intent_id — legacy order, needs manual review." };
+    }
+
+    const settled = await verifyStripePaymentSettled(paymentIntentId);
+    if (!settled.ok) {
+        // Transient — payment is still processing OR Stripe returned an error.
+        // Leave the order status alone (typically PENDING_HOLD) so the next
+        // cron tick picks it up and re-checks. Seller gets paid automatically
+        // the moment Stripe reports the payment as succeeded.
+        if (settled.reason === "PAYMENT_NOT_SUCCEEDED" || settled.reason === "STRIPE_ERROR") {
+            return {
+                ok: false as const,
+                reason: `Stripe payment not yet cleared (will retry): ${settled.reason}${settled.detail ? ` — ${settled.detail}` : ""}`,
+            };
+        }
+        // Terminal — REFUNDED or DISPUTED. Mark FAILED; needs manual review.
+        await orderDelegate.update({
+            where: { id: order.id },
+            data: { seller_transfer_status: TRANSFER_STATUS_FAILED },
+        });
+        return { ok: false as const, reason: `Stripe payment blocked: ${settled.reason}` };
     }
 
     try {

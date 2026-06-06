@@ -144,15 +144,15 @@ export default async function ConversationPage({ params }: { params: Promise<{ i
         )}
 
         <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-2 truncate text-[15px] font-semibold text-[#2f2925]">
+          <p className="flex items-center gap-2 text-[15px] font-semibold text-[#2f2925]">
             <span className="truncate">{otherName}</span>
             {isSupportThread ? (
-              <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+              <span className="inline-flex shrink-0 items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
                 Support
               </span>
             ) : null}
+            {otherUserStat ? <UserResponseBadge medianMinutes={otherUserStat.medianMinutes} /> : null}
           </p>
-          {otherUserStat ? <UserResponseBadge medianMinutes={otherUserStat.medianMinutes} /> : null}
           <Link
             href={`/${otherUserSlug}`}
             className="mt-0.5 inline-block text-[12px] text-[#7a6050] underline-offset-2 hover:underline"

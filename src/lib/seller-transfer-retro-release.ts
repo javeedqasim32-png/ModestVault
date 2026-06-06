@@ -18,6 +18,9 @@ type RetroOrder = {
     seller_transfer_currency: string | null;
     purchase: {
         listing_id: string;
+        // Needed so attemptTransfer() can verify the buyer's Stripe payment
+        // cleared before pushing seller funds out.
+        payment_intent_id: string | null;
         listing: {
             user: {
                 id: string;
