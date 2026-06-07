@@ -298,9 +298,9 @@ export function PreCheckoutClient({
                         <ul className="mt-4 divide-y divide-[#e9ddd2]">
                             {items.map((item) => (
                                 <li key={item.id} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
-                                    <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-[0.75rem] bg-[#f2ebe4]">
+                                    <div className="relative aspect-[3/4] w-16 shrink-0 overflow-hidden rounded-[0.75rem] bg-[#f2ebe4]">
                                         {item.imageUrl ? (
-                                            <Image src={item.imageUrl} alt={item.title} fill className="object-cover" sizes="48px" />
+                                            <Image src={item.imageUrl} alt={item.title} fill className="object-cover object-top" sizes="64px" />
                                         ) : null}
                                     </div>
                                     <span className={`${serifHeading} min-w-0 flex-1 truncate text-[1rem] text-[#3a2a20]`}>{item.title}</span>
