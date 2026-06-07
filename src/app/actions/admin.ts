@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { sendListingApprovedEmail, sendListingRejectedEmail, sendRefundIssuedBuyerEmail, sendRefundIssuedSellerEmail } from "@/lib/email";
 import { createNotification } from "@/app/actions/notifications";
 import { refundPayment, reverseTransfer, stripe } from "@/lib/stripe";
+import { refundShippoLabel } from "@/lib/shippo";
 import {
     DEFAULT_MODAIRE_REFUND_REASON,
     getModaireRefundReasonLabel,
@@ -339,6 +340,8 @@ type OrderRefundLoad = {
     seller_transfer_status: string;
     seller_transfer_id: string | null;
     refund_id: string | null;
+    shippo_transaction_id: string | null;
+    shippo_label_refund_id: string | null;
     purchase: {
         id: string;
         amount: number | string | { toString(): string };
@@ -370,6 +373,8 @@ async function loadOrderForRefund(orderId: string): Promise<OrderRefundLoad> {
             seller_transfer_status: true,
             seller_transfer_id: true,
             refund_id: true,
+            shippo_transaction_id: true,
+            shippo_label_refund_id: true,
             purchase: {
                 select: {
                     id: true,
@@ -525,6 +530,28 @@ async function processRefund(
         }
     }
 
+    // 2b. Refund the Shippo label if one was purchased. Best-effort: a denied
+    // refund (label was already scanned) or a transient Shippo error is logged
+    // but never blocks the buyer refund. Final QUEUED -> SUCCESS/DECLINED
+    // resolution lands later via the transaction_updated webhook. Idempotent
+    // via the `shippo_label_refund_id` guard.
+    let shippoLabelRefundId: string | null = null;
+    let shippoLabelRefundedAt: Date | null = null;
+    let shippoLabelRefundStatus: string | null = null;
+    let shippoLabelRefundError: string | null = null;
+    if (order.shippo_transaction_id && !order.shippo_label_refund_id) {
+        try {
+            const labelRefund = await refundShippoLabel(order.shippo_transaction_id);
+            shippoLabelRefundId = (labelRefund as any)?.objectId ?? null;
+            shippoLabelRefundStatus = ((labelRefund as any)?.status as string) ?? "QUEUED";
+            shippoLabelRefundedAt = new Date();
+        } catch (err) {
+            shippoLabelRefundStatus = "ERROR";
+            shippoLabelRefundError = err instanceof Error ? err.message : "Unknown Shippo error.";
+            console.warn("processRefund: Shippo label refund request failed", err);
+        }
+    }
+
     // Pre-shipment vs post-shipment classification drives:
     //   - order_status: "CANCELLED" if the seller never shipped, "REFUNDED" if
     //     the item already left their hands. Analytics queries can still
@@ -548,6 +575,10 @@ async function processRefund(
             refund_initiator_id: opts.initiatorId,
             seller_transfer_reversal_id: transferReversalId,
             seller_transfer_reversed_at: transferReversedAt,
+            shippo_label_refund_id: shippoLabelRefundId,
+            shippo_label_refunded_at: shippoLabelRefundedAt,
+            shippo_label_refund_status: shippoLabelRefundStatus,
+            shippo_label_refund_error: shippoLabelRefundError,
             // If the cron hasn't run yet, mark FAILED so it never tries.
             ...(order.seller_transfer_status === "PENDING_HOLD" ||
                 order.seller_transfer_status === "AWAITING_SELLER_STRIPE"
@@ -612,6 +643,9 @@ async function processRefund(
         reversalError,
         orderStatus: finalOrderStatus,
         relisted,
+        shippoLabelRefundId,
+        shippoLabelRefundStatus,
+        shippoLabelRefundError,
     };
 }
 

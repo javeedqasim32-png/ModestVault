@@ -197,6 +197,15 @@ model Order {
   // pull funds back from the seller's connected account via transfers.createReversal.
   seller_transfer_reversed_at  DateTime?
   seller_transfer_reversal_id  String?     // Stripe transfer reversal id (trr_...)
+  // Shippo label refund. When a buyer's order is refunded, we ask Shippo to
+  // refund the (often unused) shipping label too — succeeds when the carrier
+  // hasn't scanned the label yet, denied otherwise. Status is usually QUEUED
+  // initially and lands on SUCCESS / DECLINED / ERROR via the transaction_updated
+  // webhook. Errors are stored so admin can see why a refund attempt failed.
+  shippo_label_refund_id      String?
+  shippo_label_refunded_at    DateTime?
+  shippo_label_refund_status  String?     // QUEUED | PENDING | SUCCESS | DECLINED | ERROR
+  shippo_label_refund_error   String?
   // Soft link for same-seller bundled checkout. NULL = legacy single-item order.
   // When set, Orders sharing this id ship in one parcel with one Shippo label
   // and one tracking number — the seller buys the label once and all sibling

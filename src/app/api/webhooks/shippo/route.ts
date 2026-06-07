@@ -2,13 +2,60 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendTrackingUpdateEmail, sendDeliveryNotificationEmail } from "@/lib/email";
 import { createNotification } from "@/app/actions/notifications";
+import { getShippoRefund } from "@/lib/shippo";
 
 export async function POST(req: Request) {
     try {
         const payload = await req.json();
 
-        // Shippo delivers track updates with event: "track_updated"
-        if (payload.event !== "track_updated" || !payload.data) {
+        if (!payload.data) {
+            return NextResponse.json({ received: true });
+        }
+
+        // transaction_updated fires when a Transaction's state changes — most
+        // notably here, when an in-flight label refund moves from QUEUED to
+        // SUCCESS / DECLINED / ERROR. We don't always trust the transaction's
+        // inline `refund_status` field across SDK versions, so we look up the
+        // refund object by its id (stored on the Order) and use its `status`.
+        if (payload.event === "transaction_updated") {
+            const transactionId = payload.data.object_id || payload.data.objectId;
+            if (!transactionId) {
+                return NextResponse.json({ received: true });
+            }
+            const orders = await (prisma as any).order.findMany({
+                where: {
+                    shippo_transaction_id: transactionId,
+                    shippo_label_refund_id: { not: null },
+                    shippo_label_refund_status: { in: ["QUEUED", "PENDING"] },
+                },
+                select: { id: true, shippo_label_refund_id: true },
+            });
+            for (const o of orders) {
+                if (!o.shippo_label_refund_id) continue;
+                try {
+                    const refund = await getShippoRefund(o.shippo_label_refund_id);
+                    const nextStatus = (refund as any)?.status ?? null;
+                    if (nextStatus) {
+                        await (prisma as any).order.update({
+                            where: { id: o.id },
+                            data: { shippo_label_refund_status: nextStatus },
+                        });
+                        console.log(
+                            `Shippo Webhook: label refund ${o.shippo_label_refund_id} on order ${o.id} → ${nextStatus}`
+                        );
+                    }
+                } catch (err) {
+                    console.error(
+                        `Shippo Webhook: failed to refresh refund ${o.shippo_label_refund_id} on order ${o.id}`,
+                        err
+                    );
+                }
+            }
+            return NextResponse.json({ received: true });
+        }
+
+        // Everything below is the existing tracking-update path.
+        if (payload.event !== "track_updated") {
             return NextResponse.json({ received: true });
         }
 

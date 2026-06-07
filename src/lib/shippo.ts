@@ -139,6 +139,29 @@ export async function getShipmentRates({
     };
 }
 
+/**
+ * Request a refund for a previously-purchased Shippo label. Succeeds when the
+ * carrier hasn't scanned the label yet (pre-shipment cancellations); denied
+ * otherwise. Returns the Shippo refund object — status is usually "QUEUED"
+ * initially, and the final SUCCESS/DECLINED outcome arrives later via the
+ * transaction_updated webhook (USPS up to 14 days, UPS faster).
+ *
+ * Caller is responsible for storing { objectId, status } on our Order so we
+ * can later resolve the refund's final state.
+ */
+export async function refundShippoLabel(transactionId: string) {
+    return shippo.refunds.create({ transaction: transactionId } as any);
+}
+
+/**
+ * Fetch the current state of a Shippo label refund. Used by the webhook
+ * handler to resolve the final status when a transaction_updated event tells
+ * us something changed on the underlying transaction.
+ */
+export async function getShippoRefund(refundId: string) {
+    return (shippo as any).refunds.get(refundId);
+}
+
 export async function purchaseLabel(rateId: string) {
     const transaction = await shippo.transactions.create({
         rate: rateId,
