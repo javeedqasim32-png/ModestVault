@@ -152,10 +152,22 @@ model Purchase {
   listing_id        String
   listing           Listing  @relation(fields: [listing_id], references: [id])
   amount            Decimal
-  stripe_session_id String?  @unique
-  payment_intent_id String?  @unique
+  // For bundle checkouts, N Purchase rows share one stripe_session_id +
+  // payment_intent_id (one Stripe session covers multiple items). The
+  // per-column @unique constraints we had before made this impossible —
+  // the 2nd insert always violated. We use composite unique on
+  // (stripe_session_id, listing_id) instead, which:
+  //   1. Allows N rows per session (one per listing in the bundle)
+  //   2. Still gives idempotency: a duplicate insert for the same
+  //      (session, listing) pair throws P2002, which our checkout finalizer
+  //      catches and treats as ALREADY_FINALIZED.
+  stripe_session_id String?
+  payment_intent_id String?
   created_at        DateTime @default(now())
   order             Order?
+
+  @@unique([stripe_session_id, listing_id])
+  @@unique([payment_intent_id, listing_id])
 }
 
 model Order {
