@@ -271,13 +271,25 @@ export async function createCheckoutSessionWithShipping(
             }
         });
 
+        // Kill switch for Stripe Tax. Set STRIPE_AUTO_TAX_ENABLED=false in
+        // .env to disable automatic tax calculation — useful when the platform
+        // Stripe account is missing a head-office address and you want to
+        // unblock end-to-end checkout testing without going to the dashboard.
+        // Remove the env var (or set to "true") to re-enable. Buyers pay
+        // pre-tax in the disabled state — don't ship with this off.
+        const autoTaxEnabled = (process.env.STRIPE_AUTO_TAX_ENABLED ?? "true").toLowerCase() !== "false";
         const checkoutSession = await stripe.checkout.sessions.create({
             customer: customerId,
-            automatic_tax: { enabled: true },
-            customer_update: {
-                shipping: "auto",
-                address: "auto"
-            },
+            automatic_tax: { enabled: autoTaxEnabled },
+            // customer_update: "auto" requires automatic_tax to be enabled.
+            // Skip the auto-update entirely when tax is disabled to avoid a
+            // separate Stripe validation error.
+            ...(autoTaxEnabled ? {
+                customer_update: {
+                    shipping: "auto",
+                    address: "auto",
+                },
+            } : {}),
             payment_method_types: ["card"],
             line_items: [
                 {
@@ -575,10 +587,13 @@ export async function createBundledCheckoutSessionWithShipping(
             };
         });
 
+        // Same kill switch as the single-item path. See createCheckoutSessionWithShipping
+        // for the full reasoning. One env var controls both checkout flows.
+        const autoTaxEnabled = (process.env.STRIPE_AUTO_TAX_ENABLED ?? "true").toLowerCase() !== "false";
         const checkoutSession = await stripe.checkout.sessions.create({
             customer: customerId,
-            automatic_tax: { enabled: true },
-            customer_update: { shipping: "auto", address: "auto" },
+            automatic_tax: { enabled: autoTaxEnabled },
+            ...(autoTaxEnabled ? { customer_update: { shipping: "auto", address: "auto" } } : {}),
             payment_method_types: ["card"],
             line_items: [
                 ...itemLineItems,
