@@ -45,6 +45,7 @@ model User {
   following          Follow[] @relation("UserFollowers")
   drafts             Draft[]
   notifications      Notification[] @relation("UserNotifications")
+  aiCoverJobs        AICoverJob[]
 }
 
 model Notification {
@@ -329,4 +330,46 @@ model Follow {
   @@unique([follower_id, following_id])
   @@index([follower_id])
   @@index([following_id])
+}
+
+// AI cover generation jobs — submitted by sellers from the sell page. Decoupled
+// from the request lifecycle so the cover keeps generating even if the seller
+// closes their tab. See plan: /Users/qasimjaveed/.claude/plans/...joyful-hoare.md
+// (Async AI cover generation).
+//
+// Lifecycle: QUEUED → PROCESSING → COMPLETED / FAILED / TIMEOUT
+// - QUEUED: submitted, waiting for the in-process worker (or cron sweeper).
+// - PROCESSING: worker has picked it up, OpenAI call in flight.
+// - COMPLETED: result_image_url set, completed_at stamped, notification fired.
+// - FAILED: error_message set; notification fired with friendly copy.
+// - TIMEOUT: cron sweeper marked it FAILED with "Timed out" after >5 min in
+//   PROCESSING (stuck worker, process crash, etc.).
+model AICoverJob {
+  id                   String    @id @default(uuid())
+  user_id              String
+  user                 User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  draft_id             String?   // soft link to the listing draft this job is for
+  status               String    @default("QUEUED")
+  // Input snapshot — exactly what we'll send to OpenAI
+  title                String
+  category             String
+  subcategory          String?
+  style                String
+  size                 String?
+  description          String
+  hijab_required       Boolean   @default(false)
+  model_skin_tone      String
+  reference_image_keys String[]                       // S3 keys for uploaded refs, in slot order
+  // Output
+  result_image_url     String?
+  error_message        String?
+  // Tracking
+  attempts             Int       @default(0)
+  started_at           DateTime?
+  completed_at         DateTime?
+  created_at           DateTime  @default(now())
+  updated_at           DateTime  @updatedAt
+
+  @@index([user_id, status, created_at])
+  @@index([status, created_at])
 }

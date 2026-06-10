@@ -2,6 +2,7 @@ import { serializeListing } from "@/lib/serialization";
 import { auth } from "@/auth";
 import { getPrimaryListingImage } from "@/lib/listing-images";
 import { prisma } from "@/lib/prisma";
+import { buildS3ImageUrl, getS3BucketName } from "@/lib/s3";
 import { redirect } from "next/navigation";
 import { getUnreadNotificationCountsByType } from "@/app/actions/notifications";
 import SellPageClient from "./SellPageClient";
@@ -24,7 +25,11 @@ export default async function SellPage({
     const createParam = Array.isArray(params.create) ? params.create[0] : params.create;
     const manageParam = Array.isArray(params.manage) ? params.manage[0] : params.manage;
     const editParam = Array.isArray(params.edit) ? params.edit[0] : params.edit;
-    const openCreateInitially = createParam === "1" || createParam === "true";
+    const aiJobIdParam = Array.isArray(params.aiJobId) ? params.aiJobId[0] : params.aiJobId;
+    // Arriving from the "AI cover ready" notification (or any link carrying an
+    // aiJobId) implies the seller wants to land on the upload screen — auto-open
+    // the create form regardless of whether `?create=1` is present.
+    const openCreateInitially = createParam === "1" || createParam === "true" || (typeof aiJobIdParam === "string" && aiJobIdParam.length > 0);
     const openManageInitially = manageParam === "1" || manageParam === "true";
     const editListingIdInitially = typeof editParam === "string" && editParam.length > 0 ? editParam : null;
     const session = await auth();
@@ -164,6 +169,78 @@ export default async function SellPage({
         };
     })();
 
+    // Most-recent AI cover job (last hour) — lets the client resume polling on
+    // an in-flight generation, or surface the result of one that completed
+    // while the seller was off the page. Includes FAILED so we can show the
+    // retry banner instead of silently dropping the error. We also hydrate the
+    // reference image URLs + form fields the seller submitted so closing the
+    // browser mid-generation doesn't wipe their uploaded photos / title / etc.
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    let initialAIJob: {
+        id: string;
+        status: string;
+        resultImageUrl: string | null;
+        errorMessage: string | null;
+        title: string | null;
+        category: string | null;
+        subcategory: string | null;
+        style: string | null;
+        size: string | null;
+        description: string | null;
+        hijabRequired: boolean | null;
+        modelSkinTone: string | null;
+        referenceImageUrls: string[];
+    } | null = null;
+    try {
+        const job = await (prisma as any).aICoverJob?.findFirst?.({
+            where: {
+                user_id: session.user.id,
+                created_at: { gte: oneHourAgo },
+            },
+            orderBy: { created_at: "desc" },
+            select: {
+                id: true,
+                status: true,
+                result_image_url: true,
+                error_message: true,
+                title: true,
+                category: true,
+                subcategory: true,
+                style: true,
+                size: true,
+                description: true,
+                hijab_required: true,
+                model_skin_tone: true,
+                reference_image_keys: true,
+            },
+        });
+        if (job) {
+            const bucket = getS3BucketName();
+            const refKeys: string[] = Array.isArray(job.reference_image_keys) ? job.reference_image_keys : [];
+            const referenceImageUrls = bucket
+                ? refKeys.map((key: string) => buildS3ImageUrl(key, bucket))
+                : [];
+            initialAIJob = {
+                id: job.id,
+                status: job.status,
+                resultImageUrl: job.result_image_url ?? null,
+                errorMessage: job.error_message ?? null,
+                title: job.title ?? null,
+                category: job.category ?? null,
+                subcategory: job.subcategory ?? null,
+                style: job.style ?? null,
+                size: job.size ?? null,
+                description: job.description ?? null,
+                hijabRequired: typeof job.hijab_required === "boolean" ? job.hijab_required : null,
+                modelSkinTone: job.model_skin_tone ?? null,
+                referenceImageUrls,
+            };
+        }
+    } catch (err) {
+        // Stale prisma client without aICoverJob? Don't break the page.
+        console.warn("[sell] AI job fetch failed (non-fatal)", err);
+    }
+
     return (
         <SellPageClient
             currentUserId={session.user.id}
@@ -174,6 +251,7 @@ export default async function SellPage({
             openCreateInitially={openCreateInitially}
             openManageInitially={openManageInitially}
             editListingIdInitially={editListingIdInitially}
+            initialAIJob={initialAIJob as any}
             analytics={analytics}
         />
     );

@@ -81,6 +81,12 @@ export async function createNotification(input: {
                 link_url: input.linkUrl ?? null,
             },
         });
+        // Invalidate the layout-segment caches that render the bell badge so
+        // the next soft navigation picks up the new unread count without a
+        // hard refresh. createNotification is called from server actions and
+        // background workers; both are safe contexts for revalidatePath.
+        revalidatePath("/");
+        revalidatePath("/sell");
     } catch (error) {
         console.error("createNotification error:", error);
     }

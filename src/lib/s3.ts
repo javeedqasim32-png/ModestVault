@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, DeleteObjectsCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectsCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import fs from "fs/promises";
 import path from "path";
 
@@ -50,6 +50,31 @@ export async function uploadFile(buffer: Buffer, key: string, contentType: strin
       CacheControl: "public, max-age=31536000, immutable",
     })
   );
+}
+
+/**
+ * Read a file by key. Mirrors uploadFile's local-mode behavior: in dev,
+ * reads from the same `public/<key>` path uploadFile wrote to. In prod,
+ * fetches from S3. Returns null when the file isn't found in either mode.
+ */
+export async function downloadFile(key: string, bucket: string): Promise<Buffer | null> {
+  if (isLocalEnvironment) {
+    try {
+      const filePath = path.join(process.cwd(), "public", key);
+      return await fs.readFile(filePath);
+    } catch {
+      return null;
+    }
+  }
+
+  try {
+    const res = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+    if (!res.Body) return null;
+    const bytes = await res.Body.transformToByteArray();
+    return Buffer.from(bytes);
+  } catch {
+    return null;
+  }
 }
 
 export async function deleteS3Directory(prefix: string, bucket: string) {

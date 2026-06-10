@@ -10,11 +10,18 @@ type Props = {
     index: number;
     showCoverLabel: boolean;
     onRemove: (index: number) => void;
+    /**
+     * When true, the card is in a read-only state: no remove button, no drag
+     * handle, and no drag-to-reorder. Used while an AI cover generation is
+     * in flight so the references actively being used by OpenAI can't be
+     * mutated out from under the worker.
+     */
+    locked?: boolean;
 };
 
 const ROLE_LABELS = ["Full Outfit", "Top", "Bottom", "Accessories", "Close-up"] as const;
 
-export default function SortableImageCard({ id, url, index, showCoverLabel, onRemove }: Props) {
+export default function SortableImageCard({ id, url, index, showCoverLabel, onRemove, locked = false }: Props) {
     const {
         attributes,
         listeners,
@@ -22,7 +29,7 @@ export default function SortableImageCard({ id, url, index, showCoverLabel, onRe
         transform,
         transition,
         isDragging,
-    } = useSortable({ id });
+    } = useSortable({ id, disabled: locked });
 
     const style: React.CSSProperties = {
         transform: CSS.Transform.toString(transform),
@@ -43,33 +50,38 @@ export default function SortableImageCard({ id, url, index, showCoverLabel, onRe
         <div
             ref={setNodeRef}
             style={style}
-            {...attributes}
-            {...listeners}
+            {...(locked ? {} : attributes)}
+            {...(locked ? {} : listeners)}
             className={`group relative aspect-[3/4] rounded-[24px] border p-1.5 flex flex-col justify-between bg-[#fbf9f6] select-none ${
                 isCoverCard ? "border-[#cfb79f] ring-1 ring-[#cfb79f]/20" : "border-[#f2e7de]"
             } ${isDragging ? "shadow-[0_12px_28px_rgba(0,0,0,0.18)]" : ""}`}
         >
-            {/* Grab handle badge */}
-            <div
-                className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-white border border-[#e8ded5] group-hover:border-[#cfb79f] rounded-md h-6 w-9 flex items-center justify-center shadow-[0_2px_4px_rgba(0,0,0,0.06)] cursor-grab active:cursor-grabbing z-20 group-hover:scale-110 transition-all duration-200"
-                title="Drag to reorder"
-            >
-                <GripHorizontal className="h-3.5 w-3.5 text-[#8a7667] group-hover:text-[#cfb79f] transition-colors duration-200" />
-            </div>
+            {/* Grab handle badge — hidden while locked since drag is disabled. */}
+            {!locked && (
+                <div
+                    className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-white border border-[#e8ded5] group-hover:border-[#cfb79f] rounded-md h-6 w-9 flex items-center justify-center shadow-[0_2px_4px_rgba(0,0,0,0.06)] cursor-grab active:cursor-grabbing z-20 group-hover:scale-110 transition-all duration-200"
+                    title="Drag to reorder"
+                >
+                    <GripHorizontal className="h-3.5 w-3.5 text-[#8a7667] group-hover:text-[#cfb79f] transition-colors duration-200" />
+                </div>
+            )}
 
-            {/* Delete button — must stop pointer events so dnd-kit doesn't pick it up as a drag start */}
-            <button
-                type="button"
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                    e.stopPropagation();
-                    onRemove(index);
-                }}
-                aria-label="Remove image"
-                className="absolute right-2.5 top-2.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white shadow-sm hover:scale-105 active:scale-95 transition-transform z-30 cursor-pointer"
-            >
-                <X className="h-3 w-3" />
-            </button>
+            {/* Delete button — hidden while locked so references can't be
+                pulled out from under an in-flight AI generation. */}
+            {!locked && (
+                <button
+                    type="button"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onRemove(index);
+                    }}
+                    aria-label="Remove image"
+                    className="absolute right-2.5 top-2.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white shadow-sm hover:scale-105 active:scale-95 transition-transform z-30 cursor-pointer"
+                >
+                    <X className="h-3 w-3" />
+                </button>
+            )}
 
             <div className="relative w-full h-full rounded-[18px] overflow-hidden pointer-events-none select-none">
                 {/* eslint-disable-next-line @next/next/no-img-element */}

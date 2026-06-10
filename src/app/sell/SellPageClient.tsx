@@ -22,16 +22,17 @@ import {
 } from "@dnd-kit/sortable";
 import SortableImageCard from "@/components/sell/SortableImageCard";
 import ListingSubmittedModal from "@/components/sell/ListingSubmittedModal";
+import PreviewGenerationStartedModal from "@/components/sell/PreviewGenerationStartedModal";
 import { markNotificationsTypeRead } from "@/app/actions/notifications";
 import { createListing, deleteListing, replaceListingImages, updateListing, getListingImages, uploadDraftPhotos, saveDraft, listMyDrafts, deleteDraft, clearDraftRecord, type DraftRecord } from "../actions/listings";
 import { Tag, UploadCloud, ChevronLeft, ChevronRight, Heart, PackagePlus, X, Printer, TrendingUp, Users, ShieldCheck, CreditCard, Sparkles, Plus, GripHorizontal, MessageCircle } from "lucide-react";
 import EmptyBagIllustration from "@/components/ui/EmptyBagIllustration";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { getCategories, getStyles, getSubcategories, getTypes } from "@/lib/taxonomy";
 import { validateListingTaxonomy, type ListingTaxonomyErrors } from "@/lib/taxonomyValidation";
-import { SKIN_TONE_OPTIONS, DEFAULT_SKIN_TONE, type SkinTone } from "@/lib/ai-cover-options";
+import { SKIN_TONE_OPTIONS, DEFAULT_SKIN_TONE, isValidSkinTone, type SkinTone } from "@/lib/ai-cover-options";
 
 type ListingItem = {
     id: string;
@@ -61,6 +62,25 @@ type ListingItem = {
     buyer_name?: string | null;
 };
 
+type AIJobSnapshot = {
+    id: string;
+    status: "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED" | "TIMEOUT";
+    resultImageUrl: string | null;
+    errorMessage: string | null;
+    // Snapshot of the form state the seller submitted with this job. Hydrated
+    // server-side from the AICoverJob row so closing the browser mid-generation
+    // doesn't wipe the seller's uploaded photos / title / category / etc.
+    title?: string | null;
+    category?: string | null;
+    subcategory?: string | null;
+    style?: string | null;
+    size?: string | null;
+    description?: string | null;
+    hijabRequired?: boolean | null;
+    modelSkinTone?: string | null;
+    referenceImageUrls?: string[];
+};
+
 type SellPageClientProps = {
     currentUserId: string;
     listings: ListingItem[];
@@ -70,6 +90,13 @@ type SellPageClientProps = {
     openCreateInitially?: boolean;
     openManageInitially?: boolean;
     editListingIdInitially?: string | null;
+    /**
+     * Most-recent AI cover job for this seller (last hour). Lets us resume
+     * polling when the seller returns to /sell after the job was kicked off
+     * from a different tab/session, or show the COMPLETED result already
+     * attached without needing to refresh.
+     */
+    initialAIJob?: AIJobSnapshot | null;
     analytics: {
         totalListings: number;
         deliveredRevenue: number;
@@ -271,9 +298,12 @@ export default function SellPageClient({
     openCreateInitially = false,
     openManageInitially = false,
     editListingIdInitially = null,
+    initialAIJob = null,
     analytics,
 }: SellPageClientProps) {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const aiJobIdParam = searchParams?.get("aiJobId") ?? null;
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -285,6 +315,19 @@ export default function SellPageClient({
     const [previewTitleError, setPreviewTitleError] = useState("");
     const [previewPhotosError, setPreviewPhotosError] = useState("");
     const [previewHijabError, setPreviewHijabError] = useState("");
+    const [previewDescriptionError, setPreviewDescriptionError] = useState("");
+    // Async AI cover job tracking. `aiJobId` is non-null while a generation is
+    // in flight (QUEUED or PROCESSING). On COMPLETED → result URL gets pushed
+    // into `generatedImageUrls` and aiJobId clears. On FAILED → aiJobError
+    // gets set so the UI can render a retry CTA.
+    const [aiJobId, setAiJobId] = useState<string | null>(
+        initialAIJob && (initialAIJob.status === "QUEUED" || initialAIJob.status === "PROCESSING")
+            ? initialAIJob.id
+            : null,
+    );
+    const [aiJobError, setAiJobError] = useState<string | null>(
+        initialAIJob?.status === "FAILED" ? (initialAIJob.errorMessage || "Generation failed — please try again.") : null,
+    );
     // Explicit "Save as Draft" state. `drafts` mirrors localStorage; `restoredPhotoUrls`
     // holds the S3 URLs of photos from a resumed draft (shown in the photo grid alongside
     // newly uploaded selectedFiles); `currentDraftId` tracks the draft being resumed so
@@ -310,6 +353,7 @@ export default function SellPageClient({
     const [mobileTab, setMobileTab] = useState<SellTab>("ACTIVE");
     const [showCreateForm, setShowCreateForm] = useState(openCreateInitially);
     const [showSubmittedModal, setShowSubmittedModal] = useState(false);
+    const [showPreviewStartedModal, setShowPreviewStartedModal] = useState(false);
     const [editingListing, setEditingListing] = useState<ListingItem | null>(null);
     const [deletingListingId, setDeletingListingId] = useState<string | null>(null);
     const [savingEdit, setSavingEdit] = useState(false);
@@ -353,6 +397,7 @@ export default function SellPageClient({
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const mobileMyListingsRef = useRef<HTMLHeadingElement | null>(null);
     const desktopMyListingsRef = useRef<HTMLHeadingElement | null>(null);
+    const aiStatusRef = useRef<HTMLDivElement | null>(null);
     const subcategoryOptions = useMemo(() => getSubcategories(category), [category]);
     const typeOptions = useMemo(() => getTypes(subcategory), [subcategory]);
     const editSubcategoryOptions = useMemo(() => getSubcategories(editCategory), [editCategory]);
@@ -404,6 +449,109 @@ export default function SellPageClient({
         })();
         return () => { cancelled = true; };
     }, [currentUserId]);
+
+    // Hydrate a server-provided AI job result on mount. If the seller submitted
+    // a generation in a previous session/tab, the server passes the most recent
+    // job through `initialAIJob` so we can show the result (or resume polling)
+    // without requiring the seller to refresh.
+    //
+    // Also restore the form state (title, category, hijab choice, uploaded
+    // reference photos, etc.) that was snapshotted onto the AICoverJob row at
+    // submit time — otherwise the seller comes back to an empty form and the
+    // photos they uploaded look like they vanished. We only restore each field
+    // when the current form value is still its default (empty / null) so we
+    // don't trample a seller who started typing in a fresh listing meanwhile.
+    useEffect(() => {
+        if (!initialAIJob) return;
+        if (initialAIJob.status === "COMPLETED" && initialAIJob.resultImageUrl) {
+            setGeneratedImageUrls((prev) =>
+                prev.includes(initialAIJob.resultImageUrl!) ? prev : [...prev, initialAIJob.resultImageUrl!],
+            );
+        }
+        // Restore form state — only fill empty/default fields so we don't
+        // overwrite a fresh draft the seller may have started.
+        setTitle((cur) => cur || (initialAIJob.title ?? ""));
+        setCategory((cur) => cur || (initialAIJob.category ?? ""));
+        setSubcategory((cur) => cur || (initialAIJob.subcategory ?? ""));
+        setStyle((cur) => cur || (initialAIJob.style ?? ""));
+        setSize((cur) => cur || (initialAIJob.size ?? ""));
+        setDescription((cur) => cur || (initialAIJob.description ?? ""));
+        setHijabRequired((cur) => (cur === null && typeof initialAIJob.hijabRequired === "boolean" ? initialAIJob.hijabRequired : cur));
+        if (initialAIJob.modelSkinTone && isValidSkinTone(initialAIJob.modelSkinTone)) {
+            setModelSkinTone((cur) => (cur === DEFAULT_SKIN_TONE ? initialAIJob.modelSkinTone as SkinTone : cur));
+        }
+        // Restore uploaded reference photos as remote URLs so the photo grid
+        // still shows them. They live in S3 under ai-refs/{userId}/{jobId}-{slot}.png
+        // and were stored in reference_image_keys on the AICoverJob row. The
+        // grid renders off `createItemOrder` (entries shaped `draft:<url>` or
+        // `new:<fileId>`), so we have to seed BOTH the URL list and the order
+        // — setting `restoredPhotoUrls` alone leaves the grid empty.
+        if (initialAIJob.referenceImageUrls && initialAIJob.referenceImageUrls.length > 0) {
+            const urls = initialAIJob.referenceImageUrls;
+            setRestoredPhotoUrls((cur) => (cur.length > 0 ? cur : urls));
+            setCreateItemOrder((cur) => (cur.length > 0 ? cur : urls.map((url) => `draft:${url}`)));
+        }
+        // QUEUED / PROCESSING already seeded aiJobId via useState init; the
+        // polling effect below picks it up.
+        // FAILED already seeded aiJobError via useState init.
+    }, [initialAIJob]);
+
+    // Poll the job status endpoint while a job is in flight. Capped at 200
+    // polls (10 min) as a safety net so a stuck job doesn't poll forever.
+    // Clears on COMPLETED, FAILED, TIMEOUT, or unmount.
+    useEffect(() => {
+        if (!aiJobId) return;
+        let cancelled = false;
+        let attempts = 0;
+        const maxAttempts = 200; // ~10 min at 3s interval
+
+        const tick = async () => {
+            if (cancelled) return;
+            attempts += 1;
+            if (attempts > maxAttempts) {
+                setAiJobError("Generation is taking longer than expected. We'll notify you when it's done.");
+                setAiJobId(null);
+                return;
+            }
+            try {
+                const res = await fetch(`/api/ai/jobs/${aiJobId}`, { cache: "no-store" });
+                if (cancelled) return;
+                if (res.status === 404) {
+                    setAiJobError("This generation no longer exists.");
+                    setAiJobId(null);
+                    return;
+                }
+                if (!res.ok) {
+                    // transient — keep polling
+                    setTimeout(tick, 3000);
+                    return;
+                }
+                const body: AIJobSnapshot = await res.json();
+                if (body.status === "COMPLETED" && body.resultImageUrl) {
+                    setGeneratedImageUrls((prev) =>
+                        prev.includes(body.resultImageUrl!) ? prev : [...prev, body.resultImageUrl!],
+                    );
+                    setAiJobError(null);
+                    setAiJobId(null);
+                    setIsGenerating(false);
+                    return;
+                }
+                if (body.status === "FAILED" || body.status === "TIMEOUT") {
+                    setAiJobError(body.errorMessage || "Generation failed — please try again.");
+                    setAiJobId(null);
+                    setIsGenerating(false);
+                    return;
+                }
+                // still QUEUED / PROCESSING → keep polling
+                setTimeout(tick, 3000);
+            } catch {
+                if (cancelled) return;
+                setTimeout(tick, 3000); // transient network error — try again
+            }
+        };
+        setTimeout(tick, 1500); // small initial delay so the row has time to flip to PROCESSING
+        return () => { cancelled = true; };
+    }, [aiJobId]);
 
     useEffect(() => {
         try {
@@ -475,10 +623,18 @@ export default function SellPageClient({
     }, [showCreateForm, mobileTab]);
 
     useEffect(() => {
+        // Only block navigation during the synchronous publish/save (`loading`)
+        // — that's a short window where bailing could leave a half-saved
+        // listing. AI cover generation (`isGenerating` / aiJobId) used to
+        // trigger this prompt too, but the flow is async now: closing the tab
+        // is explicitly safe (the worker keeps running, the bell notifies
+        // when done). Keeping the prompt on `isGenerating` would directly
+        // contradict the in-flight overlay copy telling sellers they can
+        // navigate away.
         const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-            if (isGenerating || loading) {
+            if (loading) {
                 e.preventDefault();
-                e.returnValue = "Your listing or styled preview is currently being created. Are you sure you want to leave?";
+                e.returnValue = "Your listing is being saved. Are you sure you want to leave?";
                 return e.returnValue;
             }
         };
@@ -486,7 +642,7 @@ export default function SellPageClient({
         return () => {
             window.removeEventListener("beforeunload", handleBeforeUnload);
         };
-    }, [isGenerating, loading]);
+    }, [loading]);
 
     // Map a tab key to its server-driven unread count. Replaces the old
     // localStorage-based "viewed" tracking which was unreliable on mobile.
@@ -700,6 +856,28 @@ export default function SellPageClient({
     useEffect(() => {
         if (openManageInitially) setShowCreateForm(false);
     }, [openManageInitially]);
+
+    // Deep-link from the "AI preview ready" notification → /sell?aiJobId=<id>.
+    // Force the create form open (the photo anchor lives inside it) and bring
+    // the seller straight to the photo area so they land on the generated
+    // image (or the in-flight pill) without having to scroll past the form.
+    //
+    // We re-run whenever `aiJobId` appears in the search params, not just on
+    // mount, so that clicking the bell while ALREADY on /sell (which only
+    // changes the query string, not the route) still opens the form and
+    // scrolls. Next.js doesn't remount the component on same-pathname
+    // navigation, so a mount-only effect would miss this case.
+    useEffect(() => {
+        if (!aiJobIdParam) return;
+        setShowCreateForm(true);
+        // Two RAFs so the create form mounts and the anchor is measurable
+        // before we try to scroll to it.
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                document.getElementById("preview-photos-anchor")?.scrollIntoView({ behavior: "smooth", block: "start" });
+            });
+        });
+    }, [aiJobIdParam]);
 
     // Deep-link from /listings/[id] (owner-only Edit button) → /sell?edit=<id>.
     // Auto-open the edit modal for the matching listing on mount.
@@ -1164,7 +1342,7 @@ export default function SellPageClient({
                         </p>
                     </div>
 
-                    <div className="relative">
+                    <div ref={aiStatusRef} className="relative scroll-mt-24">
                         {/* 1. Full-width dropzone only when there are no photos yet
                             (neither newly uploaded nor restored from a draft). */}
                         {createItemOrder.length === 0 && (
@@ -1205,6 +1383,7 @@ export default function SellPageClient({
                                                     url={url}
                                                     index={index}
                                                     showCoverLabel={generatedImageUrls.length === 0}
+                                                    locked={isGenerating || !!aiJobId}
                                                     onRemove={() => {
                                                         if (isDraft) {
                                                             handleRemoveRestoredPhoto(entryId.slice("draft:".length));
@@ -1217,8 +1396,10 @@ export default function SellPageClient({
                                             );
                                         })}
 
-                                        {/* 'Add Photo' slot — capped at 5 total photos (draft + new combined). */}
-                                        {createItemOrder.length < 5 && (
+                                        {/* 'Add Photo' slot — capped at 5 total photos (draft + new
+                                            combined). Hidden while an AI cover generation is in flight
+                                            so the seller can't change the references mid-job. */}
+                                        {createItemOrder.length < 5 && !(isGenerating || aiJobId) && (
                                             <button
                                                 type="button"
                                                 onClick={() => fileInputRef.current?.click()}
@@ -1337,6 +1518,10 @@ export default function SellPageClient({
                                     setPreviewTitleError("");
                                     setPreviewPhotosError("");
                                     setPreviewHijabError("");
+                                    setPreviewDescriptionError("");
+                                    // Clear stale category/style errors from a prior submit so
+                                    // the new validation pass owns the message.
+                                    setTaxonomyErrors((prev) => ({ ...prev, category: undefined, style: undefined }));
                                     if (!title.trim()) {
                                         setPreviewTitleError("Please add a title before creating a preview.");
                                         const el = document.getElementById("title");
@@ -1344,11 +1529,23 @@ export default function SellPageClient({
                                         setTimeout(() => (el as HTMLInputElement | null)?.focus(), 350);
                                         return;
                                     }
-                                    if (selectedFiles.length < 3) {
+                                    // Category / Style / Description are OPTIONAL for Create
+                                    // Preview. When present, they're sent to the AI and drive
+                                    // the TYPE LOCK + DESCRIPTION HINT prompt blocks. When
+                                    // missing, the AI falls back to interpreting the photos
+                                    // alone (same as the original flow). Required-on-publish
+                                    // validation still happens at submit-listing time.
+                                    // Count both fresh uploads and photos restored from a
+                                    // previous AI cover job. Restored photos still live in S3
+                                    // and the submit handler below sends them as
+                                    // `restoredReference_<slot>` URL fields, so they count
+                                    // toward the 3-photo minimum.
+                                    const photoCount = selectedFiles.length + restoredPhotoUrls.length;
+                                    if (photoCount < 3) {
                                         setPreviewPhotosError(
-                                            selectedFiles.length === 0
+                                            photoCount === 0
                                                 ? "Please upload at least 3 product photos first."
-                                                : `Please upload ${3 - selectedFiles.length} more photo${3 - selectedFiles.length === 1 ? "" : "s"} (3 required).`
+                                                : `Please upload ${3 - photoCount} more photo${3 - photoCount === 1 ? "" : "s"} (3 required).`
                                         );
                                         document.getElementById("preview-photos-anchor")?.scrollIntoView({ behavior: "smooth", block: "start" });
                                         return;
@@ -1361,22 +1558,71 @@ export default function SellPageClient({
                                     try {
                                         setIsGenerating(true);
                                         setError("");
+                                        // Scroll the seller up to the photo area immediately so the
+                                        // "Generating cover…" pill is visible the moment they click.
+                                        // The pill renders on `isGenerating || aiJobId`, so it shows
+                                        // up as soon as the state flip above commits — no waiting
+                                        // for the network request to resolve.
+                                        requestAnimationFrame(() =>
+                                            aiStatusRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+                                        );
                                         const apiFormData = new FormData();
-                                        // Map the selectedFiles to sequential slots in order
+                                        // Walk the grid order so freshly uploaded files and
+                                        // photos restored from a prior AI cover job map to
+                                        // sequential slots together. Fresh uploads go up as
+                                        // `reference_<slot>` File fields; restored URLs go up
+                                        // as `restoredReference_<slot>` so the server can
+                                        // reuse the existing S3 object without a re-upload.
                                         const mockSlots: SlotRole[] = ["fullOutfit", "top", "bottom", "dupatta", "closeup"];
-                                        selectedFiles.forEach((file, index) => {
-                                            if (index < mockSlots.length) {
-                                                apiFormData.append(`reference_${mockSlots[index]}`, file);
+                                        createItemOrder.slice(0, mockSlots.length).forEach((entry, index) => {
+                                            const slot = mockSlots[index];
+                                            if (entry.startsWith("new:")) {
+                                                const fileId = entry.slice("new:".length);
+                                                const file = selectedFiles.find((f) => getFileId(f) === fileId);
+                                                if (file) apiFormData.append(`reference_${slot}`, file);
+                                            } else if (entry.startsWith("draft:")) {
+                                                apiFormData.set(`restoredReference_${slot}`, entry.slice("draft:".length));
                                             }
                                         });
                                         apiFormData.set("modelSkinTone", modelSkinTone);
                                         apiFormData.set("hijabRequired", String(hijabRequired));
                                         apiFormData.set("garmentTitle", title.trim());
+                                        // Garment-type + intent signals — drive the new TYPE LOCK
+                                        // prompt block + the seller-description hint. Empty strings
+                                        // are tolerated server-side when AI_TYPE_LOCK_ENABLED=false;
+                                        // when enabled the route requires category/style/description.
+                                        apiFormData.set("garmentCategory", category.trim());
+                                        apiFormData.set("garmentSubcategory", subcategory.trim());
+                                        apiFormData.set("garmentStyle", style.trim());
+                                        apiFormData.set("garmentSize", size.trim());
+                                        apiFormData.set("garmentDescription", description.trim());
 
-                                        const res = await fetch("/api/ai/generate-cover", {
+                                        // Async pattern: POST returns 202 with a jobId in ~50ms.
+                                        // OpenAI runs in the background. The polling useEffect picks
+                                        // up `aiJobId` and swaps in the image when COMPLETED. Seller
+                                        // can navigate away — they'll get an in-app notification
+                                        // when ready, and the result auto-attaches when they return.
+                                        const res = await fetch("/api/ai/jobs", {
                                             method: "POST",
                                             body: apiFormData,
                                         });
+
+                                        if (res.status === 409) {
+                                            // Already a job in flight — resume polling on the existing one.
+                                            const data = await res.json().catch(() => ({}));
+                                            if (data?.jobId) {
+                                                setAiJobId(data.jobId);
+                                                setError(data.error || "You already have a generation in progress.");
+                                                setShowPreviewStartedModal(true);
+                                                requestAnimationFrame(() =>
+                                                    aiStatusRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+                                                );
+                                            } else {
+                                                setError("You already have a generation in progress.");
+                                            }
+                                            setIsGenerating(false);
+                                            return;
+                                        }
 
                                         if (!res.ok) {
                                             let errorMsg = `Server error (Status ${res.status})`;
@@ -1395,25 +1641,29 @@ export default function SellPageClient({
                                                 console.error("Failed to parse error response:", parseErr);
                                             }
                                             setError(errorMsg);
+                                            setIsGenerating(false);
                                             return;
                                         }
 
                                         const data = await res.json();
-                                        if (data?.error) {
-                                            setError(data.error);
+                                        if (!data?.jobId) {
+                                            setError("Failed to start generation — no job id returned.");
+                                            setIsGenerating(false);
                                             return;
                                         }
-
-                                        const imageUrl = data.imageUrl || data.url;
-                                        if (!imageUrl) {
-                                            setError("Image generation returned no URL.");
-                                            return;
-                                        }
-                                        setGeneratedImageUrls([imageUrl]);
+                                        setAiJobId(data.jobId);
+                                        setAiJobError(null);
+                                        setShowPreviewStartedModal(true);
+                                        // Bring the seller up to the generating pill so they see
+                                        // confirmation without having to scroll back up the form.
+                                        requestAnimationFrame(() =>
+                                            aiStatusRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+                                        );
+                                        // Keep isGenerating=true so the "Studio active" UI stays
+                                        // visible — the polling effect clears it on COMPLETED/FAILED.
                                     } catch (err) {
-                                        console.error("AI generate error:", err);
-                                        setError(err instanceof Error ? err.message : "Failed to generate image.");
-                                    } finally {
+                                        console.error("AI submit error:", err);
+                                        setError(err instanceof Error ? err.message : "Failed to start generation.");
                                         setIsGenerating(false);
                                     }
                                 }}
@@ -1435,13 +1685,34 @@ export default function SellPageClient({
                             </div>
                         )}
 
-                        {isGenerating && (
-                            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-white/85 backdrop-blur-[2px] p-6 text-center">
-                                <div className="h-10 w-10 animate-spin rounded-full border-3 border-[#cfb79f]/20 border-t-[#cfb79f]" />
-                                <p className="mt-3 text-sm font-semibold text-foreground">Studio active...</p>
-                                <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed max-w-[240px] mx-auto">
-                                    Creating your styled preview (takes 2-4 minutes). Feel free to fill in the item details below!
-                                </p>
+                        {/* Non-blocking status pill — sits in the corner of the
+                            photo area so the seller knows generation is in progress,
+                            but the rest of the form (and the photo grid itself) stays
+                            fully interactive. The seller is encouraged to keep working
+                            or browse away. */}
+                        {(isGenerating || aiJobId) && (
+                            <div className="pointer-events-none absolute right-3 top-3 z-30 inline-flex max-w-[260px] items-start gap-2 rounded-full border border-[#e3d7cb] bg-white/95 px-3 py-2 shadow-[0_4px_14px_rgba(122,90,69,0.10)] backdrop-blur-[2px]">
+                                <div className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-[#cfb79f]/30 border-t-[#cfb79f]" />
+                                <div className="min-w-0 text-left">
+                                    <p className="text-[11px] font-semibold leading-tight text-foreground">Generating cover…</p>
+                                    <p className="text-[10px] leading-snug text-[#7a6050]">
+                                        Keep going — bell 🔔 alerts you when ready.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+
+                        {aiJobError && !isGenerating && !aiJobId && (
+                            <div className="absolute inset-x-3 top-3 z-30 rounded-[16px] border border-red-300 bg-red-50 p-3 text-xs text-red-700 shadow-sm">
+                                <p className="font-semibold mb-0.5">Generation failed</p>
+                                <p className="leading-relaxed">{aiJobError}</p>
+                                <button
+                                    type="button"
+                                    onClick={() => setAiJobError(null)}
+                                    className="mt-1.5 text-[11px] font-medium underline opacity-80 hover:opacity-100"
+                                >
+                                    Dismiss
+                                </button>
                             </div>
                         )}
 
@@ -1598,10 +1869,20 @@ export default function SellPageClient({
                             required
                             rows={5}
                             placeholder="Describe the texture, fit, and details of this piece..."
-                            className="w-full border border-border bg-background p-4 text-sm rounded-[16px] focus:border-primary focus:outline-none transition-colors resize-none"
+                            className={`w-full border bg-background p-4 text-sm rounded-[16px] focus:outline-none transition-colors resize-none ${
+                                previewDescriptionError
+                                    ? "border-red-400 focus:border-red-500"
+                                    : "border-border focus:border-primary"
+                            }`}
                             value={description}
-                            onChange={(e) => setDescription(e.target.value)}
+                            onChange={(e) => {
+                                setDescription(e.target.value);
+                                if (previewDescriptionError) setPreviewDescriptionError("");
+                            }}
                         ></textarea>
+                        {previewDescriptionError ? (
+                            <p className="text-xs text-red-600">{previewDescriptionError}</p>
+                        ) : null}
                     </div>
 
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -1667,7 +1948,7 @@ export default function SellPageClient({
                             type="button"
                             variant="outline"
                             size="lg"
-                            disabled={loading || isGenerating || isSavingDraft}
+                            disabled={loading || isGenerating || !!aiJobId || isSavingDraft}
                             isLoading={isSavingDraft}
                             onClick={() => { void handleSaveAsDraft(); }}
                             className="px-6 w-full sm:w-auto rounded-[28px]"
@@ -1678,12 +1959,22 @@ export default function SellPageClient({
                             type="submit"
                             isLoading={loading}
                             size="lg"
-                            disabled={!taxonomyValidation.ok || loading || isGenerating || isSavingDraft}
+                            disabled={!taxonomyValidation.ok || loading || isGenerating || !!aiJobId || isSavingDraft}
                             className="px-12 w-full sm:w-auto rounded-[28px]"
                         >
                             Publish Listing
                         </Button>
                     </div>
+                    {/* While the AI cover is generating we block both Save as
+                        Draft and Publish so the seller doesn't accidentally
+                        finalize a listing without the cover they're waiting on.
+                        They can still navigate away — the worker keeps running
+                        and the bell notification fires when ready. */}
+                    {(isGenerating || aiJobId) ? (
+                        <p className="mt-3 text-center text-[12px] text-[#7a6050] sm:text-right">
+                            Waiting for your preview to finish before you can publish. Feel free to browse — bell 🔔 alerts you when ready.
+                        </p>
+                    ) : null}
                 </div>
             </form>
         </div>
@@ -2566,29 +2857,13 @@ export default function SellPageClient({
                 </div>
             </div>
 
-            {isGenerating && (
-                <>
-                    {/* Top Header Blocker */}
-                    <div 
-                        className="fixed top-0 left-0 right-0 h-24 z-[9999] cursor-not-allowed bg-black/5 backdrop-blur-[2px] flex items-center justify-center border-b border-border/40"
-                        title="Please wait for the styled preview to finish before leaving"
-                    >
-                        <span className="bg-background/95 border border-border px-3 py-1 rounded-full text-[10px] font-semibold text-primary shadow-sm tracking-wider uppercase">
-                            Studio Active • Navigation Blocked
-                        </span>
-                    </div>
-
-                    {/* Bottom Tab Bar Blocker */}
-                    <div 
-                        className="fixed bottom-0 left-0 right-0 h-24 z-[9999] cursor-not-allowed bg-black/5 backdrop-blur-[2px] flex items-center justify-center border-t border-border/40"
-                        title="Please wait for the styled preview to finish before leaving"
-                    >
-                        <span className="bg-background/95 border border-border px-3 py-1 rounded-full text-[10px] font-semibold text-primary shadow-sm tracking-wider uppercase">
-                            Studio Active • Navigation Blocked
-                        </span>
-                    </div>
-                </>
-            )}
+            {/* The previous synchronous flow rendered two fixed "Studio Active —
+                Navigation Blocked" overlays here that covered the navbar + bottom
+                tab bar with cursor-not-allowed + a blur, actively blocking taps.
+                The async job flow makes navigation explicitly safe (worker
+                survives tab close, bell notification fires when done), so those
+                blockers are gone. The corner-pill status indicator inside the
+                photo area is the only visual cue while a job is in flight. */}
 
             {loading && (
                 <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black/60 backdrop-blur-[4px]">
@@ -2605,6 +2880,11 @@ export default function SellPageClient({
             <ListingSubmittedModal
                 open={showSubmittedModal}
                 onClose={() => setShowSubmittedModal(false)}
+            />
+
+            <PreviewGenerationStartedModal
+                open={showPreviewStartedModal}
+                onClose={() => setShowPreviewStartedModal(false)}
             />
         </>
     );

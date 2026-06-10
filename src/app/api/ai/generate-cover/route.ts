@@ -6,11 +6,11 @@ import { auth } from "@/auth";
 import { buildS3ImageUrl, getS3BucketName, s3, uploadFile } from "@/lib/s3";
 import {
   DEFAULT_SKIN_TONE,
-  getHijabPrompt,
   getSkinToneTemplateUrl,
   isValidSkinTone,
   type SkinTone,
 } from "@/lib/ai-cover-options";
+import { buildAICoverPrompt, describeSlot } from "@/lib/ai-cover-prompt";
 
 // Simple in-memory per-user cooldown. For multi-instance production, swap for Redis/DB.
 const LAST_GENERATE_BY_USER = new Map<string, number>();
@@ -89,6 +89,14 @@ export async function POST(req: NextRequest) {
     let hijabRequired = false;
     let rawHijab = "";
     let garmentTitle = "";
+    // Optional soft-hint fields. None are required — they're passed to the
+    // prompt as additional context when present, with the uploaded reference
+    // images still the source of truth for visual details.
+    let garmentCategory = "";
+    let garmentSubcategory = "";
+    let garmentStyle = "";
+    let garmentSize = "";
+    let garmentDescription = "";
     const contentType = req.headers.get("content-type") || "";
     if (contentType.includes("multipart/form-data")) {
       try {
@@ -116,6 +124,18 @@ export async function POST(req: NextRequest) {
           .trim()
           .slice(0, 120);
         if (cleaned.length >= 4) garmentTitle = cleaned;
+
+        const sanitizeShort = (raw: string) =>
+          raw.replace(/[\x00-\x1f\x7f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 60);
+        garmentCategory = sanitizeShort(form.get("garmentCategory")?.toString() ?? "");
+        garmentSubcategory = sanitizeShort(form.get("garmentSubcategory")?.toString() ?? "");
+        garmentStyle = sanitizeShort(form.get("garmentStyle")?.toString() ?? "");
+        garmentSize = sanitizeShort(form.get("garmentSize")?.toString() ?? "");
+        garmentDescription = (form.get("garmentDescription")?.toString() ?? "")
+          .replace(/[\x00-\x1f\x7f]+/g, " ")
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 700);
       } catch (formErr) {
         console.error("[AI COVER] Failed to parse multipart form data:", formErr);
         return NextResponse.json({ error: "Invalid form data payload." }, { status: 400 });
@@ -245,288 +265,19 @@ export async function POST(req: NextRequest) {
     }
     console.log(`[AI COVER] Sharp image processing completed in ${Date.now() - sharpStart}ms`);
 
-    // 8. Build Prompt
-    const roleDescriptionFor = (slot: SlotRole): string => {
-      switch (slot) {
-        case "fullOutfit": return "the full outfit reference (primary silhouette, complete styling)";
-        case "top": return "the top piece (kameez / blouse)";
-        case "bottom": return "the bottom piece (shalwar / pants / skirt)";
-        case "dupatta": return "the dupatta (with its drape, transparency, and border work)";
-        case "closeup": return "a close-up reference (embroidery, sleeves, or detail work)";
-      }
-    };
-
-    const imageRoleLines = sentSlots.map((slot, idx) => `- Image ${idx + 2}: ${roleDescriptionFor(slot)}`).join("\n");
-    // Soft hint only. The uploaded reference photos remain the source of truth
-    // for color, embroidery, silhouette, and material — the title just helps
-    // the model recognize garment type when references are ambiguous.
-    const titleHintBlock = garmentTitle
-      ? `\n\nSELLER'S TITLE FOR THIS LISTING:\n"${garmentTitle}"\nUse this only as a soft hint about garment type or material. If anything in the title conflicts with the uploaded reference images (color, print, silhouette, etc.), the reference images always win.`
-      : "";
-    const promptText = `ULTRA-REALISTIC LUXURY PAKISTANI FASHION EDITORIAL CAMPAIGN
-
-CRITICAL
-
-The final image must be indistinguishable from a real professional fashion photoshoot.
-
-It must look like a luxury Pakistani designer campaign photographed by a world-class fashion photographer.
-
-Absolutely no AI-generated appearance, CGI look, digital-art look, rendering artifacts, beauty-filter effects, plastic skin, or synthetic textures.
-
-⸻
-
-MODEL LOCK (NON-NEGOTIABLE — HIGHEST-PRIORITY CONSTRAINT IN THIS PROMPT)
-
-Image 1 IS the model. Not "a reference for" the model — it IS the model.
-
-- The face in the output must be photographically identical to the face in Image 1.
-- Use the EXACT person shown in Image 1. Do NOT generate a new model.
-- Do NOT average features, do NOT idealize, do NOT swap to a generic model.
-- Skin tone, eye color, nose shape, lip shape, jawline, hair, and body proportions must match Image 1 pixel-level when re-rendered.
-- Preserving the model identity from Image 1 takes priority over environment generation, editorial styling, and every other instruction below. If a tension exists, preserve the model.
-
-⸻
-
-MASTER REFERENCE
-
-Image 1 is the model identity reference.
-
-Preserve exactly:
-
-* Same model identity
-* Same facial structure
-* Same eyes
-* Same nose
-* Same lips
-* Same jawline
-* Same skin tone
-* Same complexion
-* Same skin texture
-* Same body shape
-* Same proportions
-* Same hairstyle
-* Same hair color
-* Same hair volume
-* Same hair texture
-* Same hands
-* Same fingers
-* Same nails
-* Same pose
-* Same body positioning
-* Same head angle
-* Same gaze direction
-* Same facial expression
-
-The viewer should immediately recognize the model from Image 1.
-
-⸻
-
-HEAD COVERING (overrides the "preserve hairstyle" rule above when applicable)
-
-${getHijabPrompt(hijabRequired)}
-
-⸻
-
-ONLY CHANGE
-
-Replace the outfit with the garment reconstructed from all garment reference images.
-
-Everything else about the model remains unchanged.
-
-⸻
-
-ENVIRONMENT GENERATION
-
-Generate a completely new luxury editorial environment.
-
-Do NOT reuse environments from previous generations.
-
-Each image should feel like a different designer campaign.
-
-Possible environments include:
-
-* Historic haveli interiors
-* Heritage mansions
-* Mughal-inspired architecture
-* Grand staircases
-* Arched corridors
-* Courtyard architecture
-* Palace interiors
-* Luxury boutique hotels
-* Elegant drawing rooms
-* Editorial studio sets
-* Sunlit verandas
-* Marble halls
-* Garden pavilions
-* Historic doorways
-* Textured stone architecture
-* Luxury heritage spaces
-
-The environment should naturally complement the outfit.
-
-Do not repeat furniture arrangements, wall textures, decor, artwork, room layouts, or architectural compositions from previous images.
-
-The new environment must NEVER come at the cost of the model identity from Image 1. If a tension exists, preserve the model from Image 1 and adapt the environment, never the other way around.
-
-⸻
-
-EDITORIAL STYLE LOCK
-
-The image must look like:
-
-* Ultra-premium Pakistani fashion campaign
-* Luxury couture editorial
-* High-fashion magazine photography
-* Designer lookbook photography
-* Sophisticated luxury styling
-* Rich cinematic color grading
-* Elegant visual storytelling
-* Authentic South Asian luxury fashion
-* Timeless couture presentation
-* Natural luxury atmosphere
-* Refined fashion-editorial aesthetics
-
-Comparable to elite Pakistani designer campaigns.
-
-⸻
-
-GARMENT RECONSTRUCTION
-
-Use all garment reference images together.
-
-${imageRoleLines}
-
-Reconstruct exactly:
-
-* Color
-* Fabric
-* Fabric weight
-* Fabric texture
-* Embroidery placement
-* Embroidery density
-* Embroidery style
-* Neckline
-* Sleeves
-* Hemline
-* Silhouette
-* Stitching
-* Sequins
-* Beadwork
-* Trim details
-* Dupatta details
-* Dupatta transparency
-* Dupatta embroidery
-* Dupatta borders
-
-Garment accuracy takes priority over artistic interpretation.
-
-⸻
-
-DUPATTA REQUIREMENTS
-
-If present in references:
-
-* Include dupatta
-* Preserve transparency
-* Preserve embroidery
-* Preserve border details
-* Preserve fabric behavior
-* Preserve color
-* Natural editorial draping
-* Realistic folds
-* Realistic gravity
-* Luxury couture presentation
-
-⸻
-
-PHOTOGRAPHY REQUIREMENTS
-
-* Ultra-photorealistic
-* Medium-format fashion photography
-* Real skin pores
-* Natural skin texture
-* Real hair strands
-* Natural facial asymmetry
-* Realistic fabric physics
-* Realistic draping
-* Authentic couture construction
-* Luxury fashion retouching
-* Natural highlights
-* Natural shadows
-* Shallow depth of field
-* Professional lens rendering
-* Editorial lighting
-* Cinematic realism
-
-⸻
-
-COMPOSITION (NON-NEGOTIABLE FRAMING RULES)
-
-The model MUST be framed as a complete full-body figure inside the output. Nothing is permitted to be cropped at any edge.
-
-Strict framing math (treat as hard constraints, not suggestions):
-
-* The model's TOP-OF-HEAD must sit between 6% and 12% from the TOP edge of the frame. Leave clear breathing room above the hair.
-* The model's FEET (including shoes and toes) must sit between 8% and 15% from the BOTTOM edge of the frame. The full sole of each shoe must be visible, with FLOOR / GROUND visible beneath the feet.
-* The model occupies the central 70%-85% of the frame's vertical height. Never zoom in tighter than this.
-* The model is centered horizontally with comfortable space on the left and right sides — no cropping at the side edges either.
-
-If the model would not fit fully within the frame at this composition, ZOOM OUT and re-render — do not crop. Cropped feet, cropped shoes, cropped head, cropped hair, cropped hands, or cropped dupatta corners are unacceptable and the image fails the assignment if any of those occur.
-
-Magazine-quality, full-body editorial framing — every editorial / lookbook reference for this type of campaign shows feet and floor.
-
-⸻
-
-STRICTLY AVOID
-
-* Substituting, regenerating, or averaging the model from Image 1
-* Outputting a different person than the one in Image 1
-* "Beautifying" or idealizing the model's features
-* Changing model identity
-* Changing facial features
-* Changing skin tone
-* Changing body shape
-* Changing hairstyle
-* Changing pose
-* Changing expression
-* Missing garment pieces
-* Missing dupatta
-* Cropped feet (even partial — entire feet AND shoes must be visible)
-* Feet touching or near the bottom edge of the frame (must have floor space below)
-* No floor / ground visible beneath the model
-* Cropped shoes / cropped toes
-* Cropped head, cropped hair, cropped dupatta corners
-* Tight portrait / mid-body framing (must be full-body, head-to-floor)
-* Extra fingers
-* Missing fingers
-* Distorted anatomy
-* Plastic skin
-* CGI appearance
-* 3D-render appearance
-* AI-art appearance
-* Beauty-filter appearance
-* Unrealistic fabrics
-* Simplified embroidery
-* Fantasy redesigns
-* Ecommerce photography
-* Catalog photography
-* White seamless studio backgrounds
-* Text
-* Logos
-* Watermarks
-* Brand tags
-
-⸻
-
-FINAL GOAL
-
-Create a luxury Pakistani fashion editorial campaign image featuring the exact model from Image 1 wearing the outfit reconstructed from the garment references.
-
-The model identity must remain unchanged.
-
-The environment should be a completely new luxury editorial setting for every generation.
-
-The final result should be indistinguishable from a real high-end Pakistani designer campaign photographed for a luxury fashion magazine.${titleHintBlock}`;
+    // 8. Build prompt via the shared helper so the sync route and the async
+    //    worker stay in lockstep.
+    const referenceRoles = sentSlots.map((slot) => describeSlot(slot));
+    const promptText = buildAICoverPrompt({
+      title: garmentTitle,
+      category: garmentCategory,
+      subcategory: garmentSubcategory,
+      style: garmentStyle,
+      size: garmentSize,
+      description: garmentDescription,
+      hijabRequired,
+      referenceRoles,
+    });
 
     formData.append("model", "gpt-image-2-2026-04-21");
     formData.append("prompt", promptText);
