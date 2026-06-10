@@ -10,6 +10,7 @@ import MessageNavButton from "@/components/layout/MessageNavButton";
 import BagNavButton from "@/components/layout/BagNavButton";
 import FavoritesNavButton from "@/components/layout/FavoritesNavButton";
 import NotificationsBellButton from "@/components/layout/NotificationsBellButton";
+import SellGuestPromptLink from "@/components/auth/SellGuestPromptLink";
 
 export default async function Navbar() {
     const session = await getCachedSession();
@@ -68,9 +69,9 @@ export default async function Navbar() {
                                 Log out
                             </a>
                         ) : (
-                            <Link href="/sell" className="rounded-full px-4 py-2 text-sm text-muted-foreground hover:bg-secondary hover:text-foreground">
+                            <SellGuestPromptLink className="rounded-full px-4 py-2 text-sm text-muted-foreground hover:bg-secondary hover:text-foreground">
                                 Sell
-                            </Link>
+                            </SellGuestPromptLink>
                         )}
                     </div>
                 </div>
@@ -114,9 +115,9 @@ export default async function Navbar() {
                             <Link href="/signup" className="hover:text-foreground">
                                 Join marketplace
                             </Link>
-                            <Link href="/sell" className="hover:text-foreground">
+                            <SellGuestPromptLink className="hover:text-foreground">
                                 Become a seller
-                            </Link>
+                            </SellGuestPromptLink>
                         </>
                     )}
                 </div>

@@ -6,6 +6,7 @@ import Navbar from "@/components/layout/Navbar";
 import MobileBottomNav from "@/components/layout/MobileBottomNav";
 import ScrollToTopOnPathChange from "@/components/layout/ScrollToTopOnPathChange";
 import UnpaidEarningsBanner from "@/components/sell/UnpaidEarningsBanner";
+import { getCachedSession } from "@/lib/session";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const playfair = Playfair_Display({ subsets: ["latin"], variable: "--font-playfair" });
@@ -72,11 +73,15 @@ export const viewport: Viewport = {
   interactiveWidget: "resizes-content",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Cached per request — already called inside Navbar too, so no extra DB hit.
+  const session = await getCachedSession();
+  const isAuthed = !!session?.user?.id;
+
   return (
     <html lang="en">
       <body className={`${inter.variable} ${playfair.variable} ${jostLocal.variable} ${cormorantLocal.variable} font-sans antialiased bg-background text-foreground min-h-screen flex flex-col`}>
@@ -86,7 +91,7 @@ export default function RootLayout({
           <UnpaidEarningsBanner />
           {children}
         </main>
-        <MobileBottomNav />
+        <MobileBottomNav isAuthed={isAuthed} />
       </body>
     </html>
   );

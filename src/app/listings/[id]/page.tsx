@@ -4,13 +4,15 @@ import { auth } from "@/auth";
 import { addToCartAndRedirect } from "@/app/actions/cart";
 import { getFavoriteListingIdsForSessionUser } from "@/app/actions/favorites";
 import { getOrderedListingGallery } from "@/lib/listing-images";
-import { MessageCircle, Pencil, ShoppingBag, Star, ChevronRight } from "lucide-react";
+import { Pencil, Star, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import RecentlyViewedTracker from "@/components/marketplace/RecentlyViewedTracker";
 import FavoriteButton from "@/components/marketplace/FavoriteButton";
 import ListingImageGallery from "@/components/marketplace/ListingImageGallery";
 import ShareListingButton from "@/components/marketplace/ShareListingButton";
 import SmartBackButton from "@/components/layout/SmartBackButton";
+import AddToBagButton from "@/components/listings/AddToBagButton";
+import MessageSellerButton from "@/components/listings/MessageSellerButton";
 
 import { getUserSlugMap } from "@/lib/user-slugs";
 
@@ -88,6 +90,7 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
     });
 
     const isOwner = session?.user?.id === listing.user_id;
+    const isAuthed = !!session?.user?.id;
     const isAvailable = listing.status === "AVAILABLE";
     const orderedImages = getOrderedListingGallery(listing);
     const favoriteListingIds = new Set(await getFavoriteListingIdsForSessionUser([listing.id]));
@@ -251,13 +254,11 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                             iconClassName="h-5 w-5"
                         />
                         {!isOwner ? (
-                            <Link
-                                href={`/messages/start?sellerId=${listing.user_id}&listingId=${listing.id}`}
-                                aria-label="Message seller"
-                                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#ddd3cb] bg-[#fbf8f5] text-[#2f2925]"
-                            >
-                                <MessageCircle className="h-5 w-5" />
-                            </Link>
+                            <MessageSellerButton
+                                listingId={listing.id}
+                                sellerId={listing.user_id}
+                                isAuthed={isAuthed}
+                            />
                         ) : (
                             <Link
                                 href={`/sell?edit=${listing.id}`}
@@ -273,21 +274,16 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                             iconClassName="h-5 w-5"
                         />
                         {isAvailable && !isOwner ? (
-                            <form
-                                action={async () => {
-                                    "use server";
-                                    await addToCartAndRedirect(listing.id);
-                                }}
-                                className="w-[170px]"
-                            >
-                                <button
-                                    type="submit"
-                                    className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-full border border-[#a07c61] bg-[#a07c61] px-3 text-[12px] font-medium text-white whitespace-nowrap"
-                                >
-                                    <ShoppingBag className="h-4 w-4" />
-                                    Add to Bag
-                                </button>
-                            </form>
+                            <div className="w-[170px]">
+                                <AddToBagButton
+                                    listingId={listing.id}
+                                    isAuthed={isAuthed}
+                                    addToCartAction={async () => {
+                                        "use server";
+                                        await addToCartAndRedirect(listing.id);
+                                    }}
+                                />
+                            </div>
                         ) : (
                             <button
                                 type="button"

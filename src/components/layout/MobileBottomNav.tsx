@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 import { Home, Sparkle, Plus, Archive, User } from "lucide-react";
+import SignInPromptModal, { type SignInPromptIntent } from "@/components/auth/SignInPromptModal";
 
 const hiddenRoutes = ["/login", "/signup"];
 
@@ -21,8 +23,19 @@ const items = [
     },
 ];
 
-export default function MobileBottomNav() {
+// Maps each nav-tab href to the SignInPromptModal intent shown when a guest
+// taps it. Only entries listed here get intercepted; everything else (Home,
+// Explore) navigates normally.
+const GUEST_PROMPT_INTENTS: Record<string, SignInPromptIntent> = {
+    "/sell": "sell",
+    "/dashboard/purchases": "orders",
+    "/dashboard": "account",
+};
+
+export default function MobileBottomNav({ isAuthed = false }: { isAuthed?: boolean }) {
     const pathname = usePathname();
+    const [promptIntent, setPromptIntent] = useState<SignInPromptIntent | null>(null);
+    const [promptCallback, setPromptCallback] = useState<string>("/");
 
     if (hiddenRoutes.some((route) => pathname.startsWith(route))) {
         return null;
@@ -44,13 +57,8 @@ export default function MobileBottomNav() {
                     const active = item.match(pathname);
                     const isSell = item.href === "/sell";
 
-                    return (
-                        <Link
-                            key={item.label}
-                            href={item.href}
-                            aria-current={active ? "page" : undefined}
-                            className="flex min-w-0 flex-1 flex-col items-center gap-1.5 px-1"
-                        >
+                    const innerContent = (
+                        <>
                             {isSell ? (
                                 <span
                                     className={`flex h-14 w-14 items-center justify-center rounded-full transition-colors shadow-[0_2px_8px_rgba(122,90,69,0.12)] ${
@@ -79,10 +87,47 @@ export default function MobileBottomNav() {
                             >
                                 {item.label}
                             </span>
+                        </>
+                    );
+
+                    // Guest interception: any tab whose href is mapped in
+                    // GUEST_PROMPT_INTENTS shows the sign-in modal instead of
+                    // navigating. Authed users get the normal Link behavior.
+                    const guestIntent = !isAuthed ? GUEST_PROMPT_INTENTS[item.href] : undefined;
+                    if (guestIntent) {
+                        return (
+                            <button
+                                key={item.label}
+                                type="button"
+                                onClick={() => {
+                                    setPromptIntent(guestIntent);
+                                    setPromptCallback(item.href);
+                                }}
+                                className="flex min-w-0 flex-1 flex-col items-center gap-1.5 px-1"
+                            >
+                                {innerContent}
+                            </button>
+                        );
+                    }
+
+                    return (
+                        <Link
+                            key={item.label}
+                            href={item.href}
+                            aria-current={active ? "page" : undefined}
+                            className="flex min-w-0 flex-1 flex-col items-center gap-1.5 px-1"
+                        >
+                            {innerContent}
                         </Link>
                     );
                 })}
             </div>
+            <SignInPromptModal
+                open={promptIntent !== null}
+                onClose={() => setPromptIntent(null)}
+                intent={promptIntent ?? "sell"}
+                callbackUrl={promptCallback}
+            />
         </nav>
     );
 }
