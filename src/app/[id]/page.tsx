@@ -29,6 +29,17 @@ function formatMemberSince(date: Date) {
   return `Member since ${date.toLocaleDateString("en-US", { month: "short", year: "numeric" })}`;
 }
 
+function toSizeCode(size?: string | null) {
+  const normalized = size?.trim().toLowerCase();
+  if (!normalized) return "";
+  if (normalized === "small") return "S";
+  if (normalized === "medium") return "M";
+  if (normalized === "large") return "L";
+  if (normalized === "xlarge" || normalized === "x-large" || normalized === "extra large") return "XL";
+  if (normalized === "xxlarge" || normalized === "xx-large" || normalized === "extra extra large") return "XXL";
+  return normalized.toUpperCase();
+}
+
 const sellerSelect = {
   id: true,
   first_name: true,
@@ -212,9 +223,16 @@ export default async function SellerProfilePage({ params }: { params: Promise<{ 
                     <h3 className="mb-[2px] line-clamp-2 text-[12px] font-normal leading-[1.3] text-[#2f2925]" title={listing.title}>
                       {listing.title}
                     </h3>
-                    <p className="mt-[1px] truncate text-[13px] font-semibold text-[#2f2925]">
-                      ${Number(listing.price).toLocaleString()}
-                    </p>
+                    <div className="mt-auto flex items-end justify-between gap-2">
+                      <p className="truncate text-[13px] font-semibold text-[#2f2925]">
+                        ${Number(listing.price).toLocaleString()}
+                      </p>
+                      {listing.size ? (
+                        <span className="shrink-0 text-[12px] font-normal uppercase tracking-[0.04em] text-[#8a7667]">
+                          {toSizeCode(listing.size)}
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
                 </Link>
               ))}

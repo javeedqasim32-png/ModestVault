@@ -7,27 +7,12 @@ import { prisma } from "@/lib/prisma";
 import { markConversationRead, sendConversationMessage } from "@/app/actions/messages";
 import ConversationViewportFix from "@/components/messages/ConversationViewportFix";
 import MessageComposer from "@/components/messages/MessageComposer";
+import MessageTimestamp from "@/components/messages/MessageTimestamp";
 import UserResponseBadge from "@/components/messages/UserResponseBadge";
 import { getUserResponseStat } from "@/lib/user-response";
 import { getUserSlugMap } from "@/lib/user-slugs";
 
 export const dynamic = "force-dynamic";
-
-function formatMessageTime(date: Date) {
-  const now = new Date();
-  const sameDay = date.toDateString() === now.toDateString();
-  const sameYear = date.getFullYear() === now.getFullYear();
-  if (sameDay) {
-    // e.g., "3:45 PM"
-    return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-  }
-  if (sameYear) {
-    // e.g., "Jan 15, 3:45 PM"
-    return date.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-  }
-  // e.g., "Jan 15, 2025, 3:45 PM"
-  return date.toLocaleString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-}
 
 export default async function ConversationPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -207,13 +192,15 @@ export default async function ConversationPage({ params }: { params: Promise<{ i
                       {hasBody ? (
                         <p className="whitespace-pre-wrap break-words text-[15px] leading-snug">{message.body}</p>
                       ) : null}
-                      <p className={`mt-1 text-[10px] ${mine ? "text-white/80" : "text-[#8a7667]"}`}>{formatMessageTime(message.created_at)}</p>
+                      <p className={`mt-1 text-[10px] ${mine ? "text-white/80" : "text-[#8a7667]"}`}>
+                        <MessageTimestamp iso={message.created_at.toISOString()} />
+                      </p>
                     </div>
                   </div>
                   {index === lastReadMineIndex && message.read_at ? (
                     <div className="flex justify-end pr-1">
                       <span className="text-[10px] text-[#8a7667]">
-                        Read {formatMessageTime(message.read_at)}
+                        Read <MessageTimestamp iso={message.read_at.toISOString()} />
                       </span>
                     </div>
                   ) : null}

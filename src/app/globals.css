@@ -38,7 +38,7 @@
     --card-foreground: #2f241f;
     --border: #ddd1ca;
     --input: #ddd1ca;
-    --primary: #8d6d58;
+    --primary: #5f4437;
     --primary-foreground: #fffaf7;
     --secondary: #efe7e2;
     --secondary-foreground: #2f241f;
@@ -46,7 +46,7 @@
     --accent-foreground: #2f241f;
     --destructive: #dc2626;
     --destructive-foreground: #ffffff;
-    --ring: #8d6d58;
+    --ring: #5f4437;
     --radius: 1.5rem;
     --warm: #e5d5ca;
   }

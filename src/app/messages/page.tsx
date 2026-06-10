@@ -2,12 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import MessageTimestamp from "@/components/messages/MessageTimestamp";
 
 export const dynamic = "force-dynamic";
-
-function formatTime(date: Date) {
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
 
 export default async function MessagesInboxPage() {
   const session = await auth();
@@ -103,7 +100,12 @@ export default async function MessagesInboxPage() {
                         </span>
                       ) : null}
                     </div>
-                    <span className="text-[12px] text-[#8a7667]">{latest ? formatTime(latest.created_at) : formatTime(conversation.updated_at)}</span>
+                    <span className="text-[12px] text-[#8a7667]">
+                      <MessageTimestamp
+                        iso={(latest ? latest.created_at : conversation.updated_at).toISOString()}
+                        variant="list"
+                      />
+                    </span>
                   </div>
                   <p className="mt-1 truncate text-[13px] text-[#6f6054]">{latest?.body ? latest.body : latest?.image_url ? "📷 Photo" : "Open conversation"}</p>
                 </Link>
