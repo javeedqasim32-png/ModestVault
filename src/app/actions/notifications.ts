@@ -72,7 +72,7 @@ export async function createNotification(input: {
         return;
     }
     try {
-        await delegate.create({
+        const created = (await delegate.create({
             data: {
                 user_id: input.userId,
                 type: input.type,
@@ -80,13 +80,31 @@ export async function createNotification(input: {
                 body: input.body,
                 link_url: input.linkUrl ?? null,
             },
-        });
+        })) as { id: string };
         // Invalidate the layout-segment caches that render the bell badge so
         // the next soft navigation picks up the new unread count without a
         // hard refresh. createNotification is called from server actions and
         // background workers; both are safe contexts for revalidatePath.
         revalidatePath("/");
         revalidatePath("/sell");
+        // Mobile push: enqueue into NotificationOutbox. The dispatcher cron at
+        // /api/internal/dispatch-push-notifications drains the outbox via FCM.
+        // Best-effort — a failed enqueue doesn't roll back the in-app
+        // notification, which is the source of truth.
+        try {
+            await (prisma as any).notificationOutbox?.create?.({
+                data: {
+                    notification_id: created.id,
+                    user_id: input.userId,
+                    type: input.type,
+                    title: input.title,
+                    body: input.body,
+                    data: input.linkUrl ? { linkUrl: input.linkUrl } : undefined,
+                },
+            });
+        } catch (outboxErr) {
+            console.warn("createNotification: outbox enqueue failed (non-fatal)", outboxErr);
+        }
     } catch (error) {
         console.error("createNotification error:", error);
     }

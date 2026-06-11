@@ -47,6 +47,7 @@ model User {
   notifications      Notification[] @relation("UserNotifications")
   aiCoverJobs        AICoverJob[]
   refreshTokens      RefreshToken[]
+  deviceTokens       DeviceToken[]
   deleted_at         DateTime?
   deletion_scheduled_purge_at DateTime?
 }
@@ -398,3 +399,48 @@ model RefreshToken {
 
   @@index([user_id, revoked_at])
   @@index([expires_at])
+}
+
+// One row per active install of the Flutter app per user. FCM token is the
+// natural key — Firebase rotates them, so re-registers UPSERT on token.
+// Revoked rows are kept (no hard delete) so we can audit which devices were
+// active when a notification was queued.
+model DeviceToken {
+  id          String    @id @default(uuid())
+  user_id     String
+  user        User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  token       String    @unique           // FCM device token, opaque to us
+  platform    String                       // "ios" | "android"
+  app_version String?
+  created_at  DateTime  @default(now())
+  last_seen_at DateTime @default(now())
+  revoked_at  DateTime?
+
+  @@index([user_id, revoked_at])
+}
+
+// Push-notification outbox. createNotification() inserts here after writing
+// the in-app Notification row; the /api/internal/dispatch-push-notifications
+// cron drains it via FCM. Decoupling the FCM call from the request path:
+//   - keeps createNotification fast (no external API in the hot path)
+//   - gives us free retries (exponential backoff via next_attempt_at)
+//   - survives Firebase being temporarily down or misconfigured
+// Successfully-sent rows are kept for ~30 days for debuggability, then
+// purged by the same cron.
+model NotificationOutbox {
+  id              String    @id @default(uuid())
+  notification_id String                                  // FK soft-link to Notification.id
+  user_id         String                                  // denormalized for fan-out per device
+  type            String                                  // mirrors Notification.type
+  title           String
+  body            String
+  data            Json?                                   // extra payload (e.g., {jobId, listingId})
+  attempts        Int       @default(0)
+  next_attempt_at DateTime  @default(now())
+  sent_at         DateTime?
+  failed_reason   String?
+  created_at      DateTime  @default(now())
+
+  @@index([sent_at, next_attempt_at])
+  @@index([user_id, sent_at])
+}
