@@ -1,4 +1,5 @@
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectsCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import fs from "fs/promises";
 import path from "path";
 
@@ -75,6 +76,44 @@ export async function downloadFile(key: string, bucket: string): Promise<Buffer 
   } catch {
     return null;
   }
+}
+
+/**
+ * Issue a short-lived presigned PUT URL the mobile (or any) client can upload
+ * to directly. Avoids the round-trip-through-Next.js cost for large reference
+ * photos on cellular.
+ *
+ * In dev mode we return a relative `/api/uploads-dev/<key>` path that the
+ * /api/uploads-dev route handles by writing to the local `public/<key>` —
+ * same surface as `uploadFile`'s local branch — so the flow works without
+ * real AWS credentials on a laptop.
+ */
+export async function getPresignedPutUrl(
+  key: string,
+  contentType: string,
+  bucket: string,
+  expiresInSeconds: number = 15 * 60,
+): Promise<{ uploadUrl: string; expiresAt: Date }> {
+  if (isLocalEnvironment) {
+    // Local-dev shim: the /api/uploads-dev route accepts a PUT and writes to
+    // public/<key>. Callers don't need to know which branch they hit — the
+    // shape (PUT to URL, body is the bytes) is identical.
+    return {
+      uploadUrl: `/api/uploads-dev/${key}`,
+      expiresAt: new Date(Date.now() + expiresInSeconds * 1000),
+    };
+  }
+  const command = new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    ContentType: contentType,
+    CacheControl: "public, max-age=31536000, immutable",
+  });
+  const uploadUrl = await getSignedUrl(s3, command, { expiresIn: expiresInSeconds });
+  return {
+    uploadUrl,
+    expiresAt: new Date(Date.now() + expiresInSeconds * 1000),
+  };
 }
 
 export async function deleteS3Directory(prefix: string, bucket: string) {
