@@ -46,6 +46,9 @@ model User {
   drafts             Draft[]
   notifications      Notification[] @relation("UserNotifications")
   aiCoverJobs        AICoverJob[]
+  refreshTokens      RefreshToken[]
+  deleted_at         DateTime?
+  deletion_scheduled_purge_at DateTime?
 }
 
 model Notification {
@@ -373,3 +376,25 @@ model AICoverJob {
   @@index([user_id, status, created_at])
   @@index([status, created_at])
 }
+
+// Refresh tokens issued by /api/v1/auth/login for the mobile (Flutter) client.
+// Stored as a sha256 hash so a stolen DB row can't be replayed against the
+// auth endpoint. Rotation on /api/v1/auth/refresh marks the old row's
+// revoked_at and inserts a new one — that gives us refresh-token rotation
+// detection (if a revoked token is presented, the chain is compromised and
+// we can mass-revoke the user's other sessions).
+//
+// Web continues to use NextAuth cookie sessions; this table is mobile-only.
+model RefreshToken {
+  id         String    @id @default(uuid())
+  user_id    String
+  user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  token_hash String    @unique                  // sha256 of the opaque random token
+  device_id  String?                            // optional client-supplied device fingerprint
+  expires_at DateTime
+  revoked_at DateTime?
+  created_at DateTime  @default(now())
+  last_used_at DateTime?
+
+  @@index([user_id, revoked_at])
+  @@index([expires_at])
