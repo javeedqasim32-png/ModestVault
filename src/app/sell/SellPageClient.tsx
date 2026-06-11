@@ -25,6 +25,7 @@ import ListingSubmittedModal from "@/components/sell/ListingSubmittedModal";
 import PreviewGenerationStartedModal from "@/components/sell/PreviewGenerationStartedModal";
 import { markNotificationsTypeRead } from "@/app/actions/notifications";
 import { createListing, deleteListing, replaceListingImages, updateListing, getListingImages, uploadDraftPhotos, saveDraft, listMyDrafts, deleteDraft, clearDraftRecord, type DraftRecord } from "../actions/listings";
+import { clearRecentAICoverJobs } from "../actions/ai-cover-jobs";
 import { Tag, UploadCloud, ChevronLeft, ChevronRight, Heart, PackagePlus, X, Printer, TrendingUp, Users, ShieldCheck, CreditCard, Sparkles, Plus, GripHorizontal, MessageCircle } from "lucide-react";
 import EmptyBagIllustration from "@/components/ui/EmptyBagIllustration";
 import { Button } from "@/components/ui/Button";
@@ -1269,6 +1270,15 @@ export default function SellPageClient({
                             setDrafts((prev) => prev.filter((d) => d.id !== publishedDraftId));
                         }
                         setShowSubmittedModal(true);
+                        // Drop the AICoverJob the seller just consumed so
+                        // returning to /sell brings up a fresh form instead of
+                        // re-hydrating the photos / fields from the listing
+                        // they just published. Fire-and-forget — failure here
+                        // is purely cosmetic and shouldn't block the success
+                        // flow.
+                        void clearRecentAICoverJobs().catch((err) =>
+                            console.warn("clearRecentAICoverJobs failed", err),
+                        );
                         router.refresh();
                     }
                 } catch (err) {
