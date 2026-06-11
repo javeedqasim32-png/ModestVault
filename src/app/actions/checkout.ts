@@ -154,12 +154,18 @@ export async function createCheckoutSession(listingId: string) {
     redirect(`/buy/checkout?listingId=${listingId}`);
 }
 
-export async function getShippingRatesForListing(listingId: string, address: ShippingAddressInput) {
+/**
+ * Cookie-less variant called by Bearer-authenticated routes (the mobile API
+ * layer at /api/v1/checkout/*). The action below is a thin wrapper that adds
+ * the NextAuth session check for cookie callers (the website).
+ */
+export async function getShippingRatesForListingByUserId(
+    buyerId: string,
+    listingId: string,
+    address: ShippingAddressInput,
+) {
     try {
-        const session = await auth();
-        if (!session?.user?.id) throw new Error("Unauthorized");
-
-        const listing = await getValidatedListingForCheckout(listingId, session.user.id);
+        const listing = await getValidatedListingForCheckout(listingId, buyerId);
         const seller = listing.user;
 
         const sellerOrigin = getSellerOriginOrThrow(seller);
@@ -177,11 +183,17 @@ export async function getShippingRatesForListing(listingId: string, address: Shi
             sellerPhone: sellerOrigin.sellerPhone
         });
 
-        return { success: true, shipmentId: ratesData.shipmentId, rates: ratesData.rates };
+        return { success: true as const, shipmentId: ratesData.shipmentId, rates: ratesData.rates };
     } catch (error: unknown) {
-        console.error("getShippingRatesForListing error:", error);
+        console.error("getShippingRatesForListingByUserId error:", error);
         return { error: getErrorMessage(error, "Failed to fetch shipping rates.") };
     }
+}
+
+export async function getShippingRatesForListing(listingId: string, address: ShippingAddressInput) {
+    const session = await auth();
+    if (!session?.user?.id) return { error: "Unauthorized" };
+    return getShippingRatesForListingByUserId(session.user.id, listingId, address);
 }
 
 export async function createCheckoutSessionWithShipping(
@@ -452,12 +464,182 @@ export async function createBundleCheckoutSession(listingIds: string[]) {
  * whole group. v1 uses the existing STANDARD_PARCEL size — clothing is
  * compressible and typical 2-5 item bundles fit. Future: sum per-item dims.
  */
-export async function getShippingRatesForBundle(listingIds: string[], address: ShippingAddressInput) {
+/**
+ * Cookie-less PaymentIntent creator for the mobile (PaymentSheet) flow.
+ * Mirrors createCheckoutSessionWithShipping's metadata exactly so the same
+ * downstream finalize logic can read it on `payment_intent.succeeded`.
+ *
+ * Returns the bits PaymentSheet needs: paymentIntent client_secret, a fresh
+ * ephemeralKey scoped to the customer, the customerId, and a server-computed
+ * breakdown the client renders on the order-confirmation screen without
+ * trusting the user-supplied total.
+ *
+ * Web continues to use the redirect-based Hosted Checkout path. This is the
+ * mobile-only path.
+ */
+export async function createPaymentIntentForListingByUserId(
+    buyerId: string,
+    listingId: string,
+    address: ShippingAddressInput,
+    selectedRate: SelectedRateInput,
+) {
     try {
-        const session = await auth();
-        if (!session?.user?.id) throw new Error("Unauthorized");
+        const normalizedAddress = normalizeShippingAddress(address);
+        assertShippingAddressIsComplete(normalizedAddress);
 
-        const listings = await getValidatedListingsForBundle(listingIds, session.user.id);
+        const listing = await getValidatedListingForCheckout(listingId, buyerId);
+
+        let validatedRate: {
+            id: string;
+            carrier: string;
+            serviceLevel: string;
+            amount: string;
+            currency: string;
+            estimatedDays?: number;
+        } | null = null;
+
+        if (selectedRate.shipmentId) {
+            validatedRate = await getShipmentRateById(selectedRate.shipmentId, selectedRate.rateId);
+        }
+        if (!validatedRate) {
+            validatedRate = {
+                id: selectedRate.rateId,
+                carrier: selectedRate.carrier,
+                serviceLevel: selectedRate.serviceLevel,
+                amount: selectedRate.amount,
+                currency: selectedRate.currency,
+                estimatedDays: selectedRate.estimatedDays,
+            };
+        }
+
+        const shippingCents = Math.round(Number(validatedRate.amount) * 100);
+        if (!Number.isFinite(shippingCents) || shippingCents < 0) {
+            throw new Error("Invalid shipping amount.");
+        }
+        const unitAmount = Math.round(Number(listing.price) * 100);
+        const totalAmount = unitAmount + shippingCents;
+
+        // Get or create the buyer's Stripe Customer + sync the address so the
+        // PaymentSheet shows the right shipping selector pre-filled.
+        const dbUser = await prisma.user.findUnique({
+            where: { id: buyerId },
+            select: { stripe_customer_id: true, email: true, first_name: true, last_name: true },
+        });
+        let customerId = dbUser?.stripe_customer_id;
+        if (!customerId) {
+            const customer = await stripe.customers.create({
+                email: dbUser?.email || undefined,
+                name: `${dbUser?.first_name || ""} ${dbUser?.last_name || ""}`.trim(),
+            });
+            customerId = customer.id;
+            await prisma.user.update({
+                where: { id: buyerId },
+                data: { stripe_customer_id: customerId },
+            });
+        }
+        await stripe.customers.update(customerId, {
+            shipping: {
+                name: normalizedAddress.name,
+                address: {
+                    line1: normalizedAddress.line1,
+                    line2: normalizedAddress.line2 || undefined,
+                    city: normalizedAddress.city,
+                    state: normalizedAddress.state,
+                    postal_code: normalizedAddress.postal_code,
+                    country: normalizedAddress.country,
+                },
+            },
+            address: {
+                line1: normalizedAddress.line1,
+                line2: normalizedAddress.line2 || undefined,
+                city: normalizedAddress.city,
+                state: normalizedAddress.state,
+                postal_code: normalizedAddress.postal_code,
+                country: normalizedAddress.country,
+            },
+        });
+
+        // Ephemeral key — short-lived credential that lets PaymentSheet read
+        // the customer's saved payment methods directly. Stripe rotates the
+        // required apiVersion periodically; the SDK version installed locally
+        // dictates which version to pass.
+        const ephemeralKey = await stripe.ephemeralKeys.create(
+            { customer: customerId },
+            { apiVersion: "2025-09-30.clover" },
+        );
+
+        const paymentIntent = await stripe.paymentIntents.create({
+            amount: totalAmount,
+            currency: "usd",
+            customer: customerId,
+            // Mobile PaymentSheet supports more methods than just card; allow
+            // Stripe to determine which ones to surface based on dashboard
+            // config + the buyer's region.
+            automatic_payment_methods: { enabled: true },
+            description: listing.title,
+            shipping: {
+                name: normalizedAddress.name,
+                phone: normalizedAddress.phone,
+                address: {
+                    line1: normalizedAddress.line1,
+                    line2: normalizedAddress.line2 || undefined,
+                    city: normalizedAddress.city,
+                    state: normalizedAddress.state,
+                    postal_code: normalizedAddress.postal_code,
+                    country: normalizedAddress.country,
+                },
+            },
+            metadata: {
+                listingId: listing.id,
+                buyerId,
+                itemAmountCents: String(unitAmount),
+                shippingAmountCents: String(shippingCents),
+                shippingRateId: validatedRate.id,
+                shippingCarrier: validatedRate.carrier,
+                shippingService: validatedRate.serviceLevel,
+                shippingCurrency: validatedRate.currency,
+                shippingEstimatedDays: String(validatedRate.estimatedDays ?? ""),
+                shipName: normalizedAddress.name,
+                shipLine1: normalizedAddress.line1,
+                shipLine2: normalizedAddress.line2 || "",
+                shipCity: normalizedAddress.city,
+                shipState: normalizedAddress.state,
+                shipPostal: normalizedAddress.postal_code,
+                shipCountry: normalizedAddress.country,
+                shipPhone: normalizedAddress.phone,
+                // Flag so the webhook's payment_intent.succeeded handler can
+                // route to the mobile-specific finalize path. Web continues
+                // to use checkout.session.completed.
+                channel: "mobile",
+            },
+        });
+
+        return {
+            success: true as const,
+            paymentIntentId: paymentIntent.id,
+            clientSecret: paymentIntent.client_secret!,
+            ephemeralKey: ephemeralKey.secret!,
+            customerId,
+            breakdown: {
+                itemAmount: unitAmount,
+                shippingAmount: shippingCents,
+                totalAmount,
+                currency: "usd",
+            },
+        };
+    } catch (error: unknown) {
+        console.error("createPaymentIntentForListingByUserId error:", error);
+        return { error: getErrorMessage(error, "Failed to create payment.") };
+    }
+}
+
+export async function getShippingRatesForBundleByUserId(
+    buyerId: string,
+    listingIds: string[],
+    address: ShippingAddressInput,
+) {
+    try {
+        const listings = await getValidatedListingsForBundle(listingIds, buyerId);
         const sellerOrigin = getSellerOriginOrThrow(listings[0].user);
 
         const normalizedAddress = normalizeShippingAddress(address);
@@ -473,11 +655,17 @@ export async function getShippingRatesForBundle(listingIds: string[], address: S
             sellerPhone: sellerOrigin.sellerPhone,
         });
 
-        return { success: true, shipmentId: ratesData.shipmentId, rates: ratesData.rates };
+        return { success: true as const, shipmentId: ratesData.shipmentId, rates: ratesData.rates };
     } catch (error: unknown) {
-        console.error("getShippingRatesForBundle error:", error);
+        console.error("getShippingRatesForBundleByUserId error:", error);
         return { error: getErrorMessage(error, "Failed to fetch shipping rates for the bundle.") };
     }
+}
+
+export async function getShippingRatesForBundle(listingIds: string[], address: ShippingAddressInput) {
+    const session = await auth();
+    if (!session?.user?.id) return { error: "Unauthorized" };
+    return getShippingRatesForBundleByUserId(session.user.id, listingIds, address);
 }
 
 /**

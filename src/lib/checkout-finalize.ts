@@ -407,6 +407,204 @@ export async function finalizeCheckout(sessionId: string): Promise<FinalizeResul
     };
 }
 
+/**
+ * Mobile (PaymentSheet) sibling of finalizeCheckout. Keyed off the
+ * PaymentIntent id instead of a Checkout Session id, because the mobile flow
+ * never creates a Checkout Session. Logic mirrors finalizeCheckout's
+ * single-item path step-for-step — DB upsert under the composite unique on
+ * (payment_intent_id, listing_id), label purchase, buyer/seller emails,
+ * seller notification. The race-safe P2002 dance is the same; we just check
+ * for an existing Purchase by payment_intent_id rather than stripe_session_id.
+ *
+ * Called from two places:
+ *  - POST /api/v1/checkout/finalize  (mobile client confirms payment success)
+ *  - The payment_intent.succeeded handler in /api/webhooks/stripe (backup)
+ *
+ * Bundle checkouts are deferred for the mobile flow — the website still
+ * routes those through Hosted Checkout.
+ *
+ * KNOWN DUPLICATION: this and finalizeCheckout share ~80% of the body. The
+ * two will be merged behind a single _finalizeCheckoutCore() once both paths
+ * have run in prod long enough to validate they produce byte-identical
+ * Order rows. Don't add divergent logic to either without porting to both.
+ */
+export async function finalizeCheckoutByPaymentIntent(paymentIntentId: string): Promise<FinalizeResult> {
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    const metadata = (paymentIntent.metadata || {}) as Record<string, string>;
+    const buyerId = metadata.buyerId || "";
+
+    if (paymentIntent.status !== "succeeded") {
+        return { status: "NOT_PAID", paymentStatus: String(paymentIntent.status) };
+    }
+
+    const listingId = metadata.listingId;
+    if (!listingId) {
+        return { status: "MISSING_LISTING" };
+    }
+
+    const shippingAddressFromMeta = metadata.shipLine1
+        ? {
+            name: metadata.shipName || "",
+            line1: metadata.shipLine1 || "",
+            line2: metadata.shipLine2 || "",
+            city: metadata.shipCity || "",
+            state: metadata.shipState || "",
+            postal_code: metadata.shipPostal || "",
+            country: metadata.shipCountry || "US",
+            phone: metadata.shipPhone || "",
+        }
+        : null;
+    const shippingOptionSelectedInCheckout = !!metadata.shippingRateId;
+
+    let order = await (prisma as any).order.findFirst({
+        where: { purchase: { payment_intent_id: paymentIntentId, listing_id: listingId } },
+        include: ORDER_WITH_DETAILS_INCLUDE,
+    });
+
+    let newlyCreated = false;
+    if (!order) {
+        const listing = await prisma.listing.findUnique({
+            where: { id: listingId },
+            include: { user: true },
+        });
+        if (!listing) {
+            return { status: "MISSING_LISTING" };
+        }
+
+        try {
+            await prisma.$transaction(async (tx) => {
+                const currentListing = await tx.listing.findUnique({ where: { id: listingId } });
+                if (!currentListing || currentListing.status !== "AVAILABLE") {
+                    throw new Error("ALREADY_SOLD");
+                }
+
+                await tx.listing.update({
+                    where: { id: listingId },
+                    data: { status: "SOLD" },
+                });
+
+                const itemAmountCents = metadata.itemAmountCents
+                    ? Number(metadata.itemAmountCents)
+                    : Math.round(paymentIntent.amount || 0);
+                const sellerTransferAmountCents = Math.max(0, Math.round(itemAmountCents * 0.85));
+                const sellerTransferCurrency = (paymentIntent.currency || "usd").toLowerCase();
+
+                const newPurchase = await tx.purchase.create({
+                    data: {
+                        buyer_id: buyerId,
+                        listing_id: listingId,
+                        amount: itemAmountCents / 100,
+                        // No stripe_session_id for mobile — composite unique
+                        // on (payment_intent_id, listing_id) provides
+                        // idempotency.
+                        stripe_session_id: null,
+                        payment_intent_id: paymentIntentId,
+                    },
+                });
+
+                order = await (tx as any).order.create({
+                    data: {
+                        purchase_id: newPurchase.id,
+                        order_status: "PAID",
+                        shipping_status: "NOT_SHIPPED",
+                        shipping_stage: shippingOptionSelectedInCheckout
+                            ? "OPTION_SELECTED"
+                            : (shippingAddressFromMeta ? "ADDRESS_SET" : "ADDRESS_MISSING"),
+                        shipping_address: shippingAddressFromMeta || undefined,
+                        shipping_option_rate_id: metadata.shippingRateId || undefined,
+                        shipping_option_carrier: metadata.shippingCarrier || undefined,
+                        shipping_option_service: metadata.shippingService || undefined,
+                        shipping_option_amount: metadata.shippingAmountCents
+                            ? (Number(metadata.shippingAmountCents) / 100).toFixed(2)
+                            : undefined,
+                        shipping_option_currency: metadata.shippingCurrency || undefined,
+                        shipping_option_selected_at: shippingOptionSelectedInCheckout ? new Date() : undefined,
+                        seller_transfer_status: "PENDING_HOLD",
+                        seller_transfer_amount_cents: sellerTransferAmountCents,
+                        seller_transfer_currency: sellerTransferCurrency,
+                    },
+                    include: ORDER_WITH_DETAILS_INCLUDE,
+                });
+
+                if (buyerId) {
+                    await tx.cartItem.deleteMany({
+                        where: { user_id: buyerId, listing_id: listingId },
+                    });
+                }
+            });
+            newlyCreated = true;
+        } catch (error: any) {
+            if (error?.message === "ALREADY_SOLD") {
+                return { status: "ALREADY_SOLD", isBundle: false };
+            }
+            // P2002 on (payment_intent_id, listing_id) — the webhook + the
+            // mobile client's explicit finalize raced. Re-read and treat as
+            // ALREADY_FINALIZED.
+            if (error?.code === "P2002") {
+                const raced = await (prisma as any).order.findFirst({
+                    where: { purchase: { payment_intent_id: paymentIntentId, listing_id: listingId } },
+                    include: ORDER_WITH_DETAILS_INCLUDE,
+                });
+                if (raced) {
+                    const labelOutcome = await maybePurchaseSingleLabel(raced);
+                    return {
+                        status: "ALREADY_FINALIZED",
+                        isBundle: false,
+                        order: labelOutcome.order,
+                        autoLabelError: labelOutcome.error,
+                    };
+                }
+            }
+            throw error;
+        }
+
+        // Emails + seller notification. Buyer email comes from the User row
+        // since PaymentIntents don't carry customer_details the way Sessions
+        // do (the cookie redirect path's checkoutSession.customer_details
+        // shape isn't populated on raw PaymentIntents).
+        const buyer = buyerId
+            ? await prisma.user.findUnique({ where: { id: buyerId }, select: { email: true } })
+            : null;
+        if (buyer?.email) {
+            await sendOrderConfirmationEmail(
+                buyer.email,
+                listing.title,
+                (paymentIntent.amount || 0) / 100,
+            );
+        }
+        if (listing.user.email) {
+            await sendSaleNotificationEmail(
+                listing.user.email,
+                listing.title,
+                Number(listing.price),
+                { needsStripeConnect: !listing.user.stripe_account_id },
+            );
+        }
+        await createNotification({
+            userId: listing.user.id,
+            type: "ITEM_SOLD",
+            title: `Your item sold: ${listing.title}`,
+            body: `Sold for $${Number(listing.price).toFixed(2)} — ship soon to keep your buyer happy.`,
+            linkUrl: "/dashboard/sales",
+        });
+    }
+
+    if (buyerId) {
+        await prisma.cartItem.deleteMany({
+            where: { user_id: buyerId, listing_id: listingId },
+        });
+    }
+
+    const labelOutcome = await maybePurchaseSingleLabel(order);
+
+    return {
+        status: newlyCreated ? "FINALIZED" : "ALREADY_FINALIZED",
+        isBundle: false,
+        order: labelOutcome.order,
+        autoLabelError: labelOutcome.error,
+    };
+}
+
 // ────────────────────────────────────────────────────────────────────────
 // Label-purchase helpers — extracted so both the create and the
 // already-finalized branches go through identical logic. Idempotent on

@@ -1,5 +1,5 @@
 import { stripe } from "@/lib/stripe";
-import { finalizeCheckout } from "@/lib/checkout-finalize";
+import { finalizeCheckout, finalizeCheckoutByPaymentIntent } from "@/lib/checkout-finalize";
 
 // `dynamic` ensures this route runs server-side on every request — webhooks
 // must NOT be cached or statically optimized.
@@ -44,6 +44,26 @@ export async function POST(req: Request) {
                 sessionId: session.id,
                 eventId: event.id,
             });
+        } else if (event.type === "payment_intent.succeeded") {
+            // Mobile (PaymentSheet) checkouts come through here — no Checkout
+            // Session is created. We only act on PaymentIntents we tagged with
+            // metadata.channel="mobile" so we don't double-finalize the
+            // Hosted Checkout path (which already fires
+            // checkout.session.completed above).
+            const pi = event.data.object as { id: string; metadata?: Record<string, string> | null };
+            const channel = pi.metadata?.channel;
+            if (channel === "mobile") {
+                const result = await finalizeCheckoutByPaymentIntent(pi.id);
+                console.log(`[stripe webhook] payment_intent.succeeded (mobile) → ${result.status}`, {
+                    paymentIntentId: pi.id,
+                    eventId: event.id,
+                });
+            } else {
+                console.log(`[stripe webhook] payment_intent.succeeded (non-mobile) ignored`, {
+                    paymentIntentId: pi.id,
+                    eventId: event.id,
+                });
+            }
         }
         // Other event types are accepted (200) so Stripe doesn't retry,
         // but we don't act on them. Add handlers here as we expand coverage
