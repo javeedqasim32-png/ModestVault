@@ -6,6 +6,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { buildS3ImageUrl, getS3BucketName, uploadFile } from "@/lib/s3";
+import { createNotification } from "@/app/actions/notifications";
 
 const MESSAGE_IMAGE_ALLOWED_MIME = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
 const MESSAGE_IMAGE_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -232,10 +233,80 @@ export async function sendConversationMessage(input: { conversationId: string; b
     data: { updated_at: new Date() },
   });
 
+  // Side effects — fire-and-forget so an email/notification failure can't
+  // strand the send. The recipient is whichever conversation party isn't
+  // the sender.
+  const recipientId =
+    conversation.buyer_id === userId
+      ? conversation.seller_id
+      : conversation.buyer_id;
+  await notifyMessageRecipient({
+    senderId: userId,
+    recipientId,
+    conversationId: conversation.id,
+    body,
+    hasImage: imageUrl !== null,
+  });
+
   revalidatePath("/messages");
   revalidatePath(`/messages/${conversation.id}`);
 
   return { success: true } as const;
+}
+
+/**
+ * Real-time fan-out after a message lands: in-app notification + queued
+ * push. Looks up both parties in one round-trip so we can use the
+ * sender's name in the in-app banner. Failures here NEVER propagate —
+ * sendConversationMessage has already committed the row.
+ *
+ * Email is intentionally NOT fired here. It's sent by the cron at
+ * /api/internal/send-new-message-emails ~5 min later, only if the
+ * recipient still hasn't opened the message. That way back-and-forth
+ * live conversations don't generate per-message email spam.
+ */
+async function notifyMessageRecipient(args: {
+  senderId: string;
+  recipientId: string;
+  conversationId: string;
+  body: string;
+  hasImage: boolean;
+}) {
+  try {
+    const [sender, recipient] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: args.senderId },
+        select: { first_name: true, last_name: true },
+      }),
+      prisma.user.findUnique({
+        where: { id: args.recipientId },
+        select: { is_admin: true },
+      }),
+    ]);
+    if (!recipient) return;
+    // Don't notify the founding-admin support user for self-replies.
+    if (recipient.is_admin && args.senderId === args.recipientId) return;
+
+    const senderName =
+      [sender?.first_name, sender?.last_name]
+        .filter((s): s is string => !!s && s.trim().length > 0)
+        .join(" ")
+        .trim() || "Someone";
+
+    const preview = args.body.trim() || (args.hasImage ? "📷 Sent a photo" : "");
+    const inAppPreview =
+      preview.length > 80 ? `${preview.slice(0, 80).trimEnd()}…` : preview;
+
+    await createNotification({
+      userId: args.recipientId,
+      type: "NEW_MESSAGE",
+      title: `New message from ${senderName}`,
+      body: inAppPreview,
+      linkUrl: `/messages/${args.conversationId}`,
+    });
+  } catch (err) {
+    console.error("[notifyMessageRecipient] failed (non-fatal):", err);
+  }
 }
 
 export async function markConversationRead(conversationId: string) {

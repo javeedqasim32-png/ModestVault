@@ -348,3 +348,166 @@ export async function sendRefundIssuedSellerEmail(
     }
 }
 
+/**
+ * Fires whenever someone sends a direct message to a Modaire user.
+ * Pairs with the in-app notification + push queued by createNotification —
+ * email is the always-reliable fallback for users who don't have push
+ * enabled or aren't logged in.
+ */
+export async function sendNewMessageEmail(
+    email: string,
+    fromName: string,
+    snippet: string,
+    conversationUrl: string,
+): Promise<void> {
+    try {
+        // Soft-cap the preview so a long paragraph doesn't bloat the email.
+        const preview = snippet.length > 140
+            ? `${snippet.slice(0, 140).trimEnd()}…`
+            : snippet;
+        const mailOptions = {
+            from: `"Modaire" <${process.env.EMAIL_USER}>`,
+            to: email,
+            subject: `${fromName} sent you a message on Modaire`,
+            html: `
+                <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 600px; margin: auto; border: 1px solid #eee; border-radius: 10px;">
+                    <h2 style="color: #4a3328;">New message from ${fromName}</h2>
+                    <div style="background: #f9f4f1; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 3px solid #a07c61;">
+                        <p style="margin: 0; color: #2f2925; font-size: 15px; line-height: 1.5;">${preview}</p>
+                    </div>
+                    <a href="${conversationUrl}" style="display: inline-block; background: #a07c61; color: white; padding: 12px 25px; text-decoration: none; border-radius: 25px; font-weight: bold; margin-top: 10px;">Reply on Modaire</a>
+                    <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;" />
+                    <p style="font-size: 12px; color: #b0a89e;">You're receiving this because someone messaged you on Modaire.</p>
+                </div>
+            `,
+        };
+        await transporter.sendMail(mailOptions);
+        console.log(`✉️ NEW MESSAGE EMAIL SENT to ${email}`);
+    } catch (error) {
+        console.error("❌ Failed to send new message email:", error);
+    }
+}
+
+/**
+ * 24h-after digest sent by /api/internal/remind-unread-messages for any
+ * direct message that's still unread a day later. One email per recipient
+ * summarizing every aged unread message in the same digest.
+ */
+export async function sendUnreadMessagesReminderEmail(
+    email: string,
+    items: Array<{ from: string; snippet: string; conversationUrl: string }>,
+): Promise<void> {
+    if (items.length === 0) return;
+    try {
+        const total = items.length;
+        const cap = (s: string) =>
+            s.length > 120 ? `${s.slice(0, 120).trimEnd()}…` : s;
+        const itemsHtml = items
+            .map(
+                (it) => `
+                    <a href="${it.conversationUrl}" style="display: block; text-decoration: none; color: inherit; background: #f9f4f1; padding: 14px 16px; border-radius: 10px; margin-bottom: 10px; border-left: 3px solid #a07c61;">
+                        <p style="margin: 0 0 4px 0; font-weight: bold; color: #2f2925; font-size: 14px;">${it.from}</p>
+                        <p style="margin: 0; color: #6f6054; font-size: 13px; line-height: 1.45;">${cap(it.snippet)}</p>
+                    </a>`,
+            )
+            .join("");
+        const mailOptions = {
+            from: `"Modaire" <${process.env.EMAIL_USER}>`,
+            to: email,
+            subject:
+                total === 1
+                    ? "You have 1 unread message on Modaire"
+                    : `You have ${total} unread messages on Modaire`,
+            html: `
+                <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 600px; margin: auto; border: 1px solid #eee; border-radius: 10px;">
+                    <h2 style="color: #4a3328;">Still waiting for your reply</h2>
+                    <p>The conversations below haven't been opened yet. A quick reply keeps your buyers and sellers engaged.</p>
+                    <div style="margin: 20px 0;">${itemsHtml}</div>
+                    <a href="${process.env.NEXT_PUBLIC_APP_URL}/messages" style="display: inline-block; background: #a07c61; color: white; padding: 12px 25px; text-decoration: none; border-radius: 25px; font-weight: bold; margin-top: 10px;">View all messages</a>
+                    <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;" />
+                    <p style="font-size: 12px; color: #b0a89e;">You're receiving this because messages addressed to you have been unread for over 24 hours.</p>
+                </div>
+            `,
+        };
+        await transporter.sendMail(mailOptions);
+        console.log(
+            `✉️ UNREAD MESSAGES REMINDER (${total}) SENT to ${email}`,
+        );
+    } catch (error) {
+        console.error(
+            "❌ Failed to send unread messages reminder email:",
+            error,
+        );
+    }
+}
+
+/**
+ * 48h-after (and again at 7d) abandoned-cart reminder sent by
+ * /api/internal/remind-abandoned-carts. `which` controls the subject +
+ * tone so the second nudge feels softer than the first.
+ */
+export async function sendCartReminderEmail(
+    email: string,
+    items: Array<{
+        title: string;
+        price: number;
+        thumbUrl: string | null;
+        listingUrl: string;
+    }>,
+    which: "first" | "second",
+): Promise<void> {
+    if (items.length === 0) return;
+    try {
+        const subject =
+            which === "first"
+                ? "Still thinking it over? Your bag is waiting"
+                : "Your favorites are still in your bag";
+        const heading =
+            which === "first" ? "You left something behind" : "Don't miss out";
+        const intro =
+            which === "first"
+                ? "The items you saved are still available. Come back and check out before someone else does."
+                : "These pieces have been in your bag for over a week — they won't stay around forever.";
+
+        const itemsHtml = items
+            .map((it) => {
+                const img = it.thumbUrl
+                    ? `<img src="${it.thumbUrl}" alt="" width="64" height="80" style="display: block; border-radius: 8px; object-fit: cover;" />`
+                    : `<div style="width: 64px; height: 80px; background: #f2ebe4; border-radius: 8px;"></div>`;
+                return `
+                    <a href="${it.listingUrl}" style="display: block; text-decoration: none; color: inherit; background: #fbf8f5; padding: 12px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #e3d9d1;">
+                        <table style="width: 100%; border-collapse: collapse;"><tr>
+                            <td style="width: 64px; vertical-align: top;">${img}</td>
+                            <td style="padding-left: 12px; vertical-align: top;">
+                                <p style="margin: 0 0 4px 0; font-weight: bold; color: #2f2925; font-size: 14px;">${it.title}</p>
+                                <p style="margin: 0; color: #4a3328; font-size: 14px; font-weight: 600;">$${it.price.toFixed(0)}</p>
+                            </td>
+                        </tr></table>
+                    </a>`;
+            })
+            .join("");
+
+        const mailOptions = {
+            from: `"Modaire" <${process.env.EMAIL_USER}>`,
+            to: email,
+            subject,
+            html: `
+                <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 600px; margin: auto; border: 1px solid #eee; border-radius: 10px;">
+                    <h2 style="color: #4a3328;">${heading}</h2>
+                    <p>${intro}</p>
+                    <div style="margin: 20px 0;">${itemsHtml}</div>
+                    <a href="${process.env.NEXT_PUBLIC_APP_URL}/cart" style="display: inline-block; background: #a07c61; color: white; padding: 12px 25px; text-decoration: none; border-radius: 25px; font-weight: bold; margin-top: 10px;">Return to your bag</a>
+                    <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;" />
+                    <p style="font-size: 12px; color: #b0a89e;">You're receiving this because items in your Modaire bag haven't been purchased.</p>
+                </div>
+            `,
+        };
+        await transporter.sendMail(mailOptions);
+        console.log(
+            `✉️ CART REMINDER (${which}, ${items.length} items) SENT to ${email}`,
+        );
+    } catch (error) {
+        console.error("❌ Failed to send cart reminder email:", error);
+    }
+}
+

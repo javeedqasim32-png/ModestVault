@@ -251,15 +251,24 @@ model ListingImage {
 }
 
 model CartItem {
-  id         String   @id @default(uuid())
-  user_id    String
-  listing_id String
-  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  listing    Listing  @relation(fields: [listing_id], references: [id], onDelete: Cascade)
-  created_at DateTime @default(now())
+  id                  String    @id @default(uuid())
+  user_id             String
+  listing_id          String
+  user                User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  listing             Listing   @relation(fields: [listing_id], references: [id], onDelete: Cascade)
+  created_at          DateTime  @default(now())
+  // Idempotency stamps for the cart-abandonment reminder cron at
+  // /api/internal/remind-abandoned-carts. `first` lands at 48h since add;
+  // `second` lands 7 days after the first reminder fired. Both are
+  // null while the row is still "pending reminder" so the WHERE clause
+  // can use a simple IS NULL check.
+  first_reminded_at   DateTime?
+  second_reminded_at  DateTime?
 
   @@unique([user_id, listing_id])
   @@index([user_id, created_at])
+  @@index([first_reminded_at, created_at])
+  @@index([second_reminded_at, first_reminded_at])
 }
 
 model FavoriteItem {
@@ -308,19 +317,32 @@ model Conversation {
 }
 
 model ConversationMessage {
-  id              String   @id @default(uuid())
-  conversation_id String
-  sender_id       String
-  body            String
-  image_url       String?
-  read_at         DateTime?
-  created_at      DateTime @default(now())
-  conversation    Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
-  sender          User     @relation("ConversationMessageSender", fields: [sender_id], references: [id], onDelete: Cascade)
+  id               String       @id @default(uuid())
+  conversation_id  String
+  sender_id        String
+  body             String
+  image_url        String?
+  read_at          DateTime?
+  created_at       DateTime     @default(now())
+  // Idempotency stamp for the unread-message reminder cron at
+  // /api/internal/remind-unread-messages. Set once when the digest
+  // email containing this message has been sent; the cron's WHERE
+  // clause uses (read_at IS NULL AND reminder_sent_at IS NULL AND
+  // created_at < NOW() - 24h).
+  reminder_sent_at DateTime?
+  // Idempotency stamp for the "you got a new message" email cron at
+  // /api/internal/send-new-message-emails. Email fires ~5 min after
+  // arrival if the message is still unread, so active conversations
+  // don't generate per-message email spam. Set once the email is sent.
+  email_sent_at    DateTime?
+  conversation     Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+  sender           User         @relation("ConversationMessageSender", fields: [sender_id], references: [id], onDelete: Cascade)
 
   @@index([conversation_id, created_at])
   @@index([sender_id, created_at])
   @@index([conversation_id, read_at])
+  @@index([read_at, reminder_sent_at, created_at])
+  @@index([read_at, email_sent_at, created_at])
 }
 
 model Follow {
