@@ -528,18 +528,28 @@ export async function sendPromotionInvitationEmail(
     secureLink: string,
     listingCount: number,
     startsAt: Date,
+    endsAt: Date,
+    inviteExpiresAt: Date,
 ): Promise<void> {
     try {
         const listingLabel = listingCount === 1 ? "listing" : "listings";
-        const startsLabel = startsAt.toLocaleDateString("en-US", {
+        const fmt = (d: Date) => d.toLocaleDateString("en-US", {
             month: "long",
             day: "numeric",
             year: "numeric",
         });
+        const startsLabel = fmt(startsAt);
+        const endsLabel = fmt(endsAt);
+        const inviteExpiresLabel = fmt(inviteExpiresAt);
+        // Subject dedupes "Modaire" if the campaign name already contains it
+        // ("You're invited to Modaire's Modaire Sale" → "You're invited: Modaire Sale").
+        const subject = /modaire/i.test(campaignName)
+            ? `You're invited: ${campaignName}`
+            : `You're invited to Modaire's ${campaignName}`;
         const mailOptions = {
             from: `"Modaire" <${process.env.EMAIL_USER}>`,
             to: email,
-            subject: `You're invited to Modaire's ${campaignName}`,
+            subject,
             html: `
                 <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 600px; margin: auto; border: 1px solid #eee; border-radius: 10px;">
                     <h2 style="color: #4a3328;">Hi ${sellerName || "there"},</h2>
@@ -548,14 +558,14 @@ export async function sendPromotionInvitationEmail(
                     </p>
                     <div style="background: #f9f4f1; padding: 20px; border-radius: 10px; margin: 20px 0; border-left: 3px solid #a07c61;">
                         <p style="margin: 0; font-size: 15px; color: #2f2925; line-height: 1.5;">
-                            You choose which of your eligible listings you'd like to include at <strong>${discountPercent}% off</strong>. The campaign runs from <strong>${startsLabel}</strong>, and your listing prices automatically return to normal once it ends.
+                            You choose which of your eligible listings you'd like to include at <strong>${discountPercent}% off</strong>. The campaign runs from <strong>${startsLabel}</strong> through <strong>${endsLabel}</strong>, and your listing prices automatically return to normal once it ends.
                         </p>
                     </div>
                     <div style="text-align: center; margin: 28px 0;">
                         <a href="${secureLink}" style="display: inline-block; background: #a07c61; color: white; padding: 14px 28px; text-decoration: none; border-radius: 25px; font-weight: bold; font-size: 15px;">Review My Eligible Listings</a>
                     </div>
                     <p style="font-size: 13px; color: #6f6054; line-height: 1.5;">
-                        This link is unique to you — please don't share it. It stops working when the campaign begins on ${startsLabel}.
+                        This link is unique to you — please don't share it. It stops working after <strong>${inviteExpiresLabel}</strong>.
                     </p>
                     <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;" />
                     <p style="font-size: 12px; color: #b0a89e;">You're receiving this because you have active Modaire listings that qualify for this campaign. Opting listings in is optional.</p>

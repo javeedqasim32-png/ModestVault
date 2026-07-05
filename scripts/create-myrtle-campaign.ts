@@ -257,12 +257,17 @@ async function run() {
                 summary.invitationsExisting += 1;
             } else {
                 plaintextToken = makeInvitationToken();
+                // Invitation stays valid until the campaign ends. Originally
+                // set to starts_at (so new opt-ins closed when the sale went
+                // live), but for campaigns where starts_at is now/past that
+                // would expire immediately. Ends_at is the safer bound for
+                // both cases and lets sellers still opt in mid-campaign.
                 await tx.promotionInvitation.create({
                     data: {
                         promotion_campaign_id: campaign.id,
                         seller_id: sellerId,
                         token_hash: hashInvitationToken(plaintextToken),
-                        expires_at: args.startsAt,
+                        expires_at: args.endsAt,
                     },
                 });
                 summary.invitationsCreated += 1;
@@ -341,7 +346,7 @@ async function run() {
             },
             include: {
                 seller: { select: { email: true, first_name: true, last_name: true } },
-                promotion_campaign: { select: { name: true, discount_percent: true, starts_at: true } },
+                promotion_campaign: { select: { name: true, discount_percent: true, starts_at: true, ends_at: true } },
             },
         });
 
@@ -381,6 +386,8 @@ async function run() {
                 secureLink,
                 listingCount,
                 invite.promotion_campaign.starts_at,
+                invite.promotion_campaign.ends_at,
+                invite.expires_at,
             );
             await prisma.promotionInvitation.update({
                 where: { id: invite.id },
