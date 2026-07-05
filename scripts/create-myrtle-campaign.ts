@@ -271,7 +271,12 @@ async function run() {
                     },
                 });
                 summary.invitationsCreated += 1;
-                if (args.printTokens && bucket.seller.email) {
+                // Always capture the plaintext token in memory when we
+                // create a fresh invitation — the email dispatch loop
+                // needs it to build the secure link. --print-tokens only
+                // controls whether we also LOG the plaintext to stdout
+                // (dev-only), not whether we capture it for sending.
+                if (bucket.seller.email) {
                     issuedTokens.push({ email: bucket.seller.email, token: plaintextToken });
                 }
             }
