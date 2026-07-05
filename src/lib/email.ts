@@ -554,18 +554,18 @@ export async function sendPromotionInvitationEmail(
                 <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 600px; margin: auto; border: 1px solid #eee; border-radius: 10px;">
                     <h2 style="color: #4a3328;">Hi ${sellerName || "there"},</h2>
                     <p style="font-size: 15px; line-height: 1.55; color: #2f2925;">
-                        We're preparing a limited-time <strong>${campaignName}</strong> on Modaire and you have <strong>${listingCount} eligible ${listingLabel}</strong>.
+                        You've been selected to join <strong>Modaire's ${campaignName}</strong>, and <strong>${listingCount} of your ${listingLabel}</strong> ${listingCount === 1 ? "is" : "are"} eligible to be featured in the campaign.
                     </p>
                     <div style="background: #f9f4f1; padding: 20px; border-radius: 10px; margin: 20px 0; border-left: 3px solid #a07c61;">
                         <p style="margin: 0; font-size: 15px; color: #2f2925; line-height: 1.5;">
-                            You choose which of your eligible listings you'd like to include at <strong>${discountPercent}% off</strong>. The campaign runs from <strong>${startsLabel}</strong> through <strong>${endsLabel}</strong>, and your listing prices automatically return to normal once it ends.
+                            You can choose which eligible listings you'd like to include at <strong>${discountPercent}% off</strong>. The campaign runs from <strong>${startsLabel}</strong> through <strong>${endsLabel}</strong>, and the promotional discount will automatically be removed once it ends.
                         </p>
                     </div>
                     <div style="text-align: center; margin: 28px 0;">
                         <a href="${secureLink}" style="display: inline-block; background: #a07c61; color: white; padding: 14px 28px; text-decoration: none; border-radius: 25px; font-weight: bold; font-size: 15px;">Review My Eligible Listings</a>
                     </div>
                     <p style="font-size: 13px; color: #6f6054; line-height: 1.5;">
-                        This link is unique to you — please don't share it. It stops working after <strong>${inviteExpiresLabel}</strong>.
+                        This link is unique to you, so please don't share it. It will stop working after <strong>${endsLabel}</strong>.
                     </p>
                     <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;" />
                     <p style="font-size: 12px; color: #b0a89e;">You're receiving this because you have active Modaire listings that qualify for this campaign. Opting listings in is optional.</p>
