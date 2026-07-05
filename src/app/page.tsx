@@ -53,6 +53,7 @@ const HOME_EDITORIAL_MEDIA = {
 
 import { serializeListing } from "@/lib/serialization";
 import { getEffectivePricesForListings } from "@/lib/promotions/get-effective-price";
+import HomeQuickActions from "@/components/marketplace/HomeQuickActions";
 
 const cormorantHeading = localFont({
   src: [
@@ -378,6 +379,8 @@ export default async function Home() {
               ))}
             </div>
           )}
+
+          <HomeQuickActions />
 
           {/* Featured Section */}
           <div className="flex items-baseline justify-between pb-[10px] pt-[8px]">

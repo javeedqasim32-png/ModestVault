@@ -12,7 +12,9 @@ export type SellerCartItem = {
     listing: {
         id: string;
         title: string;
-        price: number;
+        price: number;            // Original listing price
+        effectivePrice: number;   // What the buyer will actually pay (= price when no promo)
+        discountPercent: number;  // 0 when no promo; otherwise 1-100
         category: string | null;
         size: string | null;
         brand: string | null;
@@ -91,7 +93,11 @@ export default function SellerCartSection({
         () => items.filter((item) => selectedIds.has(item.listing.id)),
         [items, selectedIds]
     );
-    const selectedSubtotal = selectedItems.reduce((sum, item) => sum + Number(item.listing.price), 0);
+    // Subtotal reflects what the buyer will actually pay — for on-sale
+    // items that's the discounted price, mirroring what checkout charges.
+    const selectedSubtotal = selectedItems.reduce((sum, item) => sum + Number(item.listing.effectivePrice), 0);
+    const selectedOriginalSubtotal = selectedItems.reduce((sum, item) => sum + Number(item.listing.price), 0);
+    const selectedSavings = selectedOriginalSubtotal - selectedSubtotal;
     const selectedCount = selectedItems.length;
 
     const overCap = selectedCount > bundleMaxItems;
@@ -221,9 +227,23 @@ export default function SellerCartSection({
                                         <Trash2 className="h-3.5 w-3.5" />
                                     </button>
                                 </div>
-                                <p className="mt-1 text-[0.96rem] leading-none font-semibold text-[#2f2925]">
-                                    ${Number(item.listing.price).toLocaleString()}
-                                </p>
+                                {item.listing.discountPercent > 0 ? (
+                                    <div className="mt-1 flex items-baseline gap-2">
+                                        <p className="text-[0.96rem] leading-none font-semibold text-[#2f2925]">
+                                            ${Number(item.listing.effectivePrice).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                        </p>
+                                        <p className="text-[0.8rem] leading-none text-[#8a7667] line-through">
+                                            ${Number(item.listing.price).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                        </p>
+                                        <span className="rounded-full bg-[#4a3328] px-2 py-[2px] text-[9px] font-semibold uppercase tracking-[0.12em] text-white">
+                                            {item.listing.discountPercent}% Off
+                                        </span>
+                                    </div>
+                                ) : (
+                                    <p className="mt-1 text-[0.96rem] leading-none font-semibold text-[#2f2925]">
+                                        ${Number(item.listing.price).toLocaleString()}
+                                    </p>
+                                )}
                                 <div className="mt-2">
                                     <Link
                                         href={`/listings/${item.listing.id}`}
@@ -244,11 +264,17 @@ export default function SellerCartSection({
             <div className="px-4 py-3">
                 <div className="flex items-center justify-between text-[0.88rem] text-[#5a4426]">
                     <span>Items selected ({selectedCount})</span>
-                    <span className="font-semibold text-[#2f2925]">${selectedSubtotal.toLocaleString()}</span>
+                    <span className="font-semibold text-[#2f2925]">${selectedSubtotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
                 </div>
+                {selectedSavings > 0 ? (
+                    <div className="mt-0.5 flex items-center justify-between text-[0.82rem] text-[#7a5a45]">
+                        <span>Sale savings</span>
+                        <span className="font-semibold">−${selectedSavings.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                    </div>
+                ) : null}
                 <div className="mt-0.5 flex items-center justify-between text-[0.92rem]">
                     <span className="text-[#5a4426]">Subtotal</span>
-                    <span className="text-[1.05rem] font-semibold text-[#2f2925]">${selectedSubtotal.toLocaleString()}</span>
+                    <span className="text-[1.05rem] font-semibold text-[#2f2925]">${selectedSubtotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
                 </div>
 
                 {overCap ? (

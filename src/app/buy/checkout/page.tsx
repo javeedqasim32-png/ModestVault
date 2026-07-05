@@ -4,6 +4,10 @@ import { redirect } from "next/navigation";
 import localFont from "next/font/local";
 import { PreCheckoutClient } from "@/components/marketplace/PreCheckoutClient";
 import { getPrimaryListingImage } from "@/lib/listing-images";
+import {
+    getEffectivePriceForListing,
+    getEffectivePricesForListings,
+} from "@/lib/promotions/get-effective-price";
 
 export const dynamic = "force-dynamic";
 
@@ -97,12 +101,27 @@ export default async function BuyCheckoutPage({
               }
             : undefined;
 
-        const bundleItems = listings.map((l) => ({
-            id: l.id,
-            title: l.title,
-            price: Number(l.price),
-            imageUrl: getPrimaryListingImage(l, "card"),
-        }));
+        // Promotion pricing per bundle line — mirrors checkout server-side
+        // so what buyer sees in this preview matches Stripe.
+        const bundleEffectivePrices = await getEffectivePricesForListings(
+            listings.map((l) => ({ id: l.id, price: l.price as unknown as number, status: l.status })),
+        );
+
+        const bundleItems = listings.map((l) => {
+            const ep = bundleEffectivePrices.get(l.id);
+            const effective = ep ? ep.effectiveCents / 100 : Number(l.price);
+            return {
+                id: l.id,
+                title: l.title,
+                price: effective,
+                imageUrl: getPrimaryListingImage(l, "card"),
+            };
+        });
+        const firstListingEffective = bundleEffectivePrices.get(listings[0].id);
+        const firstListingPriceCents = firstListingEffective?.effectiveCents;
+        const firstListingPrice = firstListingPriceCents !== undefined
+            ? firstListingPriceCents / 100
+            : Number(listings[0].price);
 
         return (
             <div className="min-h-screen overflow-x-hidden bg-[#f4efea] pb-24 pt-4 sm:pb-12 sm:pt-8">
@@ -110,7 +129,7 @@ export default async function BuyCheckoutPage({
                     <PreCheckoutClient
                         listingId={listings[0].id}
                         listingTitle={listings[0].title}
-                        listingPrice={Number(listings[0].price)}
+                        listingPrice={firstListingPrice}
                         listingImageUrl={getPrimaryListingImage(listings[0], "card")}
                         bundleItems={bundleItems}
                         initialAddress={initialAddress}
@@ -174,13 +193,18 @@ export default async function BuyCheckoutPage({
         phone: user.phone || "",
     } : undefined;
 
+    // Effective price mirrors checkout server-side — buyer sees what Stripe
+    // will actually charge, not the original.
+    const effectivePrice = await getEffectivePriceForListing(listing.id);
+    const listingPrice = effectivePrice.effectiveCents / 100;
+
     return (
         <div className="min-h-screen overflow-x-hidden bg-[#f4efea] pb-24 pt-4 sm:pb-12 sm:pt-8">
             <div className="mx-auto w-full max-w-[760px] px-4 sm:px-6">
                 <PreCheckoutClient
                     listingId={listing.id}
                     listingTitle={listing.title}
-                    listingPrice={Number(listing.price)}
+                    listingPrice={listingPrice}
                     listingImageUrl={getPrimaryListingImage(listing, "card")}
                     initialAddress={initialAddress}
                     headingClassName={cormorantHeading.className}

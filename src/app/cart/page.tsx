@@ -2,6 +2,7 @@ import { serializeListing } from "@/lib/serialization";
 import { auth } from "@/auth";
 import { getPrimaryListingImage } from "@/lib/listing-images";
 import { prisma } from "@/lib/prisma";
+import { getEffectivePricesForListings } from "@/lib/promotions/get-effective-price";
 import { getUserSlugMap } from "@/lib/user-slugs";
 import { redirect } from "next/navigation";
 import Link from "next/link";
@@ -106,6 +107,17 @@ export default async function CartPage() {
 
   const availableItems = cartItems.filter((item) => item.listing.status === "AVAILABLE");
 
+  // Resolve promotion pricing for every AVAILABLE cart listing in one
+  // round-trip. Uses the same helper checkout uses server-side, so what
+  // shows in the bag subtotal is what Stripe will actually charge.
+  const cartEffectivePrices = await getEffectivePricesForListings(
+    availableItems.map((item) => ({
+      id: item.listing.id,
+      price: item.listing.price as number,
+      status: item.listing.status,
+    })),
+  );
+
   // Group AVAILABLE cart items by seller. The cart UI renders one card per
   // seller, each with its own "Checkout All Items" button. A single server
   // action (createCheckoutForSellerGroup) auto-routes single-item groups
@@ -133,18 +145,24 @@ export default async function CartPage() {
       sellerName: fullName || "Seller",
       sellerInitials: initials,
       sellerSlug: slugMap.get(sellerId) || sellerId,
-      items: items.map((item) => ({
-        id: item.id,
-        listing: {
-          id: item.listing.id,
-          title: item.listing.title,
-          price: Number(item.listing.price),
-          category: item.listing.category,
-          size: item.listing.size,
-          brand: item.listing.brand,
-          coverImage: getPrimaryListingImage(item.listing, "card"),
-        },
-      })),
+      items: items.map((item) => {
+        const ep = cartEffectivePrices.get(item.listing.id);
+        const originalPrice = Number(item.listing.price);
+        return {
+          id: item.id,
+          listing: {
+            id: item.listing.id,
+            title: item.listing.title,
+            price: originalPrice,
+            effectivePrice: ep ? ep.effectiveCents / 100 : originalPrice,
+            discountPercent: ep?.discountPercent ?? 0,
+            category: item.listing.category,
+            size: item.listing.size,
+            brand: item.listing.brand,
+            coverImage: getPrimaryListingImage(item.listing, "card"),
+          },
+        };
+      }),
     };
   });
 

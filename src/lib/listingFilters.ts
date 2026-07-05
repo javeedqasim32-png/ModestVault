@@ -11,7 +11,40 @@ export type ListingBrowseFilters = {
     conditions: string[];
     minPrice?: number;
     maxPrice?: number;
+    /**
+     * When true, restrict results to listings currently on sale — i.e. a
+     * ListingPromotion.status = "ACCEPTED" inside an ACTIVE campaign whose
+     * starts_at/ends_at window contains NOW(). Mirrors the four gates in
+     * src/lib/promotions/get-effective-price.ts so display and filtering
+     * agree.
+     */
+    sale?: boolean;
+    /**
+     * When true, restrict to "Designer Finds": listings with a `brand`
+     * value that isn't null / empty and isn't one of the known non-brand
+     * junk values sellers sometimes type (Custom Made, None, No Brand,
+     * etc.). Not a curated allowlist — just filters out obviously
+     * non-branded entries.
+     */
+    designer?: boolean;
 };
+
+/**
+ * Brand values sellers have typed into the "brand" field that aren't
+ * actual brand names. Compared case-insensitively so "custom made",
+ * "Custom Made", and "CUSTOM MADE" all excluded. Extend as needed —
+ * keep entries lowercased.
+ */
+export const NON_DESIGNER_BRAND_VALUES = [
+    "custom made",
+    "formal with handwork",
+    "none",
+    "cross stitch",
+    "ethnc",
+    "party wear",
+    "modest and nice",
+    "no brand",
+];
 
 export type ListingFilterOptionSets = {
     styles: string[];
@@ -72,6 +105,13 @@ export function parseBrowseFilters(searchParams: Record<string, string | string[
     const minPrice = Number.isFinite(minCandidate) ? minCandidate : undefined;
     const maxPrice = Number.isFinite(maxCandidate) ? maxCandidate : undefined;
 
+    const saleRaw = Array.isArray(searchParams.sale) ? searchParams.sale[0] : searchParams.sale;
+    // Accept "1" or "true" (case-insensitive) to keep URLs readable.
+    const sale = saleRaw ? ["1", "true"].includes(saleRaw.toLowerCase()) : false;
+
+    const designerRaw = Array.isArray(searchParams.designer) ? searchParams.designer[0] : searchParams.designer;
+    const designer = designerRaw ? ["1", "true"].includes(designerRaw.toLowerCase()) : false;
+
     return {
         search,
         styles,
@@ -82,6 +122,8 @@ export function parseBrowseFilters(searchParams: Record<string, string | string[
         conditions,
         minPrice,
         maxPrice,
+        sale,
+        designer,
     };
 }
 
@@ -118,6 +160,41 @@ export function buildListingBrowseWhere(filters: ListingBrowseFilters): Prisma.L
                     ...(hasMinPrice ? { gte: filters.minPrice } : {}),
                     ...(hasMaxPrice ? { lte: filters.maxPrice } : {}),
                 },
+            }
+            : {}),
+        // Sale filter — mirrors the four gates in getEffectivePriceForListing
+        // (see src/lib/promotions/get-effective-price.ts) so a listing shown
+        // as "on sale" here is the same listing that gets a discounted price
+        // at render and at checkout. Prisma emits a single EXISTS subquery
+        // against the listingPromotions relation.
+        ...(filters.sale
+            ? {
+                listingPromotions: {
+                    some: {
+                        status: "ACCEPTED",
+                        promotion_campaign: {
+                            status: "ACTIVE",
+                            starts_at: { lte: new Date() },
+                            ends_at: { gte: new Date() },
+                        },
+                    },
+                },
+            }
+            : {}),
+        // Designer Finds — brand must exist AND not be one of the known
+        // junk values ("None", "Custom Made", "No Brand", etc). Matched
+        // case-insensitively so "custom made" and "CUSTOM MADE" both
+        // excluded. The NON_DESIGNER_BRAND_VALUES list can be extended
+        // without a schema change.
+        ...(filters.designer
+            ? {
+                AND: [
+                    { brand: { not: null } },
+                    { brand: { not: "" } },
+                    ...NON_DESIGNER_BRAND_VALUES.map((junk) => ({
+                        NOT: { brand: { equals: junk, mode: "insensitive" as const } },
+                    })),
+                ],
             }
             : {}),
     };
@@ -193,7 +270,9 @@ export function hasActiveBrowseFilters(filters: ListingBrowseFilters) {
         filters.sizes.length ||
         filters.conditions.length ||
         typeof filters.minPrice === "number" ||
-        typeof filters.maxPrice === "number"
+        typeof filters.maxPrice === "number" ||
+        filters.sale ||
+        filters.designer
     );
 }
 
@@ -208,6 +287,8 @@ export function toBrowseQueryString(filters: ListingBrowseFilters) {
     if (filters.conditions.length > 0) params.set("conditions", filters.conditions.join(","));
     if (typeof filters.minPrice === "number") params.set("minPrice", String(filters.minPrice));
     if (typeof filters.maxPrice === "number") params.set("maxPrice", String(filters.maxPrice));
+    if (filters.sale) params.set("sale", "1");
+    if (filters.designer) params.set("designer", "1");
     return params.toString();
 }
 
