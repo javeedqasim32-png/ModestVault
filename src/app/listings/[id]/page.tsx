@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { addToCartAndRedirect } from "@/app/actions/cart";
 import { getFavoriteListingIdsForSessionUser } from "@/app/actions/favorites";
 import { getOrderedListingGallery } from "@/lib/listing-images";
+import { getEffectivePriceForListing } from "@/lib/promotions/get-effective-price";
 import { Pencil, Star, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import RecentlyViewedTracker from "@/components/marketplace/RecentlyViewedTracker";
@@ -104,6 +105,10 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
         : 0;
     const sellerReviews = listing.user.reviewsReceived.slice(0, 5);
     const { description: cleanDescription, measurements } = splitDescriptionAndMeasurements(listing.description || "");
+    // Server-side promo lookup — never trust the client for pricing. Same
+    // helper the checkout action uses, so what you see here is what you pay.
+    const effectivePrice = await getEffectivePriceForListing(listing.id);
+    const hasPromo = effectivePrice.discountPercent > 0;
     const metaPills = [
         { label: "Size", value: listing.size || "M" },
         { label: "Condition", value: listing.condition || "Like new" },
@@ -125,11 +130,25 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                     />
                 </div>
 
-                <ListingImageGallery
-                    images={orderedImages}
-                    title={listing.title}
-                    isSold={listing.status === "SOLD"}
-                />
+                <div className="relative">
+                    <ListingImageGallery
+                        images={orderedImages}
+                        title={listing.title}
+                        isSold={listing.status === "SOLD"}
+                    />
+                    {/*
+                       Badge is absolutely positioned relative to this wrapper.
+                       ListingImageGallery insets the actual image by px-4 (16px)
+                       horizontally, so left-6 (24px) lands the badge ~8px inside
+                       the image's rounded edge. top-3 (12px) sits it just below
+                       the top edge — the gallery has no top padding.
+                    */}
+                    {hasPromo ? (
+                        <span className="absolute left-6 top-3 z-10 rounded-full bg-[#4a3328] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-white shadow-md">
+                            {effectivePrice.discountPercent}% Off
+                        </span>
+                    ) : null}
+                </div>
 
                 <div className="mt-1 px-4 pt-2">
                     <h1
@@ -138,9 +157,20 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                     >
                         {listing.title}
                     </h1>
-                    <p className="mt-1 text-[22px] font-semibold leading-none text-[#4a3328]">
-                        ${Number(listing.price).toLocaleString()}
-                    </p>
+                    {hasPromo ? (
+                        <p className="mt-1 flex items-baseline gap-2 leading-none">
+                            <span className="text-[22px] font-semibold text-[#4a3328]">
+                                ${(effectivePrice.effectiveCents / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                            </span>
+                            <span className="text-[16px] font-medium text-[#8a7667] line-through">
+                                ${(effectivePrice.originalCents / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                            </span>
+                        </p>
+                    ) : (
+                        <p className="mt-1 text-[22px] font-semibold leading-none text-[#4a3328]">
+                            ${Number(listing.price).toLocaleString()}
+                        </p>
+                    )}
 
                     <Link href={`/${sellerSlug}`} className="mt-4 block rounded-[12px] border border-[#ddd3cb] bg-[#e8ddd1] px-[13px] py-[10px]">
                         <div className="flex items-center gap-3">

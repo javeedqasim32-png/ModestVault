@@ -22,6 +22,16 @@ type ListingCardProps = {
     showFullImage?: boolean;
     listingId?: string;
     isFavorited?: boolean;
+    /**
+     * Optional promotion payload from the serializer. Present only when the
+     * listing is in an active accepted campaign at render time. Renders
+     * strikethrough original price + discounted price + "% Off" badge.
+     */
+    effectivePrice?: {
+        originalCents: number;
+        effectiveCents: number;
+        discountPercent: number;
+    } | null;
 };
 
 export default function ListingCard({
@@ -41,7 +51,15 @@ export default function ListingCard({
     showFullImage = false,
     listingId,
     isFavorited = false,
+    effectivePrice,
 }: ListingCardProps) {
+    const hasPromo = !!effectivePrice && effectivePrice.discountPercent > 0;
+    const displayPriceText = hasPromo
+        ? `$${(effectivePrice!.effectiveCents / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+        : `$${Number(price).toLocaleString()}`;
+    const originalPriceText = hasPromo
+        ? `$${(effectivePrice!.originalCents / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+        : null;
     const imageFitClass = showFullImage ? "object-contain object-center" : "object-cover object-center";
     const imageAspectClass = compact ? "aspect-square" : (showFullImage ? "aspect-[3/4]" : "aspect-square");
     const imageBgClass = showFullImage ? "bg-transparent" : "bg-muted";
@@ -60,6 +78,11 @@ export default function ListingCard({
                         className={`${imageFitClass} transition-transform duration-700 group-hover:scale-105`}
                         sizes="(max-width: 768px) 100vw, (max-width: 1280px) 50vw, 33vw"
                     />
+                    {hasPromo ? (
+                        <span className="absolute left-2 top-2 z-10 rounded-full bg-[#4a3328] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white shadow-sm">
+                            {effectivePrice!.discountPercent}% Off
+                        </span>
+                    ) : null}
                 </div>
 
                 <div className="flex flex-col justify-between p-4 sm:p-5">
@@ -105,7 +128,16 @@ export default function ListingCard({
                         <div>
                             {sellerName ? <p className="text-sm text-muted-foreground">{sellerName}</p> : null}
                             {dateText ? <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{dateText}</p> : null}
-                            <p className="mt-1 text-xl text-foreground sm:text-2xl">${Number(price).toLocaleString()}</p>
+                            {hasPromo ? (
+                                <p className="mt-1 flex items-baseline gap-2">
+                                    <span className="text-xl text-foreground sm:text-2xl">{displayPriceText}</span>
+                                    <span className="text-sm text-muted-foreground line-through sm:text-base">
+                                        {originalPriceText}
+                                    </span>
+                                </p>
+                            ) : (
+                                <p className="mt-1 text-xl text-foreground sm:text-2xl">{displayPriceText}</p>
+                            )}
                         </div>
                         <span className="rounded-full border border-border bg-card px-3 py-2 text-[10px] uppercase tracking-[0.24em] text-foreground sm:px-4 sm:text-[11px]">
                             View

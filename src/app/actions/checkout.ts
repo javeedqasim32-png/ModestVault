@@ -5,6 +5,7 @@ import { auth } from "@/auth";
 import { getAppUrl } from "@/lib/app-url";
 import { getPrimaryListingImage } from "@/lib/listing-images";
 import { prisma } from "@/lib/prisma";
+import { getEffectivePriceForListing } from "@/lib/promotions/get-effective-price";
 import { getShipmentRateById, getShipmentRates } from "@/lib/shippo";
 import { stripe } from "@/lib/stripe";
 import { normalizeUsPhoneInput } from "@/lib/phone";
@@ -237,7 +238,13 @@ export async function createCheckoutSessionWithShipping(
         const shippingCents = Math.round(Number(validatedRate.amount) * 100);
         if (!Number.isFinite(shippingCents) || shippingCents < 0) throw new Error("Invalid shipping amount.");
 
-        const unitAmount = Math.round(Number(listing.price) * 100);
+        // Server is the source of truth for pricing. The frontend can display
+        // anything, but at checkout we re-derive the effective price from the
+        // listing id alone — factoring in any active promotion the seller
+        // opted this listing into. Buyer cannot manipulate the discount from
+        // the browser.
+        const effectivePrice = await getEffectivePriceForListing(listing.id);
+        const unitAmount = effectivePrice.effectiveCents;
         const coverImage = getPrimaryListingImage(listing, "detail");
 
         // 1. Sync the address to the Stripe Customer so Tax can be calculated without second entry
@@ -349,6 +356,18 @@ export async function createCheckoutSessionWithShipping(
                 shipPostal: normalizedAddress.postal_code,
                 shipCountry: normalizedAddress.country,
                 shipPhone: normalizedAddress.phone,
+                // Promotion audit trail — only present when the listing was
+                // in an active accepted campaign at checkout time. Persisted
+                // onto Purchase.original_amount / .discount_amount /
+                // .promotion_campaign_id at finalize.
+                ...(effectivePrice.discountPercent > 0
+                    ? {
+                          originalItemAmountCents: String(effectivePrice.originalCents),
+                          discountAmountCents: String(effectivePrice.originalCents - effectivePrice.effectiveCents),
+                          promotionCampaignId: effectivePrice.promotionCampaignId ?? "",
+                          promotionDiscountPercent: String(effectivePrice.discountPercent),
+                      }
+                    : {}),
             }
         });
 
@@ -516,7 +535,12 @@ export async function createPaymentIntentForListingByUserId(
         if (!Number.isFinite(shippingCents) || shippingCents < 0) {
             throw new Error("Invalid shipping amount.");
         }
-        const unitAmount = Math.round(Number(listing.price) * 100);
+        // Mirror the web checkout path: re-derive effective price server-side
+        // from the listing id. Mobile client sees whatever amount the server
+        // returns in `breakdown.itemAmount` below and displays that in the
+        // PaymentSheet.
+        const effectivePrice = await getEffectivePriceForListing(listing.id);
+        const unitAmount = effectivePrice.effectiveCents;
         const totalAmount = unitAmount + shippingCents;
 
         // Get or create the buyer's Stripe Customer + sync the address so the
@@ -611,6 +635,15 @@ export async function createPaymentIntentForListingByUserId(
                 // route to the mobile-specific finalize path. Web continues
                 // to use checkout.session.completed.
                 channel: "mobile",
+                // Promotion audit — same shape as the web session path.
+                ...(effectivePrice.discountPercent > 0
+                    ? {
+                          originalItemAmountCents: String(effectivePrice.originalCents),
+                          discountAmountCents: String(effectivePrice.originalCents - effectivePrice.effectiveCents),
+                          promotionCampaignId: effectivePrice.promotionCampaignId ?? "",
+                          promotionDiscountPercent: String(effectivePrice.discountPercent),
+                      }
+                    : {}),
             },
         });
 
@@ -759,8 +792,20 @@ export async function createBundledCheckoutSessionWithShipping(
         });
 
         const batchId = randomUUID();
+        // Bundle-level discount recompute — per-listing effective price
+        // computed server-side. Buyer is charged whatever the server
+        // returns, never what the client sent. Auditing per line here
+        // is simplified vs the single-item path; a follow-up can pack
+        // per-line originals into metadata if line-level attribution is
+        // needed for reporting.
+        const bundleEffectivePrices = new Map<string, number>();
+        for (const listing of listings) {
+            const ep = await getEffectivePriceForListing(listing.id);
+            bundleEffectivePrices.set(listing.id, ep.effectiveCents);
+        }
         const itemLineItems = listings.map((listing) => {
             const coverImage = getPrimaryListingImage(listing, "detail");
+            const effective = bundleEffectivePrices.get(listing.id) ?? Math.round(Number(listing.price) * 100);
             return {
                 price_data: {
                     currency: "usd" as const,
@@ -769,7 +814,7 @@ export async function createBundledCheckoutSessionWithShipping(
                         description: listing.description ?? undefined,
                         images: coverImage ? [coverImage.startsWith("http") ? coverImage : `${appUrl}${coverImage}`] : [],
                     },
-                    unit_amount: Math.round(Number(listing.price) * 100),
+                    unit_amount: effective,
                 },
                 quantity: 1,
             };
@@ -829,5 +874,181 @@ export async function createBundledCheckoutSessionWithShipping(
     } catch (error: unknown) {
         console.error("createBundledCheckoutSessionWithShipping error:", error);
         return { error: getErrorMessage(error, "Failed to create bundled checkout session.") };
+    }
+}
+
+/**
+ * Mobile PaymentSheet equivalent of `createBundledCheckoutSessionWithShipping`
+ * for same-seller multi-item bundles. Sums N item prices + one shipping fee
+ * into a single PaymentIntent. Metadata mirrors the bundle Checkout Session
+ * (listingIds comma-separated, batchId, sellerId) so the existing
+ * finalize logic can split it back into N Orders linked by batch_id.
+ */
+export async function createPaymentIntentForBundleByUserId(
+    buyerId: string,
+    listingIds: string[],
+    address: ShippingAddressInput,
+    selectedRate: SelectedRateInput,
+) {
+    try {
+        const normalizedAddress = normalizeShippingAddress(address);
+        assertShippingAddressIsComplete(normalizedAddress);
+
+        const listings = await getValidatedListingsForBundle(listingIds, buyerId);
+        const seller = listings[0].user;
+
+        let validatedRate: {
+            id: string;
+            carrier: string;
+            serviceLevel: string;
+            amount: string;
+            currency: string;
+            estimatedDays?: number;
+        } | null = null;
+
+        if (selectedRate.shipmentId) {
+            validatedRate = await getShipmentRateById(selectedRate.shipmentId, selectedRate.rateId);
+        }
+        if (!validatedRate) {
+            validatedRate = {
+                id: selectedRate.rateId,
+                carrier: selectedRate.carrier,
+                serviceLevel: selectedRate.serviceLevel,
+                amount: selectedRate.amount,
+                currency: selectedRate.currency,
+                estimatedDays: selectedRate.estimatedDays,
+            };
+        }
+
+        const shippingCents = Math.round(Number(validatedRate.amount) * 100);
+        if (!Number.isFinite(shippingCents) || shippingCents < 0) {
+            throw new Error("Invalid shipping amount.");
+        }
+        // Bundle-level promotion recompute for mobile PaymentIntent — mirrors
+        // the bundle Checkout Session path above. Buyer is charged
+        // sum(effectivePrices) + shipping, never listing.price sum.
+        const bundleEffectivePrices = new Map<string, number>();
+        for (const l of listings) {
+            const ep = await getEffectivePriceForListing(l.id);
+            bundleEffectivePrices.set(l.id, ep.effectiveCents);
+        }
+        const itemAmountCentsTotal = listings.reduce(
+            (sum, l) => sum + (bundleEffectivePrices.get(l.id) ?? Math.round(Number(l.price) * 100)),
+            0,
+        );
+        const totalAmount = itemAmountCentsTotal + shippingCents;
+
+        const dbUser = await prisma.user.findUnique({
+            where: { id: buyerId },
+            select: {
+                stripe_customer_id: true,
+                email: true,
+                first_name: true,
+                last_name: true,
+            },
+        });
+        let customerId = dbUser?.stripe_customer_id;
+        if (!customerId) {
+            const customer = await stripe.customers.create({
+                email: dbUser?.email || undefined,
+                name: `${dbUser?.first_name || ""} ${dbUser?.last_name || ""}`.trim(),
+            });
+            customerId = customer.id;
+            await prisma.user.update({
+                where: { id: buyerId },
+                data: { stripe_customer_id: customerId },
+            });
+        }
+        await stripe.customers.update(customerId, {
+            shipping: {
+                name: normalizedAddress.name,
+                address: {
+                    line1: normalizedAddress.line1,
+                    line2: normalizedAddress.line2 || undefined,
+                    city: normalizedAddress.city,
+                    state: normalizedAddress.state,
+                    postal_code: normalizedAddress.postal_code,
+                    country: normalizedAddress.country,
+                },
+            },
+            address: {
+                line1: normalizedAddress.line1,
+                line2: normalizedAddress.line2 || undefined,
+                city: normalizedAddress.city,
+                state: normalizedAddress.state,
+                postal_code: normalizedAddress.postal_code,
+                country: normalizedAddress.country,
+            },
+        });
+
+        const ephemeralKey = await stripe.ephemeralKeys.create(
+            { customer: customerId },
+            { apiVersion: "2025-09-30.clover" },
+        );
+
+        const batchId = randomUUID();
+        const orderedListingIds = listings.map((l) => l.id);
+
+        const paymentIntent = await stripe.paymentIntents.create({
+            amount: totalAmount,
+            currency: "usd",
+            customer: customerId,
+            automatic_payment_methods: { enabled: true },
+            description: `Bundle: ${listings.length} items from ${seller.first_name} ${seller.last_name}`.trim(),
+            shipping: {
+                name: normalizedAddress.name,
+                phone: normalizedAddress.phone,
+                address: {
+                    line1: normalizedAddress.line1,
+                    line2: normalizedAddress.line2 || undefined,
+                    city: normalizedAddress.city,
+                    state: normalizedAddress.state,
+                    postal_code: normalizedAddress.postal_code,
+                    country: normalizedAddress.country,
+                },
+            },
+            metadata: {
+                // Bundle marker — finalize branches on listingIds presence,
+                // exactly the same key the Checkout Session flow uses.
+                listingIds: orderedListingIds.join(","),
+                batchId,
+                sellerId: seller.id,
+                buyerId,
+                itemAmountCentsTotal: String(itemAmountCentsTotal),
+                shippingAmountCents: String(shippingCents),
+                shippingRateId: validatedRate.id,
+                shippingCarrier: validatedRate.carrier,
+                shippingService: validatedRate.serviceLevel,
+                shippingCurrency: validatedRate.currency,
+                shippingEstimatedDays: String(validatedRate.estimatedDays ?? ""),
+                shipName: normalizedAddress.name,
+                shipLine1: normalizedAddress.line1,
+                shipLine2: normalizedAddress.line2 || "",
+                shipCity: normalizedAddress.city,
+                shipState: normalizedAddress.state,
+                shipPostal: normalizedAddress.postal_code,
+                shipCountry: normalizedAddress.country,
+                shipPhone: normalizedAddress.phone,
+                channel: "mobile",
+            },
+        });
+
+        return {
+            success: true as const,
+            paymentIntentId: paymentIntent.id,
+            clientSecret: paymentIntent.client_secret!,
+            ephemeralKey: ephemeralKey.secret!,
+            customerId,
+            breakdown: {
+                itemAmount: itemAmountCentsTotal,
+                shippingAmount: shippingCents,
+                totalAmount,
+                currency: "usd",
+            },
+            batchId,
+        };
+    } catch (error: unknown) {
+        console.error("createPaymentIntentForBundleByUserId error:", error);
+        return { error: getErrorMessage(error, "Failed to create bundle payment.") };
     }
 }

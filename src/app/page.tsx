@@ -52,6 +52,7 @@ const HOME_EDITORIAL_MEDIA = {
 } as const;
 
 import { serializeListing } from "@/lib/serialization";
+import { getEffectivePricesForListings } from "@/lib/promotions/get-effective-price";
 
 const cormorantHeading = localFont({
   src: [
@@ -198,21 +199,33 @@ export default async function Home() {
     : [];
 
   const recentlyViewedById = new Map(recentlyViewedListings.map((listing) => [listing.id, listing]));
-  const recentlyViewed = recentViewedIds
+  const recentlyViewedShown = recentViewedIds
     .map((id) => recentlyViewedById.get(id))
     .filter((listing): listing is NonNullable<typeof listing> => Boolean(listing))
-    .slice(0, 5)
-    .map((listing) => ({
-      ...serializeListing(listing),
-      coverImage: getPrimaryListingImage(listing, "card"),
-    }));
+    .slice(0, 5);
+
+  // Bulk promotion lookup — one round-trip resolves the effective price
+  // for every listing rendered on this page, across trending / featured /
+  // recently-viewed. Bare price if the listing isn't in an active accepted
+  // campaign.
+  const priceLookupInputs = [
+    ...trendingListings.map((l: any) => ({ id: l.id, price: l.price, status: l.status })),
+    ...featuredListings.map((l: any) => ({ id: l.id, price: l.price, status: l.status })),
+    ...recentlyViewedShown.map((l: any) => ({ id: l.id, price: l.price, status: l.status })),
+  ];
+  const effectivePriceMap = await getEffectivePricesForListings(priceLookupInputs);
+
+  const recentlyViewed = recentlyViewedShown.map((listing) => ({
+    ...serializeListing(listing, { effectivePrice: effectivePriceMap.get(listing.id) }),
+    coverImage: getPrimaryListingImage(listing, "card"),
+  }));
 
   const trending = trendingListings.map((listing) => ({
-    ...serializeListing(listing),
+    ...serializeListing(listing, { effectivePrice: effectivePriceMap.get(listing.id) }),
     coverImage: getPrimaryListingImage(listing, "card"),
   }));
   const newIn = featuredListings.map((listing) => ({
-    ...serializeListing(listing),
+    ...serializeListing(listing, { effectivePrice: effectivePriceMap.get(listing.id) }),
     coverImage: getPrimaryListingImage(listing, "card"),
   }));
   const favoriteListingIds = new Set(
@@ -328,6 +341,11 @@ export default async function Home() {
                   </div>
                   
                   <div className="flex min-w-0 flex-1 flex-col px-[10px] pb-[10px] pt-[8px]">
+                    {listing.effective_price && listing.effective_price.discountPercent > 0 ? (
+                      <span className="mb-1 inline-block w-fit rounded-full bg-[#4a3328] px-2.5 py-[3px] text-[9px] font-semibold uppercase tracking-[0.13em] text-white">
+                        {listing.effective_price.discountPercent}% Off
+                      </span>
+                    ) : null}
                     <div className="mb-[2px] truncate text-[9px] uppercase tracking-[0.1em] text-[#8a7667]">
                       {listing.category}
                     </div>
@@ -335,9 +353,20 @@ export default async function Home() {
                       {listing.title}
                     </h3>
                     <div className="mt-auto flex items-end justify-between gap-2">
-                      <p className="truncate text-[13px] font-semibold text-[#2f2925]">
-                        ${Number(listing.price).toLocaleString()}
-                      </p>
+                      {listing.effective_price && listing.effective_price.discountPercent > 0 ? (
+                        <p className="flex min-w-0 flex-1 items-baseline gap-1.5">
+                          <span className="truncate text-[13px] font-semibold text-[#2f2925]">
+                            ${(listing.effective_price.effectiveCents / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                          </span>
+                          <span className="text-[11px] text-[#8a7667] line-through">
+                            ${(listing.effective_price.originalCents / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                          </span>
+                        </p>
+                      ) : (
+                        <p className="truncate text-[13px] font-semibold text-[#2f2925]">
+                          ${Number(listing.price).toLocaleString()}
+                        </p>
+                      )}
                       {listing.size ? (
                         <span className="shrink-0 text-[12px] font-normal uppercase tracking-[0.04em] text-[#8a7667]">
                           {toSizeCode(listing.size)}
@@ -359,7 +388,12 @@ export default async function Home() {
           </div>
           {newIn.length === 0 ? null : (
             <div className="grid grid-cols-2 gap-[10px] pb-4 sm:grid-cols-3 lg:grid-cols-4">
-              {newIn.map((listing) => (
+              {newIn.map((listing) => {
+                const hasPromo = listing.effective_price && listing.effective_price.discountPercent > 0;
+                // When a promo badge sits at top-right, the favorite heart
+                // moves to top-left so they don't collide. When no promo, the
+                // heart returns to its usual top-right slot.
+                return (
                 <Link
                   key={listing.id}
                   href={`/listings/${listing.id}`}
@@ -378,6 +412,11 @@ export default async function Home() {
                         <FavoriteButton listingId={listing.id} initialFavorited={favoriteListingIds.has(listing.id)} />
                       </div>
                     </div>
+                    {hasPromo ? (
+                      <span className="absolute left-[6px] top-[6px] z-10 rounded-full bg-[#4a3328] px-2.5 py-[3px] text-[9px] font-semibold uppercase tracking-[0.13em] text-white shadow-sm">
+                        {listing.effective_price!.discountPercent}% Off
+                      </span>
+                    ) : null}
                   </div>
 
                   <div className="flex min-w-0 flex-1 flex-col px-[10px] pb-[10px] pt-[8px]">
@@ -388,9 +427,20 @@ export default async function Home() {
                       {listing.title}
                     </h3>
                     <div className="mt-auto flex items-end justify-between gap-2">
-                      <p className="truncate text-[13px] font-semibold text-[#2f2925]">
-                        ${Number(listing.price).toLocaleString()}
-                      </p>
+                      {listing.effective_price && listing.effective_price.discountPercent > 0 ? (
+                        <p className="flex min-w-0 flex-1 items-baseline gap-1.5">
+                          <span className="truncate text-[13px] font-semibold text-[#2f2925]">
+                            ${(listing.effective_price.effectiveCents / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                          </span>
+                          <span className="text-[11px] text-[#8a7667] line-through">
+                            ${(listing.effective_price.originalCents / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                          </span>
+                        </p>
+                      ) : (
+                        <p className="truncate text-[13px] font-semibold text-[#2f2925]">
+                          ${Number(listing.price).toLocaleString()}
+                        </p>
+                      )}
                       {listing.size ? (
                         <span className="shrink-0 text-[12px] font-normal uppercase tracking-[0.04em] text-[#8a7667]">
                           {toSizeCode(listing.size)}
@@ -399,7 +449,8 @@ export default async function Home() {
                     </div>
                   </div>
                 </Link>
-              ))}
+                );
+              })}
             </div>
           )}
 

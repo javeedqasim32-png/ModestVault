@@ -511,3 +511,63 @@ export async function sendCartReminderEmail(
     }
 }
 
+/**
+ * One-off invitation asking a seller to opt-in their eligible listings to a
+ * time-boxed promotion campaign (e.g. Myrtle 15% off). The secure link
+ * carries a plaintext token — the DB only stores sha256(token) — that lets
+ * the seller land directly on their approval page without logging in.
+ *
+ * Fired from scripts/create-myrtle-campaign.ts with --send-emails; never
+ * fires automatically.
+ */
+export async function sendPromotionInvitationEmail(
+    email: string,
+    sellerName: string,
+    campaignName: string,
+    discountPercent: number,
+    secureLink: string,
+    listingCount: number,
+    startsAt: Date,
+): Promise<void> {
+    try {
+        const listingLabel = listingCount === 1 ? "listing" : "listings";
+        const startsLabel = startsAt.toLocaleDateString("en-US", {
+            month: "long",
+            day: "numeric",
+            year: "numeric",
+        });
+        const mailOptions = {
+            from: `"Modaire" <${process.env.EMAIL_USER}>`,
+            to: email,
+            subject: `You're invited to Modaire's ${campaignName}`,
+            html: `
+                <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 600px; margin: auto; border: 1px solid #eee; border-radius: 10px;">
+                    <h2 style="color: #4a3328;">Hi ${sellerName || "there"},</h2>
+                    <p style="font-size: 15px; line-height: 1.55; color: #2f2925;">
+                        We're preparing a limited-time <strong>${campaignName}</strong> on Modaire and you have <strong>${listingCount} eligible ${listingLabel}</strong>.
+                    </p>
+                    <div style="background: #f9f4f1; padding: 20px; border-radius: 10px; margin: 20px 0; border-left: 3px solid #a07c61;">
+                        <p style="margin: 0; font-size: 15px; color: #2f2925; line-height: 1.5;">
+                            You choose which of your eligible listings you'd like to include at <strong>${discountPercent}% off</strong>. The campaign runs from <strong>${startsLabel}</strong>, and your listing prices automatically return to normal once it ends.
+                        </p>
+                    </div>
+                    <div style="text-align: center; margin: 28px 0;">
+                        <a href="${secureLink}" style="display: inline-block; background: #a07c61; color: white; padding: 14px 28px; text-decoration: none; border-radius: 25px; font-weight: bold; font-size: 15px;">Review My Eligible Listings</a>
+                    </div>
+                    <p style="font-size: 13px; color: #6f6054; line-height: 1.5;">
+                        This link is unique to you — please don't share it. It stops working when the campaign begins on ${startsLabel}.
+                    </p>
+                    <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;" />
+                    <p style="font-size: 12px; color: #b0a89e;">You're receiving this because you have active Modaire listings that qualify for this campaign. Opting listings in is optional.</p>
+                </div>
+            `,
+        };
+        await transporter.sendMail(mailOptions);
+        console.log(
+            `✉️ PROMOTION INVITE (${campaignName}, ${listingCount} listings) SENT to ${email}`,
+        );
+    } catch (error) {
+        console.error("❌ Failed to send promotion invitation email:", error);
+    }
+}
+

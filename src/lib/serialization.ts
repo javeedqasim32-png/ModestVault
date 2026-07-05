@@ -3,15 +3,45 @@
  * for serialization to Client Components.
  */
 
-export function serializeListing(listing: any) {
+import type { EffectivePrice } from "@/lib/promotions/get-effective-price";
+
+/**
+ * Shape carried on the wire when a listing is inside an active promotion
+ * campaign. Server-computed via getEffectivePriceForListing/-ForListings —
+ * the client cannot fabricate this; callers that don't compute it just
+ * leave the field undefined and the card renders the plain price.
+ */
+export type SerializedEffectivePrice = {
+    originalCents: number;
+    effectiveCents: number;
+    discountPercent: number;
+    promotionCampaignId: string | null;
+};
+
+export function serializeListing(
+    listing: any,
+    opts?: { effectivePrice?: EffectivePrice | null },
+) {
     if (!listing) return null;
 
     return {
         ...listing,
         price: listing.price ? Number(listing.price) : 0,
         view_count: listing.view_count ? Number(listing.view_count) : 0,
+        // Optional promotion payload — undefined when the caller isn't
+        // rendering promo-aware UI (older call sites) or when no active
+        // campaign applies.
+        effective_price:
+            opts?.effectivePrice && opts.effectivePrice.discountPercent > 0
+                ? {
+                      originalCents: opts.effectivePrice.originalCents,
+                      effectiveCents: opts.effectivePrice.effectiveCents,
+                      discountPercent: opts.effectivePrice.discountPercent,
+                      promotionCampaignId: opts.effectivePrice.promotionCampaignId,
+                  }
+                : undefined,
         // Recursively serialize nested images and ensure their dates are stringified
-        images: listing.images ? listing.images.map((img: any) => ({ 
+        images: listing.images ? listing.images.map((img: any) => ({
             ...img,
             created_at: img.created_at?.toISOString?.() || (typeof img.created_at === 'string' ? img.created_at : null),
             updated_at: img.updated_at?.toISOString?.() || (typeof img.updated_at === 'string' ? img.updated_at : null),

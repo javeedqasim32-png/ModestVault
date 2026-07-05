@@ -5,6 +5,7 @@ import { Package } from "lucide-react";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { serializeListing } from "@/lib/serialization";
+import { getEffectivePricesForListings } from "@/lib/promotions/get-effective-price";
 import { getUserSlugMap } from "@/lib/user-slugs";
 import { getPrimaryListingImage } from "@/lib/listing-images";
 import BrowseFiltersClient from "@/components/marketplace/BrowseFiltersClient";
@@ -148,8 +149,14 @@ export default async function BrowsePage({
     );
     const filteredListings = [...featuredOverflowListings, ...otherApprovedListings, ...partialListings];
 
+    // Bulk resolve promotion pricing for every listing on this page. Uses
+    // the same server-side helper as checkout, so what you see == what you
+    // pay.
+    const browsePriceMap = await getEffectivePricesForListings(
+        filteredListings.map((l: any) => ({ id: l.id, price: l.price, status: l.status })),
+    );
     const listingsWithCover = filteredListings.map((listing) => ({
-        ...serializeListing(listing),
+        ...serializeListing(listing, { effectivePrice: browsePriceMap.get(listing.id) }),
         coverImage: getPrimaryListingImage(listing, "card"),
     }));
     const favoriteListingIds = new Set(
@@ -174,7 +181,9 @@ export default async function BrowsePage({
                     </div>
                 ) : (
                     <div className="mt-6 grid grid-cols-2 gap-[10px] pb-4">
-                        {listingsWithCover.map((listing) => (
+                        {listingsWithCover.map((listing) => {
+                            const hasPromo = listing.effective_price && listing.effective_price.discountPercent > 0;
+                            return (
                             <Link
                                 key={listing.id}
                                 href={`/listings/${listing.id}`}
@@ -193,6 +202,11 @@ export default async function BrowsePage({
                                             <FavoriteButton listingId={listing.id} initialFavorited={favoriteListingIds.has(listing.id)} />
                                         </div>
                                     </div>
+                                    {hasPromo ? (
+                                        <span className="absolute left-[6px] top-[6px] z-10 rounded-full bg-[#4a3328] px-2.5 py-[3px] text-[9px] font-semibold uppercase tracking-[0.13em] text-white shadow-sm">
+                                            {listing.effective_price!.discountPercent}% Off
+                                        </span>
+                                    ) : null}
                                 </div>
 
                                 <div className="flex min-w-0 flex-1 flex-col px-[10px] pb-[10px] pt-[8px]">
@@ -203,9 +217,20 @@ export default async function BrowsePage({
                                         {listing.title}
                                     </h3>
                                     <div className="mt-auto flex items-end justify-between gap-2">
-                                        <p className="truncate text-[13px] font-semibold text-[#2f2925]">
-                                            ${Number(listing.price).toLocaleString()}
-                                        </p>
+                                        {listing.effective_price && listing.effective_price.discountPercent > 0 ? (
+                                            <p className="flex min-w-0 flex-1 items-baseline gap-1.5">
+                                                <span className="truncate text-[13px] font-semibold text-[#2f2925]">
+                                                    ${(listing.effective_price.effectiveCents / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                </span>
+                                                <span className="text-[11px] text-[#8a7667] line-through">
+                                                    ${(listing.effective_price.originalCents / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                </span>
+                                            </p>
+                                        ) : (
+                                            <p className="truncate text-[13px] font-semibold text-[#2f2925]">
+                                                ${Number(listing.price).toLocaleString()}
+                                            </p>
+                                        )}
                                         {listing.size ? (
                                             <span className="shrink-0 text-[12px] font-normal uppercase tracking-[0.04em] text-[#8a7667]">
                                                 {toSizeCode(listing.size)}
@@ -214,7 +239,8 @@ export default async function BrowsePage({
                                     </div>
                                 </div>
                             </Link>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
             </div>
@@ -242,7 +268,9 @@ export default async function BrowsePage({
                             </div>
                         ) : (
                             <div className="mt-8 grid grid-cols-2 gap-[10px] pb-4 sm:grid-cols-3 lg:grid-cols-4">
-                                {listingsWithCover.map((listing) => (
+                                {listingsWithCover.map((listing) => {
+                                    const hasPromo = listing.effective_price && listing.effective_price.discountPercent > 0;
+                                    return (
                                     <Link
                                         key={listing.id}
                                         href={`/listings/${listing.id}`}
@@ -256,11 +284,16 @@ export default async function BrowsePage({
                                                 className="object-cover object-center transition-transform duration-500 group-hover:scale-105"
                                                 sizes="(max-width: 1024px) 33vw, 25vw"
                                             />
-                                            <div className="absolute right-[6px] top-[6px] z-10 flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-full bg-white/90">
+                                            <div className={`absolute ${hasPromo ? "left-[6px]" : "right-[6px]"} top-[6px] z-10 flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-full bg-white/90`}>
                                                 <div className="scale-[0.65]">
                                                     <FavoriteButton listingId={listing.id} initialFavorited={favoriteListingIds.has(listing.id)} />
                                                 </div>
                                             </div>
+                                            {hasPromo ? (
+                                                <span className="absolute right-[6px] top-[6px] z-10 rounded-full bg-[#4a3328] px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-white shadow-sm">
+                                                    {listing.effective_price!.discountPercent}% Off
+                                                </span>
+                                            ) : null}
                                         </div>
 
                                         <div className="flex min-w-0 flex-1 flex-col px-[10px] pb-[10px] pt-[8px]">
@@ -271,9 +304,20 @@ export default async function BrowsePage({
                                                 {listing.title}
                                             </h3>
                                             <div className="mt-auto flex items-end justify-between gap-2">
-                                                <p className="truncate text-[13px] font-semibold text-[#2f2925]">
-                                                    ${Number(listing.price).toLocaleString()}
-                                                </p>
+                                                {hasPromo ? (
+                                                    <p className="flex min-w-0 flex-1 items-baseline gap-1.5">
+                                                        <span className="truncate text-[13px] font-semibold text-[#2f2925]">
+                                                            ${(listing.effective_price!.effectiveCents / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                        </span>
+                                                        <span className="text-[11px] text-[#8a7667] line-through">
+                                                            ${(listing.effective_price!.originalCents / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                        </span>
+                                                    </p>
+                                                ) : (
+                                                    <p className="truncate text-[13px] font-semibold text-[#2f2925]">
+                                                        ${Number(listing.price).toLocaleString()}
+                                                    </p>
+                                                )}
                                                 {listing.size ? (
                                                     <span className="shrink-0 text-[12px] font-normal uppercase tracking-[0.04em] text-[#8a7667]">
                                                         {toSizeCode(listing.size)}
@@ -282,7 +326,8 @@ export default async function BrowsePage({
                                             </div>
                                         </div>
                                     </Link>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
                     </section>

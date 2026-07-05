@@ -48,6 +48,8 @@ model User {
   aiCoverJobs        AICoverJob[]
   refreshTokens      RefreshToken[]
   deviceTokens       DeviceToken[]
+  listingPromotions   ListingPromotion[]
+  promotionInvitations PromotionInvitation[]
   deleted_at         DateTime?
   deletion_scheduled_purge_at DateTime?
 }
@@ -121,6 +123,7 @@ model Listing {
   cartItems         CartItem[]
   favoriteItems     FavoriteItem[]
   conversations     Conversation[]
+  listingPromotions ListingPromotion[]
 
   @@index([status, moderation_status, created_at])
   @@index([style, category, subcategory, type])
@@ -170,6 +173,16 @@ model Purchase {
   payment_intent_id String?
   created_at        DateTime @default(now())
   order             Order?
+
+  // Promotion audit trail — null when purchase happened outside any campaign.
+  // When set, `amount` is the discounted price the buyer paid; `original_amount`
+  // is what the listing would have cost without the promo. Recorded at
+  // checkout-finalize time so historical purchases stay accurate even if
+  // the campaign later gets edited/cancelled.
+  original_amount        Decimal?
+  discount_amount        Decimal?
+  promotion_campaign_id  String?
+  promotion_campaign     PromotionCampaign? @relation(fields: [promotion_campaign_id], references: [id])
 
   @@unique([stripe_session_id, listing_id])
   @@unique([payment_intent_id, listing_id])
@@ -465,4 +478,76 @@ model NotificationOutbox {
 
   @@index([sent_at, next_attempt_at])
   @@index([user_id, sent_at])
+}
+
+// Time-boxed marketing campaigns (e.g. "Myrtle Summer 2026 — 15% off"). A
+// listing joins a campaign via ListingPromotion. Discount only applies while
+// status = "ACTIVE" AND NOW() is inside [starts_at, ends_at]. Expired
+// campaigns automatically stop discounting without any code changes — the
+// getEffectivePrice helper gates on these fields.
+model PromotionCampaign {
+  id                 String    @id @default(uuid())
+  name               String                                // "Myrtle Summer Sale"
+  slug               String    @unique                     // "myrtle-summer-2026" — used for idempotent script re-runs
+  discount_type      String    @default("PERCENT")         // PERCENT (FLAT is future work)
+  discount_percent   Int                                   // 15 for 15% off
+  status             String    @default("DRAFT")           // DRAFT, ACTIVE, ENDED, CANCELLED
+  starts_at          DateTime
+  ends_at            DateTime
+  target_rules_json  Json?                                 // { titleContains: ["Myrtle"], brandContains: ["Myrtle"] }
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
+
+  listingPromotions  ListingPromotion[]
+  invitations        PromotionInvitation[]
+  purchases          Purchase[]
+
+  @@index([status, starts_at, ends_at])
+}
+
+// Join between a campaign and a listing. Rows start as INVITED when the
+// generator script runs; the seller flips them to ACCEPTED or DECLINED on
+// the /promotions/approve/[token] page. Unique on (campaign, listing) so
+// re-running the script is idempotent.
+model ListingPromotion {
+  id                    String    @id @default(uuid())
+  promotion_campaign_id String
+  listing_id            String
+  seller_id             String
+  status                String    @default("INVITED")      // INVITED, ACCEPTED, DECLINED, REMOVED, EXPIRED
+  discount_percent      Int                                 // snapshot from campaign at invite time
+  invited_at            DateTime  @default(now())
+  accepted_at           DateTime?
+  declined_at           DateTime?
+  created_at            DateTime  @default(now())
+  updated_at            DateTime  @updatedAt
+
+  promotion_campaign    PromotionCampaign @relation(fields: [promotion_campaign_id], references: [id], onDelete: Cascade)
+  listing               Listing           @relation(fields: [listing_id], references: [id], onDelete: Cascade)
+  seller                User              @relation(fields: [seller_id], references: [id], onDelete: Cascade)
+
+  @@unique([promotion_campaign_id, listing_id])
+  @@index([listing_id, status])
+  @@index([seller_id, promotion_campaign_id])
+}
+
+// One row per seller per campaign. token_hash is sha256(plaintext); the
+// plaintext lives only in the invitation URL and email. Unique on
+// (campaign, seller) so a seller can't have two active invites for the
+// same campaign — script re-runs update timestamps instead of duplicating.
+model PromotionInvitation {
+  id                    String    @id @default(uuid())
+  promotion_campaign_id String
+  seller_id             String
+  token_hash            String    @unique
+  expires_at            DateTime                            // defaults to campaign.starts_at
+  email_sent_at         DateTime?
+  first_opened_at       DateTime?
+  created_at            DateTime  @default(now())
+
+  promotion_campaign    PromotionCampaign @relation(fields: [promotion_campaign_id], references: [id], onDelete: Cascade)
+  seller                User              @relation(fields: [seller_id], references: [id], onDelete: Cascade)
+
+  @@unique([promotion_campaign_id, seller_id])
+  @@index([expires_at])
 }

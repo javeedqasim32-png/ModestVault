@@ -3,6 +3,7 @@ import { stripe } from "@/lib/stripe";
 import { purchaseLabel } from "@/lib/shippo";
 import { sendOrderConfirmationEmail, sendSaleNotificationEmail } from "@/lib/email";
 import { createNotification } from "@/app/actions/notifications";
+import { getEffectivePriceForListing } from "@/lib/promotions/get-effective-price";
 
 // Result returned by `finalizeCheckout`. Callers (the /buy/success page and the
 // Stripe webhook) branch on `status` to decide what to do next. The actual
@@ -138,7 +139,19 @@ export async function finalizeCheckout(sessionId: string): Promise<FinalizeResul
                 for (let i = 0; i < bundleListingIds.length; i++) {
                     const lid = bundleListingIds[i];
                     const lst = currentListings.find((l) => l.id === lid)!;
-                    const itemCents = Math.round(Number(lst.price) * 100);
+                    const originalCents = Math.round(Number(lst.price) * 100);
+
+                    // Promotion recompute at finalize time — one lookup per
+                    // line. Campaigns run for days/weeks so the ~seconds
+                    // between intent creation and finalize essentially never
+                    // straddles ends_at. If it does, the buyer already paid
+                    // the discounted amount at the Stripe layer but this
+                    // Purchase would record the original — accepted tradeoff
+                    // for bundle simplicity. Single-item path uses metadata
+                    // and doesn't have this race.
+                    const ep = await getEffectivePriceForListing(lid);
+                    const itemCents = ep.effectiveCents;
+                    const discountCents = originalCents - itemCents;
 
                     const newPurchase = await tx.purchase.create({
                         data: {
@@ -147,6 +160,13 @@ export async function finalizeCheckout(sessionId: string): Promise<FinalizeResul
                             amount: itemCents / 100,
                             stripe_session_id: sessionId,
                             payment_intent_id: paymentIntentId,
+                            ...(discountCents > 0
+                                ? {
+                                      original_amount: originalCents / 100,
+                                      discount_amount: discountCents / 100,
+                                      promotion_campaign_id: ep.promotionCampaignId ?? undefined,
+                                  }
+                                : {}),
                         },
                     });
 
@@ -290,6 +310,22 @@ export async function finalizeCheckout(sessionId: string): Promise<FinalizeResul
                     data: { status: "SOLD" },
                 });
 
+                // Promotion audit: metadata carries the pre-discount original
+                // price when the buyer checked out under an active campaign.
+                // Recorded onto Purchase so refunds / support / accounting
+                // can always distinguish "what the buyer paid" from "what the
+                // listing was worth" without querying campaign state that
+                // may have since expired.
+                const originalItemCents = metadata.originalItemAmountCents
+                    ? Number(metadata.originalItemAmountCents)
+                    : null;
+                const discountCents = metadata.discountAmountCents
+                    ? Number(metadata.discountAmountCents)
+                    : null;
+                const promoCampaignId = metadata.promotionCampaignId
+                    ? String(metadata.promotionCampaignId)
+                    : null;
+
                 const newPurchase = await tx.purchase.create({
                     data: {
                         buyer_id: buyerId,
@@ -299,6 +335,15 @@ export async function finalizeCheckout(sessionId: string): Promise<FinalizeResul
                             : (checkoutSession.amount_total || 0) / 100,
                         stripe_session_id: sessionId,
                         payment_intent_id: paymentIntentId,
+                        ...(originalItemCents !== null
+                            ? { original_amount: originalItemCents / 100 }
+                            : {}),
+                        ...(discountCents !== null
+                            ? { discount_amount: discountCents / 100 }
+                            : {}),
+                        ...(promoCampaignId
+                            ? { promotion_campaign_id: promoCampaignId }
+                            : {}),
                     },
                 });
 
@@ -437,6 +482,214 @@ export async function finalizeCheckoutByPaymentIntent(paymentIntentId: string): 
         return { status: "NOT_PAID", paymentStatus: String(paymentIntent.status) };
     }
 
+    const bundleListingIds = (metadata.listingIds || "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    const isBundle = bundleListingIds.length >= 2;
+
+    // ────────────────────────────────────────────────────────────────────
+    // BUNDLE PATH — mirrors the Checkout Session bundle branch above,
+    // adapted to use the PaymentIntent rather than a session.
+    // ────────────────────────────────────────────────────────────────────
+    if (isBundle) {
+        const batchIdFromMeta = metadata.batchId || "";
+
+        const sharedShippingAddress = metadata.shipLine1
+            ? {
+                name: metadata.shipName || "",
+                line1: metadata.shipLine1 || "",
+                line2: metadata.shipLine2 || "",
+                city: metadata.shipCity || "",
+                state: metadata.shipState || "",
+                postal_code: metadata.shipPostal || "",
+                country: metadata.shipCountry || "US",
+                phone: metadata.shipPhone || "",
+            }
+            : null;
+        const sharedShippingOptionSelected = !!metadata.shippingRateId;
+
+        // Idempotency on batch_id — webhook + explicit finalize can race.
+        const existingBundle = await (prisma as any).order.findMany({
+            where: { batch_id: batchIdFromMeta },
+            include: ORDER_WITH_DETAILS_INCLUDE,
+        });
+        if (existingBundle.length > 0) {
+            const labelOutcome = await maybePurchaseBundleLabel(batchIdFromMeta, existingBundle);
+            return {
+                status: "ALREADY_FINALIZED",
+                isBundle: true,
+                bundleOrders: labelOutcome.bundleOrders,
+                bundleAutoLabelError: labelOutcome.error,
+                batchId: batchIdFromMeta,
+            };
+        }
+
+        const listingsForBundle = await prisma.listing.findMany({
+            where: { id: { in: bundleListingIds } },
+            include: { user: true },
+        });
+
+        try {
+            await prisma.$transaction(async (tx) => {
+                const currentListings = await tx.listing.findMany({
+                    where: { id: { in: bundleListingIds } },
+                });
+                if (
+                    currentListings.length !== bundleListingIds.length ||
+                    currentListings.some((l) => l.status !== "AVAILABLE")
+                ) {
+                    throw new Error("ALREADY_SOLD");
+                }
+
+                await tx.listing.updateMany({
+                    where: { id: { in: bundleListingIds } },
+                    data: { status: "SOLD" },
+                });
+
+                const totalShippingCents = Number(metadata.shippingAmountCents || "0") || 0;
+                const sellerTransferCurrency = (paymentIntent.currency || "usd").toLowerCase();
+
+                for (let i = 0; i < bundleListingIds.length; i++) {
+                    const lid = bundleListingIds[i];
+                    const lst = currentListings.find((l) => l.id === lid)!;
+                    const originalCents = Math.round(Number(lst.price) * 100);
+
+                    // Same recompute-at-finalize pattern as the web bundle
+                    // path above. See notes there.
+                    const ep = await getEffectivePriceForListing(lid);
+                    const itemCents = ep.effectiveCents;
+                    const discountCents = originalCents - itemCents;
+
+                    const newPurchase = await tx.purchase.create({
+                        data: {
+                            buyer_id: buyerId,
+                            listing_id: lid,
+                            amount: itemCents / 100,
+                            stripe_session_id: null,
+                            payment_intent_id: paymentIntentId,
+                            ...(discountCents > 0
+                                ? {
+                                      original_amount: originalCents / 100,
+                                      discount_amount: discountCents / 100,
+                                      promotion_campaign_id: ep.promotionCampaignId ?? undefined,
+                                  }
+                                : {}),
+                        },
+                    });
+
+                    const sellerTransferAmountCents = Math.max(0, Math.round(itemCents * 0.85));
+                    // The whole shipping fee gets pinned to the first Order in
+                    // the bundle. Buyer paid once, so accounting attributes
+                    // the cost to one row to keep per-order totals honest.
+                    const orderShippingAmount =
+                        i === 0 ? (totalShippingCents / 100).toFixed(2) : "0.00";
+
+                    await (tx as any).order.create({
+                        data: {
+                            purchase_id: newPurchase.id,
+                            batch_id: batchIdFromMeta,
+                            order_status: "PAID",
+                            shipping_status: "NOT_SHIPPED",
+                            shipping_stage: sharedShippingOptionSelected
+                                ? "OPTION_SELECTED"
+                                : (sharedShippingAddress ? "ADDRESS_SET" : "ADDRESS_MISSING"),
+                            shipping_address: sharedShippingAddress || undefined,
+                            shipping_option_rate_id: i === 0 ? (metadata.shippingRateId || undefined) : undefined,
+                            shipping_option_carrier: i === 0 ? (metadata.shippingCarrier || undefined) : undefined,
+                            shipping_option_service: i === 0 ? (metadata.shippingService || undefined) : undefined,
+                            shipping_option_amount: orderShippingAmount,
+                            shipping_option_currency: i === 0 ? (metadata.shippingCurrency || undefined) : undefined,
+                            shipping_option_selected_at: i === 0 && sharedShippingOptionSelected ? new Date() : undefined,
+                            seller_transfer_status: "PENDING_HOLD",
+                            seller_transfer_amount_cents: sellerTransferAmountCents,
+                            seller_transfer_currency: sellerTransferCurrency,
+                        },
+                    });
+                }
+
+                if (buyerId) {
+                    await tx.cartItem.deleteMany({
+                        where: {
+                            user_id: buyerId,
+                            listing_id: { in: bundleListingIds },
+                        },
+                    });
+                }
+            });
+        } catch (error: any) {
+            if (error?.message === "ALREADY_SOLD") {
+                return { status: "ALREADY_SOLD", isBundle: true };
+            }
+            if (error?.code === "P2002") {
+                const racedBundle = await (prisma as any).order.findMany({
+                    where: { batch_id: batchIdFromMeta },
+                    include: ORDER_WITH_DETAILS_INCLUDE,
+                });
+                const labelOutcome = await maybePurchaseBundleLabel(batchIdFromMeta, racedBundle);
+                return {
+                    status: "ALREADY_FINALIZED",
+                    isBundle: true,
+                    bundleOrders: labelOutcome.bundleOrders,
+                    bundleAutoLabelError: labelOutcome.error,
+                    batchId: batchIdFromMeta,
+                };
+            }
+            throw error;
+        }
+
+        // Buyer summary + per-seller notifications (same shape as the
+        // Checkout Session bundle path; buyer email comes from the User
+        // row since PaymentIntents don't carry customer_details).
+        const buyer = buyerId
+            ? await prisma.user.findUnique({ where: { id: buyerId }, select: { email: true } })
+            : null;
+        if (buyer?.email) {
+            const summaryTitle = listingsForBundle.length > 0
+                ? `${listingsForBundle.length} items from ${listingsForBundle[0].user.first_name} ${listingsForBundle[0].user.last_name}`.trim()
+                : "your order";
+            await sendOrderConfirmationEmail(
+                buyer.email,
+                summaryTitle,
+                (paymentIntent.amount || 0) / 100,
+            );
+        }
+        for (const lst of listingsForBundle) {
+            if (lst.user.email) {
+                await sendSaleNotificationEmail(
+                    lst.user.email,
+                    lst.title,
+                    Number(lst.price),
+                    { needsStripeConnect: !lst.user.stripe_account_id },
+                );
+            }
+            await createNotification({
+                userId: lst.user.id,
+                type: "ITEM_SOLD",
+                title: `Your item sold: ${lst.title}`,
+                body: `Sold for $${Number(lst.price).toFixed(2)} — ship soon to keep your buyer happy.`,
+                linkUrl: "/dashboard/sales",
+            });
+        }
+
+        const freshBundle = await (prisma as any).order.findMany({
+            where: { batch_id: batchIdFromMeta },
+            include: ORDER_WITH_DETAILS_INCLUDE,
+        });
+        const labelOutcome = await maybePurchaseBundleLabel(batchIdFromMeta, freshBundle);
+
+        return {
+            status: "FINALIZED",
+            isBundle: true,
+            bundleOrders: labelOutcome.bundleOrders,
+            bundleAutoLabelError: labelOutcome.error,
+            batchId: batchIdFromMeta,
+        };
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // SINGLE-ITEM PATH (original)
+    // ────────────────────────────────────────────────────────────────────
     const listingId = metadata.listingId;
     if (!listingId) {
         return { status: "MISSING_LISTING" };
@@ -489,6 +742,17 @@ export async function finalizeCheckoutByPaymentIntent(paymentIntentId: string): 
                 const sellerTransferAmountCents = Math.max(0, Math.round(itemAmountCents * 0.85));
                 const sellerTransferCurrency = (paymentIntent.currency || "usd").toLowerCase();
 
+                // Same audit fields as the web session single-item path.
+                const originalItemCents = metadata.originalItemAmountCents
+                    ? Number(metadata.originalItemAmountCents)
+                    : null;
+                const discountCents = metadata.discountAmountCents
+                    ? Number(metadata.discountAmountCents)
+                    : null;
+                const promoCampaignId = metadata.promotionCampaignId
+                    ? String(metadata.promotionCampaignId)
+                    : null;
+
                 const newPurchase = await tx.purchase.create({
                     data: {
                         buyer_id: buyerId,
@@ -499,6 +763,15 @@ export async function finalizeCheckoutByPaymentIntent(paymentIntentId: string): 
                         // idempotency.
                         stripe_session_id: null,
                         payment_intent_id: paymentIntentId,
+                        ...(originalItemCents !== null
+                            ? { original_amount: originalItemCents / 100 }
+                            : {}),
+                        ...(discountCents !== null
+                            ? { discount_amount: discountCents / 100 }
+                            : {}),
+                        ...(promoCampaignId
+                            ? { promotion_campaign_id: promoCampaignId }
+                            : {}),
                     },
                 });
 
