@@ -27,11 +27,16 @@ export async function submitPromotionApproval(input: {
     const token = (input.token || "").trim();
     if (!token) return { error: "Missing invitation token." };
 
-    const tokenHash = hashInvitationToken(token);
     const now = new Date();
 
+    // Dual lookup — see the same pattern in the approval page. Long tokens
+    // are 64 hex chars (from email URLs); short slugs are 10 chars (from
+    // SMS URLs). Length distinguishes them.
+    const isShortSlug = token.length <= 12;
     const invitation = await (prisma as any).promotionInvitation.findUnique({
-        where: { token_hash: tokenHash },
+        where: isShortSlug
+            ? { short_slug: token }
+            : { token_hash: hashInvitationToken(token) },
         select: {
             id: true,
             promotion_campaign_id: true,

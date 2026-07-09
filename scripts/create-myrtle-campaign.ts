@@ -42,6 +42,7 @@
  *     --status           — DRAFT | ACTIVE. Defaults to DRAFT.
  */
 
+import { randomBytes } from "crypto";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -78,6 +79,7 @@ type Args = {
     status: "DRAFT" | "ACTIVE";
     dryRun: boolean;
     sendEmails: boolean;
+    sendSms: boolean;
     printTokens: boolean;
 };
 
@@ -133,6 +135,7 @@ function parseArgs(): Args {
         status,
         dryRun: has("--dry-run"),
         sendEmails: has("--send-emails"),
+        sendSms: has("--send-sms"),
         printTokens: has("--print-tokens"),
     };
 }
@@ -150,6 +153,7 @@ async function run() {
     console.log(`  Status:          ${args.status}`);
     console.log(`  Dry run:         ${args.dryRun}`);
     console.log(`  Send emails:     ${args.sendEmails}`);
+    console.log(`  Send SMS:        ${args.sendSms}`);
     console.log(`  Print tokens:    ${args.printTokens}`);
     console.log("");
 
@@ -164,6 +168,12 @@ async function run() {
         listingPromotionsExisting: 0,
         emailsSent: 0,
         emailsSkipped: 0,
+        smsSent: 0,
+        smsSkippedNoPhone: 0,
+        smsSkippedOptOut: 0,
+        smsSkippedAlreadyAccepted: 0,
+        smsSkippedAlreadySent: 0,
+        smsFailed: 0,
     };
     const issuedTokens: Array<{ email: string; token: string }> = [];
 
@@ -262,11 +272,20 @@ async function run() {
                 // live), but for campaigns where starts_at is now/past that
                 // would expire immediately. Ends_at is the safer bound for
                 // both cases and lets sellers still opt in mid-campaign.
+                //
+                // short_slug is the SMS-friendly 10-char base62 identifier —
+                // stored plaintext because it IS the URL a seller taps
+                // from the SMS. sha256(long_token) still gates the email
+                // path independently.
+                const shortSlug = randomBytes(8)
+                    .toString("base64url")
+                    .slice(0, 10);
                 await tx.promotionInvitation.create({
                     data: {
                         promotion_campaign_id: campaign.id,
                         seller_id: sellerId,
                         token_hash: hashInvitationToken(plaintextToken),
+                        short_slug: shortSlug,
                         expires_at: args.endsAt,
                     },
                 });
@@ -402,6 +421,130 @@ async function run() {
         }
     }
 
+    // 5b. Optional SMS dispatch — mirrors the email loop but uses the
+    // short URL (`/p/{short_slug}`) and returns success/failure so we
+    // can persist an audit trail per invitation. Emails and SMS are
+    // fully independent — a run with only --send-sms sends SMS only,
+    // etc.
+    if (args.sendSms && !args.dryRun) {
+        const { sendPromotionInvitationSMS } = await import("@/lib/sms");
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL
+            ?? process.env.AUTH_URL
+            ?? process.env.NEXTAUTH_URL
+            ?? "https://shopmodaire.com";
+
+        const pending = await prisma.promotionInvitation.findMany({
+            where: {
+                promotion_campaign_id: summary.campaignId,
+                sms_sent_at: null,
+            },
+            include: {
+                seller: {
+                    select: {
+                        first_name: true,
+                        last_name: true,
+                        phone: true,
+                        sms_opt_in: true,
+                    },
+                },
+                promotion_campaign: {
+                    select: {
+                        name: true,
+                        discount_percent: true,
+                        starts_at: true,
+                        ends_at: true,
+                    },
+                },
+            },
+        });
+
+        // Pre-compute which sellers have already accepted at least one
+        // listing into this campaign — they've already engaged with the
+        // email invite; sending SMS would be noise. Skip them.
+        const acceptedSellerIds = new Set(
+            (
+                await prisma.listingPromotion.findMany({
+                    where: {
+                        promotion_campaign_id: summary.campaignId,
+                        status: "ACCEPTED",
+                    },
+                    select: { seller_id: true },
+                    distinct: ["seller_id"],
+                })
+            ).map((row) => row.seller_id),
+        );
+
+        for (const invite of pending) {
+            if (acceptedSellerIds.has(invite.seller_id)) {
+                // Stamp so future runs also skip; record the reason for
+                // debugging. Their invitation is preserved intact — they
+                // can still accept more listings via the email link if
+                // they want.
+                summary.smsSkippedAlreadyAccepted += 1;
+                await prisma.promotionInvitation.update({
+                    where: { id: invite.id },
+                    data: {
+                        sms_sent_at: new Date(),
+                        sms_failed_reason: "ALREADY_ACCEPTED",
+                    },
+                });
+                continue;
+            }
+            if (!invite.short_slug) {
+                // Should never happen for fresh invitations (generated
+                // above). For legacy invitations pre-slug, run the
+                // backfill script first.
+                summary.smsSkippedNoPhone += 1;
+                continue;
+            }
+            if (!invite.seller.phone) {
+                summary.smsSkippedNoPhone += 1;
+                await prisma.promotionInvitation.update({
+                    where: { id: invite.id },
+                    data: { sms_failed_reason: "NO_PHONE" },
+                });
+                continue;
+            }
+            if (!invite.seller.sms_opt_in) {
+                summary.smsSkippedOptOut += 1;
+                await prisma.promotionInvitation.update({
+                    where: { id: invite.id },
+                    data: { sms_failed_reason: "OPTED_OUT" },
+                });
+                continue;
+            }
+            const shortUrl = `${appUrl}/p/${invite.short_slug}`;
+            const listingCount = await prisma.listingPromotion.count({
+                where: {
+                    promotion_campaign_id: summary.campaignId,
+                    seller_id: invite.seller_id,
+                },
+            });
+            const result = await sendPromotionInvitationSMS(
+                invite.seller.phone,
+                invite.promotion_campaign.name,
+                invite.promotion_campaign.discount_percent,
+                listingCount,
+                shortUrl,
+                invite.promotion_campaign.ends_at,
+                { optedOut: !invite.seller.sms_opt_in },
+            );
+            if (result.ok) {
+                await prisma.promotionInvitation.update({
+                    where: { id: invite.id },
+                    data: { sms_sent_at: new Date() },
+                });
+                summary.smsSent += 1;
+            } else {
+                await prisma.promotionInvitation.update({
+                    where: { id: invite.id },
+                    data: { sms_failed_reason: result.error },
+                });
+                summary.smsFailed += 1;
+            }
+        }
+    }
+
     // 6. Print summary + tokens (if requested).
     console.log("=== Summary ===");
     console.log(`  Campaign:                   ${summary.campaignCreated ? "created" : "reused"} (${summary.campaignId})`);
@@ -414,6 +557,13 @@ async function run() {
     if (args.sendEmails) {
         console.log(`  Emails sent:                ${summary.emailsSent}`);
         console.log(`  Emails skipped:             ${summary.emailsSkipped}`);
+    }
+    if (args.sendSms) {
+        console.log(`  SMS sent:                    ${summary.smsSent}`);
+        console.log(`  SMS skipped (already opted): ${summary.smsSkippedAlreadyAccepted}`);
+        console.log(`  SMS skipped (no phone):      ${summary.smsSkippedNoPhone}`);
+        console.log(`  SMS skipped (opted out):     ${summary.smsSkippedOptOut}`);
+        console.log(`  SMS failed:                  ${summary.smsFailed}`);
     }
     if (args.printTokens && issuedTokens.length > 0) {
         console.log("\n--- Plaintext tokens (NEVER share outside dev) ---");

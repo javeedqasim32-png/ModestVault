@@ -24,6 +24,11 @@ export async function startSignup(formData: FormData) {
     let email = ((formData.get("email") as string) || "").trim();
     const password = ((formData.get("password") as string) || "").trim();
     const rawPhone = ((formData.get("phone") as string) || "").trim();
+    // Explicit SMS opt-in checkbox from the signup form. Unchecked by
+    // default; only set to true when the user actively ticks the box.
+    // Existing users pre-checkbox are grandfathered via User.sms_opt_in
+    // defaulting to true in schema.
+    const smsOptIn = formData.get("sms_opt_in") === "on";
     const street1 = ((formData.get("street1") as string) || "").trim();
     const street2 = ((formData.get("street2") as string) || "").trim();
     const city = ((formData.get("city") as string) || "").trim();
@@ -94,6 +99,7 @@ export async function startSignup(formData: FormData) {
                     state,
                     zip,
                     country,
+                    sms_opt_in: smsOptIn,
                     verification_code_hash,
                     code_expiry,
                     attempt_count: 0,
@@ -115,6 +121,7 @@ export async function startSignup(formData: FormData) {
                     state,
                     zip,
                     country,
+                    sms_opt_in: smsOptIn,
                     verification_code_hash,
                     code_expiry,
                     last_sent_at: new Date()
@@ -195,6 +202,11 @@ export async function verifyEmail(email: string, code: string) {
                     state: pendingUser.state,
                     zip: pendingUser.zip,
                     country: pendingUser.country,
+                    // Preserve the explicit opt-in choice from signup —
+                    // do NOT rely on User.sms_opt_in's default (which is
+                    // true, intentional for pre-checkbox users but wrong
+                    // for new signups who did not tick the box).
+                    sms_opt_in: pendingUser.sms_opt_in,
                     email_verified: true,
                 }
             });

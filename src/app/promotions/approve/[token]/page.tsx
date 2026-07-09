@@ -20,11 +20,17 @@ export default async function PromotionApprovalPage(
     { params }: { params: Promise<{ token: string }> },
 ) {
     const { token } = await params;
-    const tokenHash = hashInvitationToken(token);
     const now = new Date();
 
+    // Dual lookup: email URLs carry the 64-char hex token that we hash and
+    // match against token_hash; SMS URLs carry a short base62 slug that
+    // matches short_slug directly. Length is a safe discriminator — long
+    // tokens are always 64 chars, slugs are 10.
+    const isShortSlug = token.length <= 12;
     const invitation = await (prisma as any).promotionInvitation.findUnique({
-        where: { token_hash: tokenHash },
+        where: isShortSlug
+            ? { short_slug: token }
+            : { token_hash: hashInvitationToken(token) },
         include: {
             promotion_campaign: true,
             seller: { select: { first_name: true, last_name: true } },

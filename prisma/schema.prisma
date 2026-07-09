@@ -50,6 +50,11 @@ model User {
   deviceTokens       DeviceToken[]
   listingPromotions   ListingPromotion[]
   promotionInvitations PromotionInvitation[]
+  // Master toggle for outbound SMS (campaigns, message notifications,
+  // sale notifications). Defaults true under transactional framing;
+  // flipped false by /api/internal/sms/inbound when the user replies
+  // STOP / UNSUBSCRIBE / CANCEL / END / QUIT to a Modaire SMS.
+  sms_opt_in         Boolean   @default(true)
   deleted_at         DateTime?
   deletion_scheduled_purge_at DateTime?
 }
@@ -149,6 +154,10 @@ model PendingUser {
   attempt_count          Int       @default(0)
   resend_count           Int       @default(0)
   last_sent_at           DateTime?
+  // Captured from the signup form's opt-in checkbox and copied onto the
+  // final User row on verify. Existing users pre-dating this checkbox
+  // are grandfathered via User.sms_opt_in defaulting to true.
+  sms_opt_in             Boolean   @default(false)
   created_at             DateTime  @default(now())
   updated_at             DateTime  @updatedAt
 }
@@ -184,8 +193,16 @@ model Purchase {
   promotion_campaign_id  String?
   promotion_campaign     PromotionCampaign? @relation(fields: [promotion_campaign_id], references: [id])
 
+  // Item-sold SMS state — stamped by /api/internal/send-sale-sms cron once
+  // the seller has been texted about this purchase. sms_sent_at IS NULL
+  // gates the cron so no duplicate sends per purchase. sms_failed_reason
+  // captures Twilio errors for debugging (INVALID_PHONE, OPTED_OUT, etc.).
+  sms_sent_at            DateTime?
+  sms_failed_reason      String?
+
   @@unique([stripe_session_id, listing_id])
   @@unique([payment_intent_id, listing_id])
+  @@index([sms_sent_at, created_at])
 }
 
 model Order {
@@ -348,6 +365,10 @@ model ConversationMessage {
   // arrival if the message is still unread, so active conversations
   // don't generate per-message email spam. Set once the email is sent.
   email_sent_at    DateTime?
+  // Idempotency stamp for the SMS piggyback in the same cron. Every
+  // message included in a per-recipient SMS batch gets stamped so the
+  // next cron pass skips them. See src/app/api/internal/send-new-message-emails/route.ts.
+  sms_sent_at      DateTime?
   conversation     Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
   sender           User         @relation("ConversationMessageSender", fields: [sender_id], references: [id], onDelete: Cascade)
 
@@ -356,6 +377,7 @@ model ConversationMessage {
   @@index([conversation_id, read_at])
   @@index([read_at, reminder_sent_at, created_at])
   @@index([read_at, email_sent_at, created_at])
+  @@index([read_at, sms_sent_at, created_at])
 }
 
 model Follow {
@@ -544,6 +566,14 @@ model PromotionInvitation {
   email_sent_at         DateTime?
   first_opened_at       DateTime?
   created_at            DateTime  @default(now())
+  // SMS-side of the invitation. `short_slug` is a bit.ly-style 10-char
+  // URL-safe identifier used in the SMS link (character count is scarce
+  // in a 160-char SMS). Distinct from `token_hash` — short_slug is stored
+  // plaintext because it IS the URL, whereas token_hash is a one-way
+  // hash of the plaintext long token that lives only in the email URL.
+  short_slug            String?   @unique
+  sms_sent_at           DateTime?
+  sms_failed_reason     String?
 
   promotion_campaign    PromotionCampaign @relation(fields: [promotion_campaign_id], references: [id], onDelete: Cascade)
   seller                User              @relation(fields: [seller_id], references: [id], onDelete: Cascade)

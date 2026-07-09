@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
 import { purchaseLabel } from "@/lib/shippo";
 import { sendOrderConfirmationEmail, sendSaleNotificationEmail } from "@/lib/email";
+import { sendItemsSoldSMS } from "@/lib/sms";
 import { createNotification } from "@/app/actions/notifications";
 import { getEffectivePriceForListing } from "@/lib/promotions/get-effective-price";
 
@@ -251,6 +252,17 @@ export async function finalizeCheckout(sessionId: string): Promise<FinalizeResul
                     { needsStripeConnect: !lst.user.stripe_account_id },
                 );
             }
+            // Fire-and-forget SMS to the seller. sendItemsSoldSMS never
+            // throws (returns {ok, error?}); we intentionally ignore the
+            // return here to keep the finalize path resilient to Twilio
+            // outages / bad phones / opt-outs.
+            void sendItemsSoldSMS(
+                lst.user.phone,
+                1,
+                lst.title,
+                Number(lst.price),
+                { optedOut: !lst.user.sms_opt_in },
+            );
             await createNotification({
                 userId: lst.user.id,
                 type: "ITEM_SOLD",
@@ -425,6 +437,17 @@ export async function finalizeCheckout(sessionId: string): Promise<FinalizeResul
                 { needsStripeConnect: !listing.user.stripe_account_id },
             );
         }
+        // Fire-and-forget SMS to the seller. sendItemsSoldSMS never
+        // throws (returns {ok, error?}); we intentionally ignore the
+        // return here to keep the finalize path resilient to Twilio
+        // outages / bad phones / opt-outs.
+        void sendItemsSoldSMS(
+            listing.user.phone,
+            1,
+            listing.title,
+            Number(listing.price),
+            { optedOut: !listing.user.sms_opt_in },
+        );
         await createNotification({
             userId: listing.user.id,
             type: "ITEM_SOLD",
@@ -663,6 +686,17 @@ export async function finalizeCheckoutByPaymentIntent(paymentIntentId: string): 
                     { needsStripeConnect: !lst.user.stripe_account_id },
                 );
             }
+            // Fire-and-forget SMS to the seller. sendItemsSoldSMS never
+            // throws (returns {ok, error?}); we intentionally ignore the
+            // return here to keep the finalize path resilient to Twilio
+            // outages / bad phones / opt-outs.
+            void sendItemsSoldSMS(
+                lst.user.phone,
+                1,
+                lst.title,
+                Number(lst.price),
+                { optedOut: !lst.user.sms_opt_in },
+            );
             await createNotification({
                 userId: lst.user.id,
                 type: "ITEM_SOLD",
@@ -853,6 +887,17 @@ export async function finalizeCheckoutByPaymentIntent(paymentIntentId: string): 
                 { needsStripeConnect: !listing.user.stripe_account_id },
             );
         }
+        // Fire-and-forget SMS to the seller. sendItemsSoldSMS never
+        // throws (returns {ok, error?}); we intentionally ignore the
+        // return here to keep the finalize path resilient to Twilio
+        // outages / bad phones / opt-outs.
+        void sendItemsSoldSMS(
+            listing.user.phone,
+            1,
+            listing.title,
+            Number(listing.price),
+            { optedOut: !listing.user.sms_opt_in },
+        );
         await createNotification({
             userId: listing.user.id,
             type: "ITEM_SOLD",

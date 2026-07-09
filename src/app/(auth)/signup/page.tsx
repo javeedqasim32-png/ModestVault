@@ -165,6 +165,34 @@ export default function SignupPage() {
                                 </div>
                             </div>
 
+                            {/*
+                                Explicit SMS opt-in for TCPA compliance. Unchecked
+                                by default; the copy fully discloses frequency and
+                                the STOP unsubscribe path. Signup action reads
+                                formData.get("sms_opt_in") === "on".
+                            */}
+                            <div className="pt-2">
+                                <label className="flex items-start gap-3 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        name="sms_opt_in"
+                                        className="mt-1 h-4 w-4 shrink-0 accent-foreground"
+                                    />
+                                    <span className="text-[13px] leading-[1.55] text-muted-foreground">
+                                        I agree to receive SMS notification for
+                                        buyer/seller messages and shipping
+                                        update on Modaire.
+                                    </span>
+                                </label>
+                                {/* TCPA disclosure — indented to align with
+                                    the checkbox label above (checkbox is
+                                    h-4 w-4 = 16px + gap-3 = 12px = 28px total,
+                                    matching pl-7 = 28px). */}
+                                <p className="mt-1 pl-7 text-[11px] leading-[1.5] text-muted-foreground/80">
+                                    Msg &amp; data rates may apply. Reply STOP to opt out.
+                                </p>
+                            </div>
+
                             <Button type="submit" isLoading={loading} className="w-full h-12 mt-4">
                                 Create Account
                             </Button>
