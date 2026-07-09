@@ -5,6 +5,7 @@ import { AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { BuySuccessClient } from "@/components/marketplace/BuySuccessClient";
+import { PurchasePixel } from "@/components/analytics/PurchasePixel";
 import { finalizeCheckout } from "@/lib/checkout-finalize";
 
 export const dynamic = "force-dynamic";
@@ -71,10 +72,22 @@ export default async function BuySuccessPage({ searchParams }: { searchParams: P
     // FINALIZED or ALREADY_FINALIZED — render confirmation
     // ────────────────────────────────────────────────────────────────────
 
+    // Pull the Stripe session ONCE so every success render branch can pass
+    // the correct amount + content_ids to the Meta Pixel Purchase event.
+    // Downstream branches that also need `checkoutSession` (address-edit
+    // flow) reuse this instance instead of re-fetching.
+    const checkoutSession = await stripe.checkout.sessions.retrieve(session_id);
+    const purchaseValue = ((checkoutSession.amount_total ?? 0) / 100);
+    const purchaseCurrency = (checkoutSession.currency ?? "usd").toUpperCase();
+    const purchaseContentIds: string[] = result.isBundle
+        ? (result.bundleOrders?.map((o) => o.listing_id).filter((id): id is string => !!id) ?? [])
+        : (listingId ? [listingId] : []);
+
     if (result.isBundle) {
         const bundleListingsCount = result.bundleOrders?.length ?? 0;
         return (
             <div className="container mx-auto px-6 py-24 flex justify-center items-center min-h-[calc(100vh-100px)]">
+                <PurchasePixel eventId={session_id} value={purchaseValue} currency={purchaseCurrency} contentIds={purchaseContentIds} />
                 <div className="max-w-2xl w-full text-center space-y-8">
                     <h1 className="text-5xl font-black tracking-tighter text-foreground">
                         Order Confirmed
@@ -111,6 +124,7 @@ export default async function BuySuccessPage({ searchParams }: { searchParams: P
     if (order.shipping_status !== "NOT_SHIPPED" && order.label_url) {
         return (
             <div className="container mx-auto px-6 py-24 flex justify-center items-center min-h-[calc(100vh-100px)]">
+                <PurchasePixel eventId={session_id} value={purchaseValue} currency={purchaseCurrency} contentIds={purchaseContentIds} />
                 <div className="max-w-2xl w-full text-center space-y-8">
                     <h1 className="text-5xl font-black tracking-tighter text-foreground">
                         Order Confirmed
@@ -137,6 +151,7 @@ export default async function BuySuccessPage({ searchParams }: { searchParams: P
     if (order.shipping_stage === "OPTION_SELECTED") {
         return (
             <div className="container mx-auto px-6 py-24 flex justify-center items-center min-h-[calc(100vh-100px)]">
+                <PurchasePixel eventId={session_id} value={purchaseValue} currency={purchaseCurrency} contentIds={purchaseContentIds} />
                 <div className="max-w-2xl w-full text-center space-y-8">
                     <h1 className="text-5xl font-black tracking-tighter text-foreground">
                         Order Confirmed
@@ -167,7 +182,7 @@ export default async function BuySuccessPage({ searchParams }: { searchParams: P
 
     // Buyer needs to provide address / select shipping — derive the best-known
     // initial address from the saved Order or Stripe's recorded customer_details.
-    const checkoutSession = await stripe.checkout.sessions.retrieve(session_id);
+    // (checkoutSession was already retrieved above for pixel Purchase params.)
     const stripeShipping = (checkoutSession as any).shipping_details;
     const orderAddress = (order.shipping_address || null) as any;
     const initialAddress = orderAddress ? {
@@ -192,6 +207,7 @@ export default async function BuySuccessPage({ searchParams }: { searchParams: P
 
     return (
         <div className="container mx-auto px-6 py-24 flex justify-center items-center min-h-[calc(100vh-100px)]">
+            <PurchasePixel eventId={session_id} value={purchaseValue} currency={purchaseCurrency} contentIds={purchaseContentIds} />
             <BuySuccessClient
                 orderId={order.id}
                 initialAddress={initialAddress}

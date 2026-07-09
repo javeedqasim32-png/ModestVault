@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { startSignup, verifyEmail, resendCode } from "@/app/actions/auth";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Input";
+import { trackMetaEvent } from "@/lib/meta-pixel";
 
 export default function SignupPage() {
     const router = useRouter();
@@ -52,6 +53,7 @@ export default function SignupPage() {
                 setError(res.error);
                 setLoading(false);
             } else if (res?.success) {
+                trackMetaEvent("CompleteRegistration");
                 setSuccessMessage("Account created. Redirecting...");
                 setTimeout(() => {
                     router.push("/login?registered=true");

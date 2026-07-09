@@ -11,6 +11,7 @@ import {
     type ListingFilterOptionSets,
     toBrowseQueryString,
 } from "@/lib/listingFilters";
+import { trackMetaEvent } from "@/lib/meta-pixel";
 
 type DropdownKey = "style" | "category" | "subcategory" | "type" | "size" | "condition" | null;
 
@@ -180,6 +181,12 @@ export default function BrowseFiltersClient({
             maxPrice: sliderMax < PRICE_MAX ? sliderMax : undefined,
         };
         const query = toBrowseQueryString(next);
+        // Fire Search whenever the user applies filters. Search text is
+        // preferred when present; otherwise fall back to a serialized
+        // filter summary so Meta still has a useful signal.
+        trackMetaEvent("Search", {
+            search_string: next.search?.trim() || query || "",
+        });
         setPanelOpen(false);
         setOpenDropdown(null);
         router.push(query ? `/browse?${query}` : "/browse");

@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { Check, ChevronRight, ShieldCheck, Trash2 } from "lucide-react";
 import { createCheckoutForSellerGroup } from "@/app/actions/checkout";
 import { removeCartItem } from "@/app/actions/cart";
+import { trackMetaEvent } from "@/lib/meta-pixel";
 
 export type SellerCartItem = {
     id: string;          // CartItem id (used by removeCartItem)
@@ -126,6 +127,15 @@ export default function SellerCartSection({
     function handleCheckout() {
         if (noneSelected || overCap) return;
         setError(null);
+        // Fire pixel BEFORE the transition — the server action redirects,
+        // so an "after" call would never execute.
+        trackMetaEvent("InitiateCheckout", {
+            content_ids: selectedItems.map((item) => item.listing.id),
+            content_type: "product",
+            num_items: selectedCount,
+            value: selectedSubtotal,
+            currency: "USD",
+        });
         startCheckout(async () => {
             try {
                 await createCheckoutForSellerGroup(selectedItems.map((item) => item.listing.id));

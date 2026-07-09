@@ -5,6 +5,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { Heart } from "lucide-react";
 import { setFavoriteForListing } from "@/app/actions/favorites";
 import SignInPromptModal from "@/components/auth/SignInPromptModal";
+import { trackMetaEvent } from "@/lib/meta-pixel";
 
 export default function FavoriteButton({
   listingId,
@@ -51,6 +52,14 @@ export default function FavoriteButton({
               if (res.error.includes("sign in")) {
                 setPromptOpen(true);
               }
+            } else if (next) {
+              // Only fire on unfavorited → favorited transition — not on
+              // un-favorite. Meta's AddToWishlist event has no "remove"
+              // counterpart.
+              trackMetaEvent("AddToWishlist", {
+                content_ids: [listingId],
+                content_type: "product",
+              });
             }
           });
         }}

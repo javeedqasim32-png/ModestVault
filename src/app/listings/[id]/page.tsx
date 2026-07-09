@@ -8,6 +8,7 @@ import { getEffectivePriceForListing } from "@/lib/promotions/get-effective-pric
 import { Pencil, Star, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import RecentlyViewedTracker from "@/components/marketplace/RecentlyViewedTracker";
+import { ViewContentPixel } from "@/components/analytics/ViewContentPixel";
 import FavoriteButton from "@/components/marketplace/FavoriteButton";
 import ListingImageGallery from "@/components/marketplace/ListingImageGallery";
 import ShareListingButton from "@/components/marketplace/ShareListingButton";
@@ -122,6 +123,12 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
     return (
         <div className="min-h-screen bg-[#EFE7DE]">
             <RecentlyViewedTracker listingId={listing.id} viewerId={session?.user?.id ?? null} />
+            <ViewContentPixel
+                listingId={listing.id}
+                title={listing.title}
+                price={Number(effectivePrice ?? listing.price)}
+                category={listing.category}
+            />
             <div className="mx-auto w-full max-w-[760px] pb-36">
                 <div className="px-4 pb-3 pt-4">
                     <SmartBackButton
@@ -308,6 +315,7 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                                 <AddToBagButton
                                     listingId={listing.id}
                                     isAuthed={isAuthed}
+                                    price={Number(effectivePrice ?? listing.price)}
                                     addToCartAction={async () => {
                                         "use server";
                                         await addToCartAndRedirect(listing.id);
