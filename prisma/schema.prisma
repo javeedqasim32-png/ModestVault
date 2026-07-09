@@ -581,3 +581,20 @@ model PromotionInvitation {
   @@unique([promotion_campaign_id, seller_id])
   @@index([expires_at])
 }
+
+// One row per (user, listing) pair we've emailed about a sale discovery.
+// Powers the "your saved item just went on sale" cron at
+// /api/internal/send-sale-discovery-emails. The unique constraint on
+// (user_id, listing_id) is the whole point: even if a listing goes on
+// sale multiple times (campaign ends, seller re-accepts in a new one),
+// we only email each user about each listing exactly once ever. Sold
+// listings and cart/favorite removal never re-arm the notification.
+model SaleDiscoveryEmail {
+  id          String   @id @default(uuid())
+  user_id     String
+  listing_id  String
+  sent_at     DateTime @default(now())
+
+  @@unique([user_id, listing_id])
+  @@index([sent_at])
+}

@@ -581,3 +581,87 @@ export async function sendPromotionInvitationEmail(
     }
 }
 
+/**
+ * Sale-discovery email — one per user, batching multiple listings from
+ * their cart + favorites that just went on sale. Fired by the cron at
+ * /api/internal/send-sale-discovery-emails. One-time per (user, listing)
+ * pair via SaleDiscoveryEmail unique constraint.
+ *
+ * `firstName` is used only for the greeting; falls back to "there" if
+ * missing so the salutation always reads cleanly.
+ */
+export async function sendSaleDiscoveryEmail(
+    email: string,
+    firstName: string,
+    items: Array<{
+        title: string;
+        originalPrice: number;
+        salePrice: number;
+        discountPercent: number;
+        thumbUrl: string | null;
+        listingUrl: string;
+    }>,
+): Promise<void> {
+    if (items.length === 0) return;
+    try {
+        const total = items.length;
+        const itemLabel = total === 1 ? "item" : "items";
+        const itemsHtml = items
+            .map((it) => {
+                const img = it.thumbUrl
+                    ? `<img src="${it.thumbUrl}" alt="" width="72" height="90" style="display: block; border-radius: 8px; object-fit: cover;" />`
+                    : `<div style="width: 72px; height: 90px; background: #f2ebe4; border-radius: 8px;"></div>`;
+                return `
+                    <a href="${it.listingUrl}" style="display: block; text-decoration: none; color: inherit; background: #fbf8f5; padding: 12px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #e3d9d1;">
+                        <table style="width: 100%; border-collapse: collapse;"><tr>
+                            <td style="width: 72px; vertical-align: top;">${img}</td>
+                            <td style="padding-left: 14px; vertical-align: top;">
+                                <p style="margin: 0 0 6px 0; font-weight: bold; color: #2f2925; font-size: 14px; line-height: 1.3;">${it.title}</p>
+                                <p style="margin: 0 0 4px 0; color: #4a3328; font-size: 15px; font-weight: 600;">
+                                    $${it.salePrice.toFixed(2)}
+                                    <span style="color: #8a7667; font-weight: 400; font-size: 13px; text-decoration: line-through; margin-left: 6px;">$${it.originalPrice.toFixed(2)}</span>
+                                </p>
+                                <span style="display: inline-block; background: #4a3328; color: white; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em;">${it.discountPercent}% Off</span>
+                            </td>
+                        </tr></table>
+                    </a>`;
+            })
+            .join("");
+        const subject = total === 1
+            ? "An item you saved just went on sale"
+            : `${total} items you saved just went on sale`;
+        const heading = total === 1
+            ? "An item you love is now on sale"
+            : "Items you love are now on sale";
+        const intro = total === 1
+            ? `An item from your bag or favorites just went on sale on Modaire.`
+            : `${total} ${itemLabel} from your bag or favorites just went on sale on Modaire.`;
+        const mailOptions = {
+            from: `"Modaire" <${process.env.EMAIL_USER}>`,
+            to: email,
+            subject,
+            html: `
+                <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 600px; margin: auto; border: 1px solid #eee; border-radius: 10px;">
+                    <h2 style="color: #4a3328;">Hi ${firstName || "there"},</h2>
+                    <p style="font-size: 15px; line-height: 1.55; color: #2f2925;">${heading}.</p>
+                    <div style="background: #f9f4f1; padding: 16px; border-radius: 10px; margin: 20px 0; border-left: 3px solid #a07c61;">
+                        <p style="margin: 0; font-size: 14px; color: #2f2925; line-height: 1.5;">${intro} Grab ${total === 1 ? "it" : "them"} before ${total === 1 ? "the seller closes it out" : "the sale ends or someone else beats you to them"}.</p>
+                    </div>
+                    <div style="margin: 20px 0;">${itemsHtml}</div>
+                    <div style="text-align: center; margin: 24px 0;">
+                        <a href="${process.env.NEXT_PUBLIC_APP_URL}/browse?sale=1" style="display: inline-block; background: #a07c61; color: white; padding: 12px 26px; text-decoration: none; border-radius: 25px; font-weight: bold; font-size: 14px;">Shop the sale</a>
+                    </div>
+                    <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;" />
+                    <p style="font-size: 12px; color: #b0a89e;">You're receiving this because these items were in your bag or favorites when they went on sale. Each item triggers this email at most once.</p>
+                </div>
+            `,
+        };
+        await transporter.sendMail(mailOptions);
+        console.log(
+            `✉️ SALE DISCOVERY (${total} ${itemLabel}) SENT to ${email}`,
+        );
+    } catch (error) {
+        console.error("❌ Failed to send sale discovery email:", error);
+    }
+}
+
