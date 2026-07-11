@@ -4,11 +4,14 @@ import type { ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 import { useEffect, useLayoutEffect, useState } from "react";
 
+// Sections default to OPEN. TCR/Twilio A2P 10DLC reviewers land on this
+// page and need to see policy content immediately — a collapsed accordion
+// reads as "no visible policy" and fails compliance review.
 const DEFAULT_OPEN_STATE: Record<string, boolean> = {
-  terms: false,
-  privacy: false,
-  seller: false,
-  refunds: false,
+  terms: true,
+  privacy: true,
+  seller: true,
+  refunds: true,
 };
 
 const SUPPORT_EMAIL = "support@shopmodaire.com";
@@ -23,7 +26,84 @@ const policyItems: readonly PolicyItem[] = [
   {
     id: "terms",
     label: "Terms of Service",
-    body: "By using Modaire, you agree to list only authentic items, provide accurate descriptions and photos, and complete transactions in good faith. Misrepresentation, fraud, or harassment may result in permanent suspension.",
+    body: (
+      <div className="space-y-4">
+        <p>
+          By using Modaire (shopmodaire.com), a peer-to-peer marketplace
+          for modest fashion, you agree to these Terms. If you do not
+          agree, do not use the service.
+        </p>
+
+        <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-[#6f5647]">
+          Eligibility &amp; Account
+        </p>
+        <p>
+          You must be at least 18 and legally able to enter into a binding
+          contract. You must provide accurate registration information
+          (name, email, address, and phone number for verification) and
+          keep your login credentials secure. Modaire currently supports
+          shipping within the United States.
+        </p>
+
+        <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-[#6f5647]">
+          Marketplace Role
+        </p>
+        <p>
+          Modaire connects independent buyers and sellers. We do not take
+          title to items listed for sale. Sellers are responsible for the
+          accuracy, authenticity, and timely shipment of their items;
+          buyers are responsible for reading listings and paying for what
+          they purchase.
+        </p>
+
+        <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-[#6f5647]">
+          User Conduct
+        </p>
+        <p>
+          You agree not to list counterfeit, stolen, or misrepresented
+          items; circumvent our payment system; harass, threaten, or
+          defraud other users; impersonate anyone; or attempt to access
+          accounts or systems you are not authorized to use. Violations
+          may result in listing removal, suspension, or permanent
+          termination.
+        </p>
+
+        <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-[#6f5647]">
+          Payments
+        </p>
+        <p>
+          All payments are processed by Stripe. Modaire charges a 15%
+          commission on completed sales. Seller payouts are held briefly
+          after delivery confirmation to allow disputes to be raised.
+        </p>
+
+        <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-[#6f5647]">
+          Disclaimers &amp; Liability
+        </p>
+        <p>
+          Modaire is provided &ldquo;as is&rdquo; without warranties of any kind. We
+          are not responsible for the acts or omissions of buyers or
+          sellers. To the extent permitted by law, Modaire&apos;s aggregate
+          liability for any claim will not exceed the greater of the fees
+          collected from you in the 90 days before the claim or $100, and
+          we are not liable for indirect or consequential damages.
+        </p>
+
+        <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-[#6f5647]">
+          Contact
+        </p>
+        <p>
+          Questions about these Terms:{" "}
+          <a
+            href={`mailto:${SUPPORT_EMAIL}`}
+            className="underline hover:text-[#5a4426]"
+          >
+            {SUPPORT_EMAIL}
+          </a>
+          .
+        </p>
+      </div>
+    ),
   },
   {
     id: "privacy",
@@ -87,12 +167,103 @@ const policyItems: readonly PolicyItem[] = [
   {
     id: "seller",
     label: "Seller Policy",
-    body: "Sellers are responsible for item accuracy, shipping within 3 business days, and accepting returns for items significantly not as described. Modaire charges 15% commission on completed sales via Stripe Connect.",
+    body: (
+      <div className="space-y-4">
+        <p>
+          Modaire supports independent sellers of modest fashion. Selling on
+          Modaire requires a Stripe Connect account so that payouts can be
+          delivered to your bank account.
+        </p>
+        <p>
+          <strong>Listing accuracy.</strong> Every listing must reflect the
+          item you actually have on hand. Photos must be your own (not
+          borrowed from another site). Descriptions must include size,
+          condition, and any material flaws. Misrepresentation is grounds
+          for listing removal, refund, and account suspension.
+        </p>
+        <p>
+          <strong>Authenticity.</strong> Counterfeit or replica items are
+          strictly prohibited. Brand-name items require documentation on
+          request. Repeated violations result in permanent account closure.
+        </p>
+        <p>
+          <strong>Shipping.</strong> Sellers must ship within 3 business
+          days of a completed sale, using the shipping label generated
+          through Modaire. Failure to ship on time may trigger buyer refund
+          and account penalties.
+        </p>
+        <p>
+          <strong>Commission.</strong> Modaire charges a 15% commission on
+          the gross sale price. Stripe payment-processing fees are
+          additional. Both are deducted before payout.
+        </p>
+        <p>
+          <strong>Payouts.</strong> Payouts are held for 3 days after
+          delivery confirmation to allow buyer disputes to be raised. After
+          the hold, funds are transferred to your Stripe Connect balance and
+          subsequently to your bank on Stripe&apos;s standard payout schedule.
+        </p>
+        <p>
+          <strong>Returns.</strong> Sellers must accept returns for items
+          that are significantly not as described. Buyer&apos;s-remorse returns
+          are not required for accurately described items.
+        </p>
+      </div>
+    ),
   },
   {
     id: "refunds",
     label: "Return & Refund Policy",
-    body: "Buyers may open a return request within 3 days of receiving an item if it is significantly not as described. If unresolved after 48 hours, Modaire will mediate. Items accurately described are non-refundable under buyer's remorse.",
+    body: (
+      <div className="space-y-4">
+        <p>
+          Modaire wants buyers to receive what they were promised. If an
+          item is significantly not as described, we&apos;ll help make it right.
+        </p>
+        <p>
+          <strong>When you may request a return.</strong> Within 3 days of
+          delivery, you may open a return request if the item is
+          significantly not as described — for example, wrong size relative
+          to the listing, undisclosed damage, or a materially different
+          color, brand, or material than pictured.
+        </p>
+        <p>
+          <strong>How to request a return.</strong> Open a conversation with
+          the seller from your order in your Modaire dashboard and explain
+          the issue. Include photos showing the discrepancy.
+        </p>
+        <p>
+          <strong>What is not eligible.</strong> Buyer&apos;s remorse (item
+          doesn&apos;t fit your style, changed your mind) is not a valid return
+          reason if the listing was accurate. Custom or made-to-order items
+          may be non-returnable at the seller&apos;s discretion — this must be
+          disclosed clearly in the listing.
+        </p>
+        <p>
+          <strong>Mediation.</strong> If a return request is not resolved
+          between buyer and seller within 48 hours, Modaire will mediate
+          based on the listing content, delivered condition, and
+          conversation history. Modaire&apos;s decision is final.
+        </p>
+        <p>
+          <strong>Refund method.</strong> Approved refunds are issued
+          through Stripe to the original payment method within 5–10
+          business days. Return-shipping cost is generally the buyer&apos;s
+          responsibility unless the item was misrepresented, in which case
+          it falls on the seller.
+        </p>
+        <p>
+          For help, contact{" "}
+          <a
+            href={`mailto:${SUPPORT_EMAIL}`}
+            className="underline hover:text-[#5a4426]"
+          >
+            {SUPPORT_EMAIL}
+          </a>
+          .
+        </p>
+      </div>
+    ),
   },
 ];
 
