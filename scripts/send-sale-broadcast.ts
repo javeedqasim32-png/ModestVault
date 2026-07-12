@@ -21,6 +21,17 @@
  *                               idempotency (default: derived from campaign)
  *   --max 300                   Cap total sends this run (safety valve)
  *   --sleep-ms 12000            Milliseconds between sends (default 12000)
+ *   --listings <ids-or-urls>    Comma-separated list of 4 listing IDs OR
+ *                               full listing URLs. First = hero, next 3 =
+ *                               grid tiles. When omitted, the script
+ *                               auto-picks featured listings from the
+ *                               campaign. Example:
+ *                                 --listings https://shopmodaire.com/listings/abc,https://shopmodaire.com/listings/def,ghi,jkl
+ *
+ *                               Each listing MUST have an ACCEPTED
+ *                               ListingPromotion on the active campaign
+ *                               AND status=AVAILABLE, or the script
+ *                               aborts.
  *
  * Idempotency: each (broadcast_slug, user_id) pair inserts one row into
  * MarketingEmailDelivery. Re-running the same command skips users who
@@ -63,6 +74,30 @@ const previewEmail = args["preview"] || null;
 const maxSends = args["max"] ? Math.max(1, Number(args["max"])) : Infinity;
 const sleepMs = args["sleep-ms"] ? Math.max(0, Number(args["sleep-ms"])) : 12_000;
 
+/**
+ * Parse the --listings value. Accepts comma-separated ids OR full listing
+ * URLs (mixed is fine). Returns null when the flag was omitted so the
+ * caller knows to auto-curate. Extracts the id from any URL matching
+ * .../listings/<id>.
+ */
+function parseManualListings(raw: string | undefined): string[] | null {
+    if (!raw) return null;
+    const parts = raw
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+    if (parts.length === 0) return null;
+    if (parts.length > 4) {
+        console.error(`--listings takes at most 4 ids (first = hero, next 3 = grid). Got ${parts.length}.`);
+        process.exit(1);
+    }
+    const ids = parts.map((p) => {
+        const m = p.match(/\/listings\/([^/?#]+)/);
+        return m ? m[1] : p;
+    });
+    return ids;
+}
+
 // -------- prisma --------
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
@@ -94,14 +129,21 @@ async function main() {
     console.log(`Campaign: ${campaign.name} (${discountLabel}) — broadcast_slug=${broadcastSlug}`);
 
     // 2. Curate the top 4 discounted, still-available, admin-approved
-    //    listings. Prefer featured; break ties by featured_order + recency.
-    const listingPromotions = await prisma.listingPromotion.findMany({
+    //    listings. Two paths:
+    //      (a) --listings flag: hand-picked IDs/URLs, order preserved
+    //          (first = hero, next 3 = grid). Every listing must be on
+    //          the active campaign and AVAILABLE.
+    //      (b) no flag: auto-pick — prefer featured, then featured_order,
+    //          then recency.
+    const manualIds = parseManualListings(args["listings"]);
+    let listingPromotions = await prisma.listingPromotion.findMany({
         where: {
             promotion_campaign_id: campaign.id,
             status: "ACCEPTED",
             listing: {
                 status: "AVAILABLE",
                 moderation_status: { in: ["APPROVED", "PARTIAL_APPROVED"] },
+                ...(manualIds ? { id: { in: manualIds } } : {}),
             },
         },
         include: {
@@ -125,18 +167,37 @@ async function main() {
     });
     if (listingPromotions.length === 0) {
         console.error("No ACCEPTED listings on the active campaign — nothing to feature.");
+        if (manualIds) {
+            console.error(`(You passed --listings ${manualIds.join(",")} — none matched. Make sure each id is on the ACTIVE campaign and AVAILABLE.)`);
+        }
         process.exit(1);
     }
-    // Custom sort (Prisma can't express desc-featured + asc-order-nulls-last + desc-created)
-    listingPromotions.sort((a, b) => {
-        const af = a.listing.is_featured ? 0 : 1;
-        const bf = b.listing.is_featured ? 0 : 1;
-        if (af !== bf) return af - bf;
-        const ao = a.listing.featured_order ?? Number.MAX_SAFE_INTEGER;
-        const bo = b.listing.featured_order ?? Number.MAX_SAFE_INTEGER;
-        if (ao !== bo) return ao - bo;
-        return b.listing.created_at.getTime() - a.listing.created_at.getTime();
-    });
+    if (manualIds) {
+        // Preserve the user's order: hero first, grid next.
+        const byId = new Map(listingPromotions.map((lp) => [lp.listing.id, lp]));
+        const ordered = manualIds
+            .map((id) => byId.get(id))
+            .filter((lp): lp is (typeof listingPromotions)[number] => Boolean(lp));
+        const missing = manualIds.filter((id) => !byId.has(id));
+        if (missing.length > 0) {
+            console.error(`Some manual listings were not on the campaign or not AVAILABLE:`);
+            for (const id of missing) console.error(`  - ${id}`);
+            process.exit(1);
+        }
+        listingPromotions = ordered;
+        console.log(`Using ${listingPromotions.length} hand-picked listings.`);
+    } else {
+        // Auto-sort (Prisma can't express desc-featured + asc-order-nulls-last + desc-created)
+        listingPromotions.sort((a, b) => {
+            const af = a.listing.is_featured ? 0 : 1;
+            const bf = b.listing.is_featured ? 0 : 1;
+            if (af !== bf) return af - bf;
+            const ao = a.listing.featured_order ?? Number.MAX_SAFE_INTEGER;
+            const bo = b.listing.featured_order ?? Number.MAX_SAFE_INTEGER;
+            if (ao !== bo) return ao - bo;
+            return b.listing.created_at.getTime() - a.listing.created_at.getTime();
+        });
+    }
     const featured = listingPromotions.slice(0, 4).map((lp) => {
         const originalPrice = Number(lp.listing.price);
         const salePrice = Math.round(originalPrice * (100 - lp.discount_percent)) / 100;
