@@ -665,3 +665,205 @@ export async function sendSaleDiscoveryEmail(
     }
 }
 
+/**
+ * Sale-broadcast email — one-off promotional send to every opted-in
+ * user announcing an active promotion.
+ *
+ * Distinct from sendSaleDiscoveryEmail: that one is a per-user
+ * targeted alert triggered by cart/favorite membership. This one is a
+ * broadcast — same curated items to everyone.
+ *
+ * Layout is editorial-boutique, not commodity-retailer:
+ *   - Personalized subject line (falls back to editorial when no name)
+ *   - Hidden preview text (Gmail inbox row's second line)
+ *   - Hero item at top with the CAMPAIGN framing (not just a price tile)
+ *   - 3-tile grid for additional pieces, with per-item scarcity signal
+ *   - Trust strip (verified sellers / insured shipping)
+ *   - Two additional CTAs, real end-date urgency
+ *   - CAN-SPAM footer (unsubscribe + mailing address)
+ *
+ * `items[0]` becomes the hero. Ideal input is 4 items (hero + 3 grid).
+ * Fewer is fine — grid shrinks. Zero throws.
+ *
+ * Throws on SMTP failure so the broadcast script can record per-
+ * recipient outcomes to MarketingEmailDelivery. Callers try/catch.
+ */
+export async function sendSaleBroadcastEmail(input: {
+    email: string;
+    firstName: string;
+    discountLabel: string;   // e.g. "15% Off"
+    campaignName: string;    // e.g. "Summer Sale"
+    campaignEndsAt: Date;    // real deadline for urgency copy
+    unsubscribeUrl: string;
+    /** Optional subject override — otherwise a personalized default is used. */
+    subject?: string;
+    items: Array<{
+        title: string;
+        originalPrice: number;
+        salePrice: number;
+        discountPercent: number;
+        thumbUrl: string | null;
+        listingUrl: string;
+    }>;
+}): Promise<void> {
+    const {
+        email,
+        firstName,
+        discountLabel,
+        campaignName,
+        campaignEndsAt,
+        unsubscribeUrl,
+        subject: subjectOverride,
+        items,
+    } = input;
+    if (items.length === 0) {
+        throw new Error("sendSaleBroadcastEmail requires at least one item");
+    }
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://shopmodaire.com").replace(/\/$/, "");
+    const mailingAddress = process.env.MODAIRE_MAILING_ADDRESS || "[SET MODAIRE_MAILING_ADDRESS IN .env]";
+    const shopUrl = `${appUrl}/browse?sale=1`;
+
+    const hero = items[0];
+    const grid = items.slice(1, 4);
+    const endShort = formatEndShort(campaignEndsAt); // "July 19"
+    const endLong = formatEndLong(campaignEndsAt);   // "Sunday, July 19 · 11:59pm CT"
+
+    // Personalized default subject. Editorial fallback when firstName
+    // is missing.
+    const subject = subjectOverride
+        || (firstName
+            ? `${firstName}, we found pieces you'll love — ${discountLabel}`
+            : `The Modaire Edit: ${discountLabel} through ${endShort}`);
+
+    // Hidden preview text — the second line shown in Gmail's inbox list
+    // next to the subject. Optimize this like a subheadline.
+    const previewText = `Handpicked modest pieces from our community — ${discountLabel.toLowerCase()} through ${endShort}. One of a kind.`;
+
+    const heroImg = hero.thumbUrl
+        ? `<img src="${hero.thumbUrl}" alt="${escapeAttr(hero.title)}" width="600" style="display: block; width: 100%; height: auto; max-height: 520px; object-fit: cover;" />`
+        : `<div style="width: 100%; height: 320px; background: #ede2d5;"></div>`;
+
+    const gridCells = grid.map((it) => {
+        const img = it.thumbUrl
+            ? `<img src="${it.thumbUrl}" alt="${escapeAttr(it.title)}" style="display: block; width: 100%; height: 200px; object-fit: cover; border-radius: 6px;" />`
+            : `<div style="width: 100%; height: 200px; background: #ede2d5; border-radius: 6px;"></div>`;
+        return `
+            <td width="33%" valign="top" style="width: 33.3%; padding: 6px; vertical-align: top;">
+                <a href="${it.listingUrl}" style="text-decoration: none; color: inherit; display: block;">
+                    ${img}
+                    <p style="margin: 8px 0 4px 0; font-weight: 600; color: #2f2925; font-size: 12px; line-height: 1.3; min-height: 32px;">${escapeText(truncate(it.title, 46))}</p>
+                    <p style="margin: 0; color: #2f2925; font-size: 13px; font-weight: 700;">
+                        $${it.salePrice.toFixed(2)}
+                        <span style="color: #8a7667; font-weight: 400; font-size: 11px; text-decoration: line-through; margin-left: 4px;">$${it.originalPrice.toFixed(2)}</span>
+                    </p>
+                    <p style="margin: 4px 0 0 0; color: #a07c61; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em;">Only 1 available</p>
+                </a>
+            </td>`;
+    }).join("");
+
+    const mailOptions = {
+        from: `"Modaire" <${process.env.EMAIL_USER}>`,
+        to: email,
+        subject,
+        html: `<!doctype html>
+<html><head><meta charset="utf-8"/><title>${escapeText(subject)}</title></head>
+<body style="margin: 0; padding: 0; background: #f4efea;">
+<div style="display:none; overflow:hidden; height:0; width:0; max-height:0; max-width:0; opacity:0; color:transparent;">
+${escapeText(previewText)}
+</div>
+<div style="max-width: 600px; margin: 0 auto; background: #ffffff; font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif; color: #2f2925;">
+
+  <!-- Brand bar -->
+  <div style="background: #4a3328; padding: 18px 24px; text-align: center;">
+    <span style="color: #ffffff; font-size: 20px; font-weight: 700; letter-spacing: 0.28em;">MODAIRE</span>
+  </div>
+
+  <!-- Hero -->
+  <a href="${hero.listingUrl}" style="text-decoration: none; color: inherit; display: block;">
+    ${heroImg}
+  </a>
+  <div style="padding: 26px 26px 8px 26px;">
+    <p style="margin: 0 0 8px 0; text-transform: uppercase; letter-spacing: 0.18em; font-size: 10px; color: #a07c61; font-weight: 700;">The ${escapeText(campaignName)} Edit</p>
+    <h1 style="margin: 0 0 12px 0; font-size: 28px; line-height: 1.15; color: #2f2925; font-weight: 700;">${escapeText(discountLabel)} — through ${escapeText(endShort)}.</h1>
+    <p style="margin: 0 0 20px 0; font-size: 14px; line-height: 1.6; color: #4a3328;">
+      Handpicked modest pieces from our community&rsquo;s closets. One of a kind — when they&rsquo;re gone, they&rsquo;re gone.
+    </p>
+    <div>
+      <a href="${shopUrl}" style="display: inline-block; background: #4a3328; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 999px; font-weight: 700; font-size: 13px; letter-spacing: 0.06em;">Shop the Edit &rarr;</a>
+    </div>
+  </div>
+
+  <!-- Greeting -->
+  <div style="padding: 26px 26px 4px 26px;">
+    <p style="margin: 0; font-size: 15px; color: #2f2925; line-height: 1.55;">Hi ${escapeText(firstName || "there")},</p>
+    <p style="margin: 8px 0 0 0; font-size: 14px; color: #4a3328; line-height: 1.6;">
+      A few more pieces we&rsquo;re loving this week &mdash;
+    </p>
+  </div>
+
+  <!-- 3-tile grid -->
+  <div style="padding: 12px 20px 24px 20px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: separate; border-spacing: 0;">
+      <tr>${gridCells}</tr>
+    </table>
+  </div>
+
+  <!-- Trust strip -->
+  <div style="padding: 18px 24px; background: #fbf8f5; border-top: 1px solid #e3d9d1; border-bottom: 1px solid #e3d9d1;">
+    <p style="margin: 0; text-align: center; color: #6f5647; font-size: 10px; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase;">
+      Verified sellers &middot; Insured shipping
+    </p>
+  </div>
+
+  <!-- Second CTA + real deadline -->
+  <div style="padding: 30px 24px; text-align: center;">
+    <p style="margin: 0 0 14px 0; font-size: 13px; color: #4a3328;">More at the boutique.</p>
+    <a href="${shopUrl}" style="display: inline-block; background: #a07c61; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 999px; font-weight: 700; font-size: 13px; letter-spacing: 0.04em;">See all sale items &rarr;</a>
+    <p style="margin: 22px 0 0 0; color: #4a3328; font-size: 13px; font-weight: 600;">⏰ Ends ${escapeText(endLong)}</p>
+  </div>
+
+  <!-- Footer -->
+  <div style="padding: 20px 24px 26px 24px; background: #f4efea; border-top: 1px solid #e3d9d1;">
+    <p style="margin: 0; font-size: 10px; color: #a8a29e; text-align: center; line-height: 1.6;">
+      You&rsquo;re receiving this because you have a Modaire account and opted in to marketing email.
+      <a href="${unsubscribeUrl}" style="color: #6f5647; text-decoration: underline;">Unsubscribe with one click</a>.
+    </p>
+    <p style="margin: 8px 0 0 0; font-size: 10px; color: #a8a29e; text-align: center; line-height: 1.6;">
+      Modaire &middot; ${escapeText(mailingAddress)} &middot; support@shopmodaire.com
+    </p>
+  </div>
+
+</div>
+</body></html>`,
+    };
+    await transporter.sendMail(mailOptions);
+    console.log(`✉️ SALE BROADCAST (${campaignName}, ${items.length} items) SENT to ${email}`);
+}
+
+function formatEndShort(d: Date): string {
+    // "July 19"
+    return d.toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "America/Chicago" });
+}
+
+function formatEndLong(d: Date): string {
+    // "Sunday, July 19 · 11:59pm CT"
+    const dayName = d.toLocaleDateString("en-US", { weekday: "long", timeZone: "America/Chicago" });
+    const monthDay = d.toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "America/Chicago" });
+    return `${dayName}, ${monthDay} · 11:59pm CT`;
+}
+
+function escapeText(s: string): string {
+    return s
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+}
+
+function escapeAttr(s: string): string {
+    return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+}
+
+function truncate(s: string, n: number): string {
+    return s.length <= n ? s : `${s.slice(0, n - 1).trim()}…`;
+}
+

@@ -195,6 +195,29 @@ export default function SignupPage() {
                                 </p>
                             </div>
 
+                            {/*
+                                Marketing email opt-in. Checked by default —
+                                CAN-SPAM allows implied consent for a marketplace
+                                relationship, and users can one-click unsubscribe
+                                from any marketing email footer.
+                            */}
+                            <div>
+                                <label className="flex items-start gap-3 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        name="marketing_email_opt_in"
+                                        defaultChecked
+                                        className="mt-1 h-4 w-4 shrink-0 accent-foreground"
+                                    />
+                                    <span className="text-[13px] leading-[1.55] text-muted-foreground">
+                                        Email me occasionally about sales and marketplace updates.
+                                    </span>
+                                </label>
+                                <p className="mt-1 pl-7 text-[11px] leading-[1.5] text-muted-foreground/80">
+                                    You can unsubscribe with one click from any email.
+                                </p>
+                            </div>
+
                             <Button type="submit" isLoading={loading} className="w-full h-12 mt-4">
                                 Create Account
                             </Button>

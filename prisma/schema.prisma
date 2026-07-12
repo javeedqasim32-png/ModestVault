@@ -55,6 +55,11 @@ model User {
   // flipped false by /api/internal/sms/inbound when the user replies
   // STOP / UNSUBSCRIBE / CANCEL / END / QUIT to a Modaire SMS.
   sms_opt_in         Boolean   @default(true)
+  // Marketing email consent. Grandfathered true for existing users so
+  // legacy accounts still get sale broadcasts; new signups persist the
+  // signup-form checkbox. Flipped false permanently by /unsubscribe/[token].
+  marketing_email_opt_in Boolean @default(true)
+  marketingEmailDeliveries MarketingEmailDelivery[]
   deleted_at         DateTime?
   deletion_scheduled_purge_at DateTime?
 }
@@ -158,6 +163,9 @@ model PendingUser {
   // final User row on verify. Existing users pre-dating this checkbox
   // are grandfathered via User.sms_opt_in defaulting to true.
   sms_opt_in             Boolean   @default(false)
+  // Marketing email consent from the signup form. Default false so a
+  // form that omits the field never accidentally opts a user in.
+  marketing_email_opt_in Boolean   @default(false)
   created_at             DateTime  @default(now())
   updated_at             DateTime  @updatedAt
 }
@@ -597,4 +605,21 @@ model SaleDiscoveryEmail {
 
   @@unique([user_id, listing_id])
   @@index([sent_at])
+}
+
+// One row per (broadcast, user) delivery attempt. Powers idempotency
+// for re-runs of scripts/send-sale-broadcast.ts and gives an audit
+// trail of who got which broadcast. Rows are never deleted; a failed
+// send is stored with the `error` field populated instead of retried
+// automatically — an operator inspects, decides, and manually reruns.
+model MarketingEmailDelivery {
+  id             String   @id @default(uuid())
+  broadcast_slug String
+  user_id        String
+  user           User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  sent_at        DateTime @default(now())
+  error          String?
+
+  @@unique([broadcast_slug, user_id])
+  @@index([broadcast_slug])
 }

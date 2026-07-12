@@ -29,6 +29,10 @@ export async function startSignup(formData: FormData) {
     // Existing users pre-checkbox are grandfathered via User.sms_opt_in
     // defaulting to true in schema.
     const smsOptIn = formData.get("sms_opt_in") === "on";
+    // Marketing email opt-in from the signup form. Default-checked in
+    // the UI; when the field is missing altogether (older client, etc.)
+    // we conservatively opt the user OUT rather than in.
+    const marketingEmailOptIn = formData.get("marketing_email_opt_in") === "on";
     const street1 = ((formData.get("street1") as string) || "").trim();
     const street2 = ((formData.get("street2") as string) || "").trim();
     const city = ((formData.get("city") as string) || "").trim();
@@ -100,6 +104,7 @@ export async function startSignup(formData: FormData) {
                     zip,
                     country,
                     sms_opt_in: smsOptIn,
+                    marketing_email_opt_in: marketingEmailOptIn,
                     verification_code_hash,
                     code_expiry,
                     attempt_count: 0,
@@ -122,6 +127,7 @@ export async function startSignup(formData: FormData) {
                     zip,
                     country,
                     sms_opt_in: smsOptIn,
+                    marketing_email_opt_in: marketingEmailOptIn,
                     verification_code_hash,
                     code_expiry,
                     last_sent_at: new Date()
@@ -203,10 +209,11 @@ export async function verifyEmail(email: string, code: string) {
                     zip: pendingUser.zip,
                     country: pendingUser.country,
                     // Preserve the explicit opt-in choice from signup —
-                    // do NOT rely on User.sms_opt_in's default (which is
-                    // true, intentional for pre-checkbox users but wrong
-                    // for new signups who did not tick the box).
+                    // do NOT rely on User defaults (which are `true`,
+                    // intentional for pre-checkbox users but wrong for
+                    // new signups who did not tick the box).
                     sms_opt_in: pendingUser.sms_opt_in,
+                    marketing_email_opt_in: pendingUser.marketing_email_opt_in,
                     email_verified: true,
                 }
             });
