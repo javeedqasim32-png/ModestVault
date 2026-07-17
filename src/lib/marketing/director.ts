@@ -67,14 +67,30 @@ export async function runDirector(options: {
     }
 
     // 1. INTELLIGENCE — all parallel, none depend on each other.
-    const [businessIntel, calendarHorizon] = await Promise.all([
+    const [businessIntel, calendarHorizon, recentBriefings] = await Promise.all([
         gatherBusinessIntel(),
         Promise.resolve(getCalendarHorizon(todayIso)),
+        // Last 3 briefings — feeds the Director's "don't repeat yesterday"
+        // check. Without this, every daily run picks the same theme
+        // because intel signals stay similar day-to-day.
+        prisma.marketingBriefing.findMany({
+            orderBy: { ran_at: "desc" },
+            take: 3,
+            select: { ran_at: true, theme: true },
+        }),
     ]);
+
+    // Day-of-week rotation — real marketing calendars alternate content
+    // pillars across the week so a feed feels like a brand, not a
+    // stream of sale posts. Director may break this if a business
+    // signal demands (e.g. sale ends today → override to product/urgency).
+    const pillarSuggestion = getSuggestedPillar(now);
 
     const intelDigest = [
         renderBusinessIntelForPrompt(businessIntel),
         renderCalendarHorizonForPrompt(calendarHorizon),
+        renderRecentBriefingsForPrompt(recentBriefings),
+        renderPillarSuggestionForPrompt(pillarSuggestion),
     ].join("\n\n---\n\n");
 
     if (options.dryRun) {
@@ -292,6 +308,79 @@ export async function runDirector(options: {
 }
 
 // ────────────────────────────────────────────────────────────────────
+// Recent-briefing memory + day-of-week pillar rotation
+// ────────────────────────────────────────────────────────────────────
+
+type PillarSuggestion = {
+    dayName: string;
+    primaryPillar: "product" | "inspiration" | "community";
+    guidance: string;
+};
+
+/**
+ * Weekly pillar rotation. Prevents the Director from picking the same
+ * content type every day (which happens because business intel signals
+ * stay similar day-to-day). A real marketing calendar alternates.
+ *
+ * Uses America/Chicago (Modaire HQ) as the timezone so "Monday" means
+ * Monday in your locale, not UTC-Monday.
+ */
+function getSuggestedPillar(now: Date): PillarSuggestion {
+    const central = new Date(now.toLocaleString("en-US", { timeZone: "America/Chicago" }));
+    const day = central.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+    const dayName = central.toLocaleDateString("en-US", { weekday: "long", timeZone: "America/Chicago" });
+
+    const rotation: Record<number, { pillar: PillarSuggestion["primaryPillar"]; guidance: string }> = {
+        0: { pillar: "inspiration", guidance: "Sunday — curated collections, styling roundups ('5 wedding-guest looks under $150')." },
+        1: { pillar: "product",     guidance: "Monday — kick the week off with a product spotlight or new-arrival feature." },
+        2: { pillar: "inspiration", guidance: "Tuesday — styling tip, 'how to wear' educational content, fabric or occasion breakdown." },
+        3: { pillar: "community",   guidance: "Wednesday — community/seller story, behind-the-scenes, or user-generated content spotlight." },
+        4: { pillar: "product",     guidance: "Thursday — hero product spotlight, prep for weekend shopping." },
+        5: { pillar: "product",     guidance: "Friday — weekend-ready piece or 'shop the sale before it ends' push." },
+        6: { pillar: "community",   guidance: "Saturday — brand/founder story, behind-the-scenes, or 'meet the seller' feature." },
+    };
+
+    const { pillar, guidance } = rotation[day];
+    return { dayName, primaryPillar: pillar, guidance };
+}
+
+function renderRecentBriefingsForPrompt(
+    recent: Array<{ ran_at: Date; theme: string }>,
+): string {
+    if (recent.length === 0) {
+        return `# Recent briefings\n\n_No previous briefings — this is the first Director run. Feel free to pick anything._`;
+    }
+    const lines: string[] = [`# Recent briefings — DO NOT repeat these themes`, ""];
+    for (const b of recent) {
+        const ago = daysAgoLabel(b.ran_at);
+        lines.push(`- **${ago}:** "${b.theme}"`);
+    }
+    lines.push("");
+    lines.push(`Today's theme must be **meaningfully different** from the above — a different pillar, a different angle, or a different anchor listing. Repetition kills feed feel.`);
+    return lines.join("\n");
+}
+
+function renderPillarSuggestionForPrompt(sugg: PillarSuggestion): string {
+    return [
+        `# Today's suggested content pillar`,
+        ``,
+        `**${sugg.dayName}** — primary pillar: **${sugg.primaryPillar}**`,
+        ``,
+        sugg.guidance,
+        ``,
+        `Break this rotation ONLY if a strong business signal demands it (e.g. active sale ends today → override with urgency/product; imminent cultural event → override with themed content). Otherwise, weight today's tasks toward the suggested pillar.`,
+    ].join("\n");
+}
+
+function daysAgoLabel(date: Date): string {
+    const diffMs = Date.now() - date.getTime();
+    const diffDays = Math.floor(diffMs / (24 * 60 * 60 * 1000));
+    if (diffDays === 0) return "Earlier today";
+    if (diffDays === 1) return "Yesterday";
+    return `${diffDays} days ago`;
+}
+
+// ────────────────────────────────────────────────────────────────────
 // Plan parsing + validation (OpenAI returns clean JSON via response_format)
 // ────────────────────────────────────────────────────────────────────
 
@@ -333,7 +422,12 @@ Given the intelligence below (business state + marketing calendar horizon), deci
 
 # Rules
 
-- If an active promotion exists, the theme MUST reference it. Don't publish sale-agnostic content while a sale is live.
+- **Avoid repeating recent briefings** — the intel below includes the last few days' themes. Today's theme must be **meaningfully different**. Different pillar, different angle, different anchor listing. If you find yourself picking a near-duplicate, ROTATE: sale-heavy yesterday → community/inspiration today.
+- **Respect today's suggested pillar** — the intel tells you what day of the week it is and what pillar fits (product / inspiration / community). Weight your task mix toward that pillar unless a business signal overrides.
+  - Sale ends today = override with urgency/product regardless of rotation.
+  - Cultural event in imminent window = override with themed content regardless of rotation.
+  - Otherwise, follow the rotation to keep the feed varied.
+- If an active promotion exists, at least ONE task should reference it (not necessarily every task — that's how audiences tune out).
 - If a cultural event is in the "Imminent" or "Building" window with high audienceRelevance, weight your plan toward it.
 - If a task features a specific listing, use IDs from the "Most viewed" or "Most favorited" lists in the intel — those are proven interest signals.
 - Every task's \`hook\` should be a sharp opener (4-8 words) — this becomes both the visual overlay text AND the LLM's caption lede.
