@@ -237,6 +237,9 @@ export async function runDirector(options: {
                                 photoUrls,
                             },
                             hook: task.hook,
+                            visualMood: task.visualMood,
+                            cameraMotion: task.cameraMotion,
+                            settingAtmosphere: task.settingAtmosphere,
                         })
                         : Promise.resolve(null),
             ]);
@@ -345,6 +348,25 @@ Given the intelligence below (business state + marketing calendar horizon), deci
   - ❌ "Elevate Your Wedding Style"  ← reads as a headline, not a shot direction
   - ❌ "Summer Sale — 15% off"        ← not filmable
   Runway needs a SUBJECT + ACTION. The angle field can still carry the strategic framing; the hook must be visualizable.
+- **For VIDEO tasks, ALSO set the cinematography** — three fields that let you match the aesthetic to the piece + campaign:
+
+  **\`visualMood\` (required for VIDEO)** — one of:
+    - \`warm-golden\` — Golden hour side light, sunset warmth. Best for BRIDAL, EVENING, FORMAL pieces, cultural celebrations.
+    - \`soft-morning\` — Airy natural daylight, dreamy. Best for EVERYDAY, CASUAL, WEDDING-GUEST pieces.
+    - \`studio-bright\` — Clean bright white lighting. Best for PRODUCT-FIRST sale posts, "3 pieces on sale" spotlights.
+    - \`dramatic-low-key\` — Moody shadows, cinematic contrast. Best for STATEMENT / LUXURY drop pieces, hero spotlights.
+    - \`festive-vibrant\` — Warm colorful ambient celebration light. Best for EID, RAMADAN, WEDDING, culturally-anchored content.
+
+  **\`cameraMotion\` (required for VIDEO)** — one of:
+    - \`slow-push\` — Slow cinematic zoom-in. Contemplative, works for anything (safe default).
+    - \`orbit\` — Camera slowly rotates around subject. Best for FULL-OUTFIT REVEAL when the whole silhouette matters.
+    - \`reveal\` — Detail pull-out (fabric drape, embroidery close-up unfurling). Best for CRAFTSMANSHIP-heavy pieces.
+    - \`handheld-sway\` — Subtle organic camera movement. Best for EDITORIAL / natural feel.
+    - \`static-hold\` — No camera movement, subject/fabric moves alone. Best for STATEMENT pieces with strong drape.
+
+  **\`settingAtmosphere\` (optional, short free-text)** — ambient extras like "petals falling in soft light", "silk shifting in a gentle breeze", "candlelight flickers in background". Leave empty for clean.
+
+  Match the mood + camera to the piece and the theme. A bridal kaftan for wedding season should NOT get \`studio-bright + slow-push\` (that's a product-tile look). It should get \`warm-golden + orbit\` or \`festive-vibrant + reveal\`. Vary these across the day's tasks so your queue doesn't feel monotonous.
 
 # Return format
 
@@ -363,10 +385,22 @@ Return ONLY a JSON object matching this shape:
       "platform": "FACEBOOK",
       "contentType": "IMAGE",
       "listingId": "<id from intel — required for image posts>",
-      "hook": "4-8 word opener",
+      "hook": "4-8 word opener OR (for VIDEO) short cinematic instruction",
       "angle": "specific angle for THIS post",
       "pillar": "product",
       "priority": 1
+    },
+    {
+      "platform": "INSTAGRAM_REEL",
+      "contentType": "VIDEO",
+      "listingId": "<id from intel>",
+      "hook": "Model in ivory kaftan turning slowly, fabric flowing",
+      "angle": "wedding-guest hero piece",
+      "pillar": "product",
+      "priority": 1,
+      "visualMood": "warm-golden",
+      "cameraMotion": "orbit",
+      "settingAtmosphere": "silk shifting in a gentle breeze"
     }
   ]
 }

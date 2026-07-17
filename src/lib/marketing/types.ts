@@ -55,6 +55,29 @@ export type MarketingPlan = {
 };
 
 /**
+ * Visual mood presets — Director picks one per VIDEO task. Controls
+ * lighting, warmth, and overall atmospheric feel. Curated enum (not
+ * free-text) so bad LLM improvisation can't produce off-brand results.
+ */
+export type VideoVisualMood =
+    | "warm-golden"       // Golden hour side light. Bridal / evening / formal.
+    | "soft-morning"      // Airy natural daylight. Everyday / casual / wedding-guest.
+    | "studio-bright"     // Clean white studio lighting. Sale posts / product-first.
+    | "dramatic-low-key"  // Moody shadows, cinematic contrast. Statement / luxury.
+    | "festive-vibrant";  // Warm celebratory ambient. Eid / cultural / weddings.
+
+/**
+ * Camera motion presets — Director picks one per VIDEO task. Controls
+ * how the camera moves through the clip.
+ */
+export type VideoCameraMotion =
+    | "slow-push"      // Slow cinematic zoom-in. Default, contemplative.
+    | "orbit"          // Camera rotates around subject. Full-outfit reveal.
+    | "reveal"         // Detail pull-out (fabric drape, embroidery close-up).
+    | "handheld-sway"  // Subtle organic movement. Editorial feel.
+    | "static-hold";   // No camera movement, subject/fabric moves alone.
+
+/**
  * The unit of work handed from the Director to a specialist agent.
  * One task = one MarketingDraft that will land in the queue.
  */
@@ -65,7 +88,8 @@ export type MarketingTask = {
      *  or community post may have no listing tied to it. */
     listingId?: string;
     /** The single sharpest opener the copy should lead with. Director-
-     *  chosen so multiple posts in a run stay coordinated. */
+     *  chosen so multiple posts in a run stay coordinated. For VIDEO
+     *  tasks, this becomes the Runway prompt's subject + action. */
     hook: string;
     /** Strategic framing carried through the whole coordinated push,
      *  e.g. "wedding-season affordable" or "quiet-luxury edit." */
@@ -76,6 +100,17 @@ export type MarketingTask = {
     /** Priority 1 (highest) → 3 (lowest). Director sets; useful if we
      *  ever hit a budget/rate limit and need to trim. */
     priority?: 1 | 2 | 3;
+    // ── VIDEO-specific creative dimensions (ignored for IMAGE tasks) ──
+    /** Lighting + atmosphere preset for VIDEO. Defaults to soft-morning
+     *  if omitted. See VideoVisualMood for when to pick which. */
+    visualMood?: VideoVisualMood;
+    /** Camera movement preset for VIDEO. Defaults to slow-push if
+     *  omitted. See VideoCameraMotion. */
+    cameraMotion?: VideoCameraMotion;
+    /** Free-text ambient description the Director may add to the video
+     *  (e.g. "silk shifting in a gentle breeze", "petals falling").
+     *  Kept short (<80 chars) to avoid overloading the Runway prompt. */
+    settingAtmosphere?: string;
 };
 
 // ────────────────────────────────────────────────────────────────────

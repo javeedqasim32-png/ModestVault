@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { uploadFile, getS3BucketName, buildS3ImageUrl } from "@/lib/s3";
-import type { MarketingPlatform } from "../types";
+import type { MarketingPlatform, VideoVisualMood, VideoCameraMotion } from "../types";
 
 /**
  * VideoAgent — generates a cinematic 9:16 AI video from a listing
@@ -66,6 +66,15 @@ export async function generateVideo(input: {
     /** Director-provided visual hook — becomes the anchor of the
      *  Runway prompt (e.g. "Model in ivory kaftan turning slowly"). */
     hook?: string;
+    /** Director-chosen lighting/atmosphere preset. Falls back to
+     *  soft-morning if omitted. */
+    visualMood?: VideoVisualMood;
+    /** Director-chosen camera-movement preset. Falls back to slow-push
+     *  if omitted. */
+    cameraMotion?: VideoCameraMotion;
+    /** Director's optional atmospheric extras — free-text like
+     *  "petals falling in soft light". */
+    settingAtmosphere?: string;
 }): Promise<GeneratedVideo> {
     const apiKey = process.env.RUNWAY_API_KEY;
     if (!apiKey) {
@@ -83,13 +92,15 @@ export async function generateVideo(input: {
         );
     }
 
-    // Build the cinematic prompt from the Director's hook + product
-    // context. Runway prompts respond best to: subject + motion + camera
-    // + lighting + style. We provide sensible defaults; Director's hook
-    // supplies subject + motion.
+    // Build the cinematic prompt from the Director's hook + chosen
+    // style dimensions. Runway prompts respond best to: subject +
+    // motion + camera + lighting + style, in that order.
     const promptText = buildRunwayPrompt({
         hook: input.hook,
         listingTitle: input.listing.title,
+        visualMood: input.visualMood,
+        cameraMotion: input.cameraMotion,
+        settingAtmosphere: input.settingAtmosphere,
     });
 
     // 1. Submit image-to-video job.
@@ -147,17 +158,49 @@ export async function generateVideo(input: {
 
 /**
  * Runway prompts follow the pattern: [subject + action] + [camera
- * movement] + [lighting] + [style]. We supply defaults; the hook
- * anchors the subject + action.
+ * movement] + [lighting/mood] + [ambient atmosphere] + [style baseline].
+ *
+ * Director-picked enums map to natural-language prompt fragments here;
+ * that keeps the LLM producing bounded, safe values (enum) while letting
+ * the fragments be tuned centrally as we learn what Runway responds to.
  */
-function buildRunwayPrompt(input: { hook?: string; listingTitle: string }): string {
+function buildRunwayPrompt(input: {
+    hook?: string;
+    listingTitle: string;
+    visualMood?: VideoVisualMood;
+    cameraMotion?: VideoCameraMotion;
+    settingAtmosphere?: string;
+}): string {
     const subject = input.hook || `Model wearing ${input.listingTitle}`;
-    const camera = "slow cinematic zoom-in, subtle handheld sway";
-    const lighting = "soft warm golden hour, natural side lighting";
-    const style = "editorial fashion film, shallow depth of field, elegant motion";
-    // Runway caps prompts at ~512 chars.
-    return `${subject}. ${camera}. ${lighting}. ${style}.`.slice(0, 500);
+    const camera = CAMERA_FRAGMENTS[input.cameraMotion ?? "slow-push"];
+    const mood = MOOD_FRAGMENTS[input.visualMood ?? "soft-morning"];
+    const atmosphere = (input.settingAtmosphere ?? "").trim();
+    // Style baseline — kept locked so all Modaire videos share a
+    // family resemblance (editorial fashion film).
+    const styleBaseline = "editorial fashion film, shallow depth of field, elegant motion";
+
+    const parts = [subject, camera, mood, atmosphere, styleBaseline].filter(Boolean);
+    // Runway caps prompts at ~512 chars — trim defensively.
+    return parts.join(". ").slice(0, 500);
 }
+
+/** Camera-motion enum → prompt fragment. */
+const CAMERA_FRAGMENTS: Record<VideoCameraMotion, string> = {
+    "slow-push": "slow cinematic zoom-in, gentle push toward the subject",
+    "orbit": "camera slowly orbits around the subject, revealing the full silhouette",
+    "reveal": "detail pull-out, camera drifts across the fabric, close-up focus on texture and embroidery",
+    "handheld-sway": "subtle handheld camera, organic natural movement",
+    "static-hold": "static locked camera, no movement, subject occupies frame",
+};
+
+/** Visual-mood enum → prompt fragment. */
+const MOOD_FRAGMENTS: Record<VideoVisualMood, string> = {
+    "warm-golden": "warm golden hour lighting, sunset side light, honey tones, cinematic glow",
+    "soft-morning": "soft natural morning daylight, airy diffused light, dreamy pastel tones",
+    "studio-bright": "clean bright studio lighting, even white key light, minimal shadows",
+    "dramatic-low-key": "moody low-key lighting, deep shadows, dramatic contrast, single directional light",
+    "festive-vibrant": "warm celebratory ambient light, festive glow, rich cultural atmosphere",
+};
 
 async function pollRunwayUntilDone(input: {
     apiKey: string;
