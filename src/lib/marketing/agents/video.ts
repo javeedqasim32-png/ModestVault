@@ -230,18 +230,26 @@ function buildSlideshowTimeline(input: {
         { clips: [brandOverlay] },
     ];
 
-    const soundtrackUrl = input.soundtrackUrl
-        || "https://feeds.shotstack.io/audio/2020/05/soft-jazz-loop.mp3";
-
-    return {
+    // Soundtrack is opt-in. Shotstack's default CDN URLs are
+    // unreliable on the sandbox tier — many resolve to dead
+    // domains. Videos render silent unless the caller passes a
+    // real, publicly-fetchable audio URL.
+    const timeline: {
+        background: string;
+        tracks: Array<{ clips: unknown[] }>;
+        soundtrack?: { src: string; effect: string; volume: number };
+    } = {
         background: "#000000",
-        soundtrack: {
-            src: soundtrackUrl,
-            effect: "fadeInFadeOut",
-            volume: 0.6,
-        },
         tracks,
     };
+    if (input.soundtrackUrl) {
+        timeline.soundtrack = {
+            src: input.soundtrackUrl,
+            effect: "fadeInFadeOut",
+            volume: 0.6,
+        };
+    }
+    return timeline;
 }
 
 async function pollShotstackUntilDone(input: {
