@@ -3,24 +3,29 @@ import { uploadFile, getS3BucketName, buildS3ImageUrl } from "@/lib/s3";
 import type { MarketingPlatform } from "../types";
 
 /**
- * VideoAgent — generates a vertical 9:16 slideshow video from listing
- * photos using the Shotstack API. Output: MP4 uploaded to S3.
+ * VideoAgent — generates a cinematic 9:16 AI video from a listing
+ * photo using Runway's Gen-4 Turbo image-to-video model. Output: MP4
+ * uploaded to our S3.
  *
- * Design: Ken Burns pans across each product photo, cross-fade
- * transitions, a hook headline animated on the opening frame, price
- * on the closing frame, gentle royalty-free music.
+ * Why Runway instead of a Shotstack slideshow: slideshows of static
+ * product photos look amateur no matter how well you compose them.
+ * Runway generates actual movement — models turning, fabric flowing,
+ * cinematic camera work — starting from the listing's real photo, so
+ * product fidelity is preserved.
  *
- * This is the piece that actually drives virality — static images
- * rarely get shared, videos do. Static ImageAgent output is a
- * supplement.
+ * Runway signup: https://runwayml.com/api
+ *   Free trial: ~10,000 credits (~400 clips at 5s default duration)
+ *   gen4_turbo: 5 credits/sec (cheapest, fastest — what we use)
+ *   gen4:       10 credits/sec (higher quality, slower)
+ *   Set RUNWAY_API_KEY in .env
  *
- * Shotstack signup: https://dashboard.shotstack.io/register
- *   Free tier: 100 render minutes/month (~60-90 short clips)
- *   Set SHOTSTACK_API_KEY in .env (use the STAGING key for testing,
- *   PRODUCTION key when going live — pricing tiers differ).
+ * Cost per clip (5-second default): ~25 credits = ~$0.25 out of trial.
  *
- * Uses direct fetch (no SDK) — matching the pattern used elsewhere
- * in this repo (see src/lib/marketing/agents/copy.ts).
+ * Reality check: even at Runway's quality, results look "AI-generated"
+ * to a discerning viewer. Product identity is well-preserved (~80%),
+ * face/hand consistency is spotty (~50%), fabric drape is decent.
+ * Best used for: hero brand videos, single-piece spotlights. NOT for
+ * viral TikTok (that requires actual human recording).
  */
 
 type GeneratedVideo = {
@@ -28,28 +33,27 @@ type GeneratedVideo = {
     widthPx: number;
     heightPx: number;
     durationSec: number;
+    generator: "runway";
 };
 
-// All video output is Story format for the same reason ImageAgent is:
-// works as IG Reel, IG Story, TikTok, FB Story upload.
+// Runway API — Dev API is the current stable endpoint for programmatic
+// access. Version header pins the response shape (Runway is on a
+// versioned-header contract like Stripe).
+const RUNWAY_BASE = "https://api.dev.runwayml.com/v1";
+const RUNWAY_VERSION = "2024-11-06";
+
+// Story format everywhere. Runway supports 720:1280 (9:16 vertical)
+// which the same MP4 works as IG Story, FB Story, IG Reel, TikTok.
 const VIDEO_SPEC = {
-    widthPx: 1080,
-    heightPx: 1920,
-    aspectRatio: "9:16" as const,
-    resolution: "hd" as const,
+    widthPx: 720,
+    heightPx: 1280,
+    ratio: "720:1280" as const,
 };
 
-/** Shotstack Edit API base — staging vs. production tiers. */
-const SHOTSTACK_BASE = process.env.SHOTSTACK_ENV === "production"
-    ? "https://api.shotstack.io/edit/v1"
-    : "https://api.shotstack.io/edit/stage";
-
-// Per-clip duration for Ken Burns pans (seconds). 3s each × 4 clips
-// = 12s video + intro/outro title cards → ~14s total. Right in the
-// TikTok/Reels sweet spot (<20s outperforms longer per Meta's own
-// internal data — leaning on the "Reels < 20s" learning here).
-const CLIP_DURATION = 3;
-const TITLE_DURATION = 2.5;
+// Keep clips short. Free trial credits are precious; short clips also
+// have fewer opportunities for AI drift (faces morphing, fabric
+// deforming). 5 seconds is Runway's minimum and our default.
+const CLIP_DURATION_SEC = 5;
 
 export async function generateVideo(input: {
     platform: MarketingPlatform;
@@ -57,70 +61,74 @@ export async function generateVideo(input: {
         id: string;
         title: string;
         price: number;
-        photoUrls: string[]; // 3-8 URLs of listing photos (S3 or absolute)
+        photoUrls: string[]; // First one is used as the reference image
     };
-    /** Director-provided visual hook — becomes the opening title card. */
+    /** Director-provided visual hook — becomes the anchor of the
+     *  Runway prompt (e.g. "Model in ivory kaftan turning slowly"). */
     hook?: string;
-    /** Optional: pin a specific Shotstack music track. Otherwise uses
-     *  a soft default from Shotstack's library. */
-    soundtrackUrl?: string;
 }): Promise<GeneratedVideo> {
-    const apiKey = process.env.SHOTSTACK_API_KEY;
+    const apiKey = process.env.RUNWAY_API_KEY;
     if (!apiKey) {
         throw new Error(
-            "SHOTSTACK_API_KEY is required for VideoAgent. Sign up at https://dashboard.shotstack.io/register",
+            "RUNWAY_API_KEY is required for VideoAgent. Sign up at https://runwayml.com/api",
         );
     }
 
-    // 1. Build the Shotstack timeline JSON.
-    const timeline = buildSlideshowTimeline({
-        photoUrls: input.listing.photoUrls.slice(0, 6),
-        headline: input.hook || input.listing.title,
-        price: `$${input.listing.price.toFixed(2)}`,
-        soundtrackUrl: input.soundtrackUrl,
+    // Runway image_to_video needs a PUBLICLY reachable HTTP(S) URL for
+    // the reference photo. Relative paths from dev-mode aren't allowed.
+    const referenceUrl = input.listing.photoUrls[0];
+    if (!referenceUrl || !/^https?:\/\//i.test(referenceUrl)) {
+        throw new Error(
+            `Runway needs a public https URL for the reference image. Got: ${referenceUrl}`,
+        );
+    }
+
+    // Build the cinematic prompt from the Director's hook + product
+    // context. Runway prompts respond best to: subject + motion + camera
+    // + lighting + style. We provide sensible defaults; Director's hook
+    // supplies subject + motion.
+    const promptText = buildRunwayPrompt({
+        hook: input.hook,
+        listingTitle: input.listing.title,
     });
 
-    // 2. Submit render job.
-    const renderRes = await fetch(`${SHOTSTACK_BASE}/render`, {
+    // 1. Submit image-to-video job.
+    const submitRes = await fetch(`${RUNWAY_BASE}/image_to_video`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
-            "x-api-key": apiKey,
+            "X-Runway-Version": RUNWAY_VERSION,
+            Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-            timeline,
-            output: {
-                format: "mp4",
-                resolution: VIDEO_SPEC.resolution,
-                aspectRatio: VIDEO_SPEC.aspectRatio,
-                fps: 30,
-            },
+            model: "gen4_turbo",
+            promptImage: referenceUrl,
+            promptText,
+            duration: CLIP_DURATION_SEC,
+            ratio: VIDEO_SPEC.ratio,
         }),
     });
-    if (!renderRes.ok) {
-        const body = await renderRes.text().catch(() => "<no body>");
-        throw new Error(`Shotstack render submit failed ${renderRes.status}: ${body.slice(0, 300)}`);
+    if (!submitRes.ok) {
+        const body = await submitRes.text().catch(() => "<no body>");
+        throw new Error(`Runway submit failed ${submitRes.status}: ${body.slice(0, 400)}`);
     }
-    const renderData = await renderRes.json();
-    const renderId: string = renderData?.response?.id;
-    if (!renderId) throw new Error("Shotstack render returned no id");
+    const submitData = await submitRes.json();
+    const taskId: string | undefined = submitData?.id;
+    if (!taskId) throw new Error(`Runway submit returned no task id: ${JSON.stringify(submitData).slice(0, 200)}`);
 
-    // 3. Poll for completion. Typical render: 15-45 seconds for a
-    //    12-15s video. Cap at 3 minutes to avoid hanging the Director.
-    const completedAt = await pollShotstackUntilDone({
+    // 2. Poll for completion. Runway gen4_turbo clocks in around
+    //    30-90 seconds for a 5-second clip. Cap at 5 minutes to keep
+    //    the Director from hanging on a stuck render.
+    const finishedUrl = await pollRunwayUntilDone({
         apiKey,
-        renderId,
-        maxWaitMs: 3 * 60 * 1000,
+        taskId,
+        maxWaitMs: 5 * 60 * 1000,
     });
-    if (!completedAt.url) {
-        throw new Error(`Shotstack render finished with no URL: ${JSON.stringify(completedAt)}`);
-    }
 
-    // 4. Download the finished MP4 from Shotstack's CDN and re-upload
-    //    to our S3. Shotstack's own URLs expire, and mirroring to S3
-    //    keeps assets under our control + inside our CDN.
-    const mp4Res = await fetch(completedAt.url);
-    if (!mp4Res.ok) throw new Error(`Fetching Shotstack MP4 failed ${mp4Res.status}`);
+    // 3. Download the finished MP4 and mirror to our S3. Runway's own
+    //    URLs are short-lived (~24h) — we always keep our own copy.
+    const mp4Res = await fetch(finishedUrl);
+    if (!mp4Res.ok) throw new Error(`Fetch Runway MP4 failed ${mp4Res.status}`);
     const mp4Buffer = Buffer.from(await mp4Res.arrayBuffer());
 
     const bucket = getS3BucketName();
@@ -132,153 +140,59 @@ export async function generateVideo(input: {
         s3Url,
         widthPx: VIDEO_SPEC.widthPx,
         heightPx: VIDEO_SPEC.heightPx,
-        durationSec: TITLE_DURATION + input.listing.photoUrls.slice(0, 6).length * CLIP_DURATION + TITLE_DURATION,
+        durationSec: CLIP_DURATION_SEC,
+        generator: "runway",
     };
 }
-
-// ────────────────────────────────────────────────────────────────────
-// Shotstack timeline builder
-// ────────────────────────────────────────────────────────────────────
 
 /**
- * Timeline layout:
- *   [ opening title card ] → [ photo 1 KB pan ] → ... → [ photo N ] → [ closing title with price ]
- *   soundtrack: royalty-free ambient bed, fade in/out
+ * Runway prompts follow the pattern: [subject + action] + [camera
+ * movement] + [lighting] + [style]. We supply defaults; the hook
+ * anchors the subject + action.
  */
-function buildSlideshowTimeline(input: {
-    photoUrls: string[];
-    headline: string;
-    price: string;
-    soundtrackUrl?: string;
-}) {
-    const photoCount = input.photoUrls.length;
-    if (photoCount === 0) {
-        throw new Error("VideoAgent needs at least one photo");
-    }
-
-    // KB pans alternate zoom direction each clip — feels less
-    // mechanical than "everything zooms in."
-    const photoClips = input.photoUrls.map((url, i) => {
-        const zoomEffect = i % 2 === 0 ? "zoomIn" : "zoomOut";
-        return {
-            asset: { type: "image", src: url },
-            start: TITLE_DURATION + i * CLIP_DURATION,
-            length: CLIP_DURATION,
-            effect: zoomEffect,
-            transition: {
-                in: i === 0 ? "fade" : "fadeSlow",
-                out: "fadeSlow",
-            },
-            fit: "cover",
-        };
-    });
-
-    // Opening title — animated hook on a dark background.
-    const openingTitle = {
-        asset: {
-            type: "title",
-            text: input.headline.toUpperCase(),
-            style: "future",
-            color: "#ffffff",
-            size: "large",
-            position: "center",
-        },
-        start: 0,
-        length: TITLE_DURATION,
-        effect: "zoomIn",
-        transition: { in: "fade", out: "fadeSlow" },
-    };
-
-    // Closing title — the price.
-    const closingTitleStart = TITLE_DURATION + photoCount * CLIP_DURATION;
-    const closingTitle = {
-        asset: {
-            type: "title",
-            text: `${input.price}  ·  Shop at shopmodaire.com`,
-            style: "minimal",
-            color: "#ffffff",
-            size: "medium",
-            position: "center",
-        },
-        start: closingTitleStart,
-        length: TITLE_DURATION,
-        effect: "zoomIn",
-        transition: { in: "fadeSlow", out: "fade" },
-    };
-
-    // Persistent Modaire wordmark overlay in the top-left throughout
-    // the video — brand always visible.
-    const totalDuration = closingTitleStart + TITLE_DURATION;
-    const brandOverlay = {
-        asset: {
-            type: "title",
-            text: "MODAIRE",
-            style: "chunk",
-            color: "#ffffff",
-            size: "x-small",
-            position: "topLeft",
-            offset: { x: -0.4, y: 0.42 },
-        },
-        start: 0,
-        length: totalDuration,
-    };
-
-    const tracks: Array<{ clips: unknown[] }> = [
-        // Track 0: photos + title cards (rendered bottom-to-top → photos below titles)
-        { clips: [openingTitle, ...photoClips, closingTitle] },
-        // Track 1: persistent brand overlay
-        { clips: [brandOverlay] },
-    ];
-
-    // Soundtrack is opt-in. Shotstack's default CDN URLs are
-    // unreliable on the sandbox tier — many resolve to dead
-    // domains. Videos render silent unless the caller passes a
-    // real, publicly-fetchable audio URL.
-    const timeline: {
-        background: string;
-        tracks: Array<{ clips: unknown[] }>;
-        soundtrack?: { src: string; effect: string; volume: number };
-    } = {
-        background: "#000000",
-        tracks,
-    };
-    if (input.soundtrackUrl) {
-        timeline.soundtrack = {
-            src: input.soundtrackUrl,
-            effect: "fadeInFadeOut",
-            volume: 0.6,
-        };
-    }
-    return timeline;
+function buildRunwayPrompt(input: { hook?: string; listingTitle: string }): string {
+    const subject = input.hook || `Model wearing ${input.listingTitle}`;
+    const camera = "slow cinematic zoom-in, subtle handheld sway";
+    const lighting = "soft warm golden hour, natural side lighting";
+    const style = "editorial fashion film, shallow depth of field, elegant motion";
+    // Runway caps prompts at ~512 chars.
+    return `${subject}. ${camera}. ${lighting}. ${style}.`.slice(0, 500);
 }
 
-async function pollShotstackUntilDone(input: {
+async function pollRunwayUntilDone(input: {
     apiKey: string;
-    renderId: string;
+    taskId: string;
     maxWaitMs: number;
-}): Promise<{ url?: string; status: string }> {
+}): Promise<string> {
     const start = Date.now();
-    // Backoff: check every 3s, but not more than 60 polls.
     while (Date.now() - start < input.maxWaitMs) {
-        await sleep(3000);
-        const res = await fetch(`${SHOTSTACK_BASE}/render/${input.renderId}`, {
-            headers: { "x-api-key": input.apiKey },
+        await sleep(4000);
+        const res = await fetch(`${RUNWAY_BASE}/tasks/${input.taskId}`, {
+            headers: {
+                "X-Runway-Version": RUNWAY_VERSION,
+                Authorization: `Bearer ${input.apiKey}`,
+            },
         });
         if (!res.ok) {
             const body = await res.text().catch(() => "<no body>");
-            throw new Error(`Shotstack poll failed ${res.status}: ${body.slice(0, 200)}`);
+            throw new Error(`Runway poll failed ${res.status}: ${body.slice(0, 200)}`);
         }
         const data = await res.json();
-        const status: string = data?.response?.status;
-        if (status === "done") {
-            return { url: data?.response?.url, status };
+        const status: string = data?.status;
+        if (status === "SUCCEEDED") {
+            const output = data?.output;
+            if (Array.isArray(output) && typeof output[0] === "string") {
+                return output[0];
+            }
+            throw new Error(`Runway SUCCEEDED with no output: ${JSON.stringify(data).slice(0, 300)}`);
         }
-        if (status === "failed") {
-            throw new Error(`Shotstack render failed: ${JSON.stringify(data?.response ?? {})}`);
+        if (status === "FAILED" || status === "CANCELLED") {
+            const err = data?.failure || data?.error || "unknown";
+            throw new Error(`Runway render ${status}: ${err}`);
         }
-        // "queued" | "fetching" | "rendering" | "saving" → keep waiting.
+        // PENDING | RUNNING → keep waiting.
     }
-    throw new Error(`Shotstack render timed out after ${input.maxWaitMs}ms`);
+    throw new Error(`Runway render timed out after ${input.maxWaitMs}ms`);
 }
 
 function sleep(ms: number): Promise<void> {

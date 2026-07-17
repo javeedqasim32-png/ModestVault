@@ -191,10 +191,12 @@ export async function runDirector(options: {
                 continue;
             }
 
-            // Photo URLs for VIDEO tasks — prefer medium (~600px)
-            // renditions so Shotstack's render fetches are quicker.
+            // Photo URLs for VIDEO tasks — Runway needs the ORIGINAL
+            // full-res image as the reference (medium renditions can
+            // produce softer results). Falls back to medium/thumb only
+            // if original is missing.
             const photoUrls = listing.images.length > 0
-                ? listing.images.map((img) => img.mediumUrl ?? img.imageUrl)
+                ? listing.images.map((img) => img.imageUrl ?? img.mediumUrl)
                 : [listing.image_url];
 
             const [copy, asset] = await Promise.all([
@@ -256,6 +258,12 @@ export async function runDirector(options: {
                         directorModel: modelUsed,
                         pillar: task.pillar,
                         priority: task.priority,
+                        // Which service produced the asset — useful for
+                        // debugging quality per generator and comparing
+                        // engagement per source (once metrics loop is on).
+                        assetGenerator: asset && "generator" in asset
+                            ? (asset as { generator?: string }).generator
+                            : task.contentType === "IMAGE" ? "sharp" : null,
                     } as any,
                 },
             });
@@ -327,9 +335,16 @@ Given the intelligence below (business state + marketing calendar horizon), deci
 - Every task's \`hook\` should be a sharp opener (4-8 words) — this becomes both the visual overlay text AND the LLM's caption lede.
 - Every task's \`angle\` should be a specific subset of the theme (e.g. theme = "wedding-season affordable picks"; angle = "under-$100 mother-of-the-bride pieces").
 - Prefer diversity: don't have 5 posts about the same listing. Mix listings when the theme allows.
-- Supported content types: "IMAGE" (Story-format static composite) and "VIDEO" (Shotstack slideshow — Ken Burns pans across the listing's photos with music, ~14 seconds). Do NOT plan TEXT-only tasks.
-- All assets output in Story format (1080×1920, 9:16 vertical). Target INSTAGRAM_STORY, INSTAGRAM_REEL, TIKTOK, and FACEBOOK. The same asset works across all Story surfaces.
-- **VIDEO is what drives virality** — static images rarely get shared. Lean toward VIDEO for at least 40% of tasks per run. Reserve IMAGE for cases where video would be overkill (e.g. simple sale-price announcements). If a listing only has 1 photo in the DB, prefer IMAGE — video needs at least 3-4 photos to be interesting.
+- Supported content types: "IMAGE" (Story-format static composite) and "VIDEO" (Runway Gen-4 AI-generated cinematic clip — 5 seconds, starts from the listing's hero photo and generates motion). Do NOT plan TEXT-only tasks.
+- All assets output in Story format (9:16 vertical). Target INSTAGRAM_STORY, INSTAGRAM_REEL, TIKTOK, and FACEBOOK. The same asset works across all Story surfaces.
+- Prefer VIDEO for hero listings — cinematic AI motion is more engaging than a static image. Use IMAGE when the message is text-heavy (sale-price emphasis, "3 pieces on sale" summary) or when a listing has weak/single photos.
+- **For VIDEO tasks, the \`hook\` is CRITICAL** — it becomes the Runway prompt's anchor for what should happen in the clip. Write hooks as SHORT CINEMATIC INSTRUCTIONS, not marketing copy:
+  - ✅ "Model in ivory kaftan turning slowly, fabric flowing"
+  - ✅ "Close-up of embroidered lehenga, hand tracing the beadwork"
+  - ✅ "Woman in hijab walking through golden light, silk dupatta trailing"
+  - ❌ "Elevate Your Wedding Style"  ← reads as a headline, not a shot direction
+  - ❌ "Summer Sale — 15% off"        ← not filmable
+  Runway needs a SUBJECT + ACTION. The angle field can still carry the strategic framing; the hook must be visualizable.
 
 # Return format
 
