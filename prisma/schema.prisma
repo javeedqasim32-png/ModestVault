@@ -134,6 +134,7 @@ model Listing {
   favoriteItems     FavoriteItem[]
   conversations     Conversation[]
   listingPromotions ListingPromotion[]
+  marketingDrafts   MarketingDraft[]
 
   @@index([status, moderation_status, created_at])
   @@index([style, category, subcategory, type])
@@ -605,6 +606,69 @@ model SaleDiscoveryEmail {
 
   @@unique([user_id, listing_id])
   @@index([sent_at])
+}
+
+// AI-generated marketing draft awaiting admin approval. The AI
+// Marketing Team is generate-only: agents produce copy + composited
+// image, drop the draft at /admin/marketing/queue, and the admin
+// approves + posts manually to the target platform (FB Page, IG,
+// TikTok). "Mark as posted" records the outcome so the queue can
+// separate "not yet posted" from "done."
+//
+// Status flow: PENDING → APPROVED → POSTED   (happy path)
+//                     → REJECTED             (dropped)
+model MarketingDraft {
+  id             String    @id @default(uuid())
+  listing_id     String?
+  listing        Listing?  @relation(fields: [listing_id], references: [id], onDelete: SetNull)
+  // The strategic briefing this draft is executing. When the Director
+  // (Phase 1+) plans a day, one MarketingBriefing row captures the
+  // theme + rationale; every resulting draft points back so the admin
+  // can see "why was this post generated" alongside it.
+  briefing_id    String?
+  briefing       MarketingBriefing? @relation(fields: [briefing_id], references: [id], onDelete: SetNull)
+  platform       String    // "FACEBOOK" | "INSTAGRAM_FEED" | "INSTAGRAM_STORY" | "INSTAGRAM_REEL" | "TIKTOK"
+  content_type   String    // "TEXT" | "IMAGE" | "VIDEO"
+  caption        String
+  hashtags       String?
+  // Director-provided per-post fields. `hook` is the single sharpest
+  // opener the copy should lead with (Director-chosen, not LLM-generated
+  // in isolation). `angle` is the strategic framing carried through the
+  // whole coordinated push (e.g. "wedding-season affordable").
+  hook           String?
+  angle          String?
+  asset_urls     String[]  // S3 URLs of composited images/videos
+  status         String    @default("PENDING") // "PENDING" | "APPROVED" | "POSTED" | "REJECTED"
+  reject_reason  String?
+  posted_at      DateTime?
+  posted_url     String?   // optional URL the admin pastes after posting (IG/FB permalink)
+  agent_metadata Json?     // director's rationale, prompt version, model, etc.
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+
+  @@index([status, created_at])
+  @@index([platform, status])
+  @@index([listing_id])
+  @@index([briefing_id])
+}
+
+// One row per Director run — captures the strategic decision for the
+// day: what theme was chosen, why, what content mix was planned, what
+// intel fed into the reasoning. Powers the admin's "why was this made"
+// visibility and gives future prompt tuning a paper trail. Every
+// MarketingDraft from that run points back via briefing_id.
+model MarketingBriefing {
+  id            String    @id @default(uuid())
+  ran_at        DateTime  @default(now())
+  theme         String    // one-sentence strategic bet, e.g. "Wedding-season affordable picks under $150"
+  rationale     String    // Director's reasoning (LLM output)
+  content_mix   Json      // planned ratios and per-platform counts
+  intelligence  Json      // snapshot of intel fed in (business + calendar horizon + trends)
+  model         String    // "claude-sonnet-4-6" or fallback model id
+  cost_estimate Decimal?  // approximate USD spend for this run
+  drafts        MarketingDraft[]
+
+  @@index([ran_at])
 }
 
 // One row per (broadcast, user) delivery attempt. Powers idempotency

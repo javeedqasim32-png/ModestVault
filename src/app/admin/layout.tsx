@@ -2,7 +2,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Package, ShoppingBag, Star } from "lucide-react";
+import { Package, ShoppingBag, Star, Megaphone } from "lucide-react";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
     const session = await auth();
@@ -52,6 +52,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
                     >
                         <Star className="h-5 w-5" />
                         Featured
+                    </Link>
+                    <Link
+                        href="/admin/marketing/queue"
+                        className="flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted/50 hover:text-foreground hover:shadow-sm transition-all lg:gap-3 lg:px-4 lg:py-3"
+                    >
+                        <Megaphone className="h-5 w-5" />
+                        Marketing
                     </Link>
                 </nav>
             </aside>
