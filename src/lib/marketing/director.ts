@@ -240,6 +240,7 @@ export async function runDirector(options: {
                             visualMood: task.visualMood,
                             cameraMotion: task.cameraMotion,
                             settingAtmosphere: task.settingAtmosphere,
+                            durationSec: task.videoDurationSec,
                         })
                         : Promise.resolve(null),
             ]);
@@ -365,6 +366,8 @@ Given the intelligence below (business state + marketing calendar horizon), deci
     - \`static-hold\` — No camera movement, subject/fabric moves alone. Best for STATEMENT pieces with strong drape.
 
   **\`settingAtmosphere\` (optional, short free-text)** — ambient extras like "petals falling in soft light", "silk shifting in a gentle breeze", "candlelight flickers in background". Leave empty for clean.
+
+  **\`videoDurationSec\` (optional, 5 or 10, defaults to 10)** — clip length. 10s is the default and preferred for hero content (more room for motion + retention). Drop to 5s ONLY for simple sale-price flashes ("$50 off today") where more time adds nothing. Cost doubles from 5→10 (25 vs 50 Runway credits), so if you're planning many videos in one run, consider making 1-2 of them 5s to conserve budget.
 
   Match the mood + camera to the piece and the theme. A bridal kaftan for wedding season should NOT get \`studio-bright + slow-push\` (that's a product-tile look). It should get \`warm-golden + orbit\` or \`festive-vibrant + reveal\`. Vary these across the day's tasks so your queue doesn't feel monotonous.
 

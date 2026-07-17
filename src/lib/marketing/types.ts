@@ -111,6 +111,10 @@ export type MarketingTask = {
      *  (e.g. "silk shifting in a gentle breeze", "petals falling").
      *  Kept short (<80 chars) to avoid overloading the Runway prompt. */
     settingAtmosphere?: string;
+    /** Video length in seconds. Runway Gen-4 Turbo supports 5 or 10.
+     *  Defaults to 10 (better for retention). Director may drop to 5
+     *  for simple sale-price flashes or credit conservation. */
+    videoDurationSec?: 5 | 10;
 };
 
 // ────────────────────────────────────────────────────────────────────

@@ -50,10 +50,11 @@ const VIDEO_SPEC = {
     ratio: "720:1280" as const,
 };
 
-// Keep clips short. Free trial credits are precious; short clips also
-// have fewer opportunities for AI drift (faces morphing, fabric
-// deforming). 5 seconds is Runway's minimum and our default.
-const CLIP_DURATION_SEC = 5;
+// Runway Gen-4 Turbo supports 5s or 10s per clip. Default is 10s —
+// more room for camera motion + subject action = better viewer
+// retention. Director may override to 5s per task for sale-price
+// flashes or credit conservation. Cost: 5s = 25 credits, 10s = 50.
+const DEFAULT_DURATION_SEC = 10;
 
 export async function generateVideo(input: {
     platform: MarketingPlatform;
@@ -75,7 +76,10 @@ export async function generateVideo(input: {
     /** Director's optional atmospheric extras — free-text like
      *  "petals falling in soft light". */
     settingAtmosphere?: string;
+    /** Clip duration in seconds. 5 or 10. Defaults to 10. */
+    durationSec?: 5 | 10;
 }): Promise<GeneratedVideo> {
+    const durationSec = input.durationSec ?? DEFAULT_DURATION_SEC;
     const apiKey = process.env.RUNWAY_API_KEY;
     if (!apiKey) {
         throw new Error(
@@ -115,7 +119,7 @@ export async function generateVideo(input: {
             model: "gen4_turbo",
             promptImage: referenceUrl,
             promptText,
-            duration: CLIP_DURATION_SEC,
+            duration: durationSec,
             ratio: VIDEO_SPEC.ratio,
         }),
     });
@@ -151,7 +155,7 @@ export async function generateVideo(input: {
         s3Url,
         widthPx: VIDEO_SPEC.widthPx,
         heightPx: VIDEO_SPEC.heightPx,
-        durationSec: CLIP_DURATION_SEC,
+        durationSec,
         generator: "runway",
     };
 }
