@@ -28,7 +28,7 @@ export default async function UnsubscribePage({
                     <p className="mt-3 text-sm text-muted-foreground">
                         This unsubscribe link is no longer valid. To update your email preferences,{" "}
                         <Link href="/login" className="underline">sign in</Link>{" "}
-                        or email support@shopmodaire.com.
+                        or email shopmodaire@gmail.com.
                     </p>
                 </div>
             </div>
@@ -46,7 +46,7 @@ export default async function UnsubscribePage({
                 <div className="w-full rounded-2xl border border-border bg-card p-8 text-center">
                     <h1 className="text-2xl font-bold text-foreground">Account not found</h1>
                     <p className="mt-3 text-sm text-muted-foreground">
-                        We couldn&apos;t find your account. Contact support@shopmodaire.com if you need help.
+                        We couldn&apos;t find your account. Contact shopmodaire@gmail.com if you need help.
                     </p>
                 </div>
             </div>

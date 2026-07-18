@@ -14,7 +14,7 @@ const DEFAULT_OPEN_STATE: Record<string, boolean> = {
   refunds: true,
 };
 
-const SUPPORT_EMAIL = "support@shopmodaire.com";
+const SUPPORT_EMAIL = "shopmodaire@gmail.com";
 
 type PolicyItem = {
   id: string;
@@ -75,6 +75,20 @@ const policyItems: readonly PolicyItem[] = [
           All payments are processed by Stripe. Modaire charges a 15%
           commission on completed sales. Seller payouts are held briefly
           after delivery confirmation to allow disputes to be raised.
+        </p>
+
+        <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-[#6f5647]">
+          SMS Communications
+        </p>
+        <p>
+          SMS/text messages are optional and separately governed by our{" "}
+          <a href="/sms-policy" className="underline hover:text-[#5a4426]">
+            SMS Policy
+          </a>
+          . That page covers what messages we send, how often, how to
+          opt out (reply STOP), how to get help (reply HELP), and how
+          your phone number is protected. Message and data rates may
+          apply. You must be 18 or older to opt in.
         </p>
 
         <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-[#6f5647]">

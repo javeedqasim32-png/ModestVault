@@ -16,7 +16,7 @@ import Link from "next/link";
  * STOP webhook wired, no third-party sharing).
  */
 
-const SUPPORT_EMAIL = "support@shopmodaire.com";
+const SUPPORT_EMAIL = "shopmodaire@gmail.com";
 
 export const metadata: Metadata = {
     title: "SMS Policy — Modaire",
@@ -89,6 +89,11 @@ export default function SmsPolicyPage() {
                         <p>
                             Opting in is not required to use Modaire or make a
                             purchase.
+                        </p>
+                        <p>
+                            You must be 18 or older to receive Modaire SMS
+                            messages. By opting in, you confirm you meet this
+                            age requirement.
                         </p>
                     </section>
 

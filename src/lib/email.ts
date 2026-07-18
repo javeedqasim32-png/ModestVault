@@ -829,7 +829,7 @@ ${escapeText(previewText)}
       <a href="${unsubscribeUrl}" style="color: #6f5647; text-decoration: underline;">Unsubscribe with one click</a>.
     </p>
     <p style="margin: 8px 0 0 0; font-size: 10px; color: #a8a29e; text-align: center; line-height: 1.6;">
-      Modaire &middot; ${escapeText(mailingAddress)} &middot; support@shopmodaire.com
+      Modaire &middot; ${escapeText(mailingAddress)} &middot; shopmodaire@gmail.com
     </p>
   </div>
 
