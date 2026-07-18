@@ -7,6 +7,8 @@ import { redirect } from "next/navigation";
 import { getUserSlugMap } from "@/lib/user-slugs";
 import ProfileAvatarUploader from "@/components/profile/ProfileAvatarUploader";
 import { startConversationWithSupport } from "@/app/actions/messages";
+import { GuestGuardedLink } from "@/components/auth/GuestGuardedLink";
+import type { SignInPromptIntent } from "@/components/auth/SignInPromptModal";
 
 export default async function ProfileDashboard() {
     const session = await auth();
@@ -35,15 +37,18 @@ export default async function ProfileDashboard() {
         value: string;
         icon: typeof Tag;
         href: string;
+        /** Intent for the guest sign-in modal. If set, guests tapping this
+         *  card see a client-side popup instead of hard-redirecting. */
+        guestIntent?: SignInPromptIntent;
     };
     const cards: DashboardCard[] = [
         ...(isAdmin ? [{ label: "Admin", value: "Manage marketplace", icon: ShieldCheck, href: "/admin/listings" }] : []),
-        { label: "Orders", value: "Track purchases", icon: ShoppingBag, href: "/dashboard/purchases" },
-        { label: "Sell", value: "Create listing", icon: Tag, href: "/sell" },
-        { label: "Your Listings", value: "Manage listings", icon: Package, href: "/sell?manage=1" },
-        { label: "Sales", value: "Sold items", icon: TrendingUp, href: "/dashboard/sales" },
-        { label: "Earnings", value: "Payout overview", icon: Wallet, href: "/dashboard/earnings" },
-        ...(isSeller ? [] : [{ label: "Payouts", value: "Set up payout", icon: CreditCard, href: "/sell/setup" }]),
+        { label: "Orders", value: "Track purchases", icon: ShoppingBag, href: "/dashboard/purchases", guestIntent: "orders" },
+        { label: "Sell", value: "Create listing", icon: Tag, href: "/sell", guestIntent: "sell" },
+        { label: "Your Listings", value: "Manage listings", icon: Package, href: "/sell?manage=1", guestIntent: "sell" },
+        { label: "Sales", value: "Sold items", icon: TrendingUp, href: "/dashboard/sales", guestIntent: "account" },
+        { label: "Earnings", value: "Payout overview", icon: Wallet, href: "/dashboard/earnings", guestIntent: "account" },
+        ...(isSeller ? [] : [{ label: "Payouts", value: "Set up payout", icon: CreditCard, href: "/sell/setup", guestIntent: "sell" as const }]),
     ];
 
     return (
@@ -91,34 +96,67 @@ export default async function ProfileDashboard() {
                     <div className="grid grid-cols-2 gap-4">
                         {cards.map((card) => {
                             const Icon = card.icon;
-                            return (
-                                <Link
-                                    key={card.label}
-                                    href={card.href}
-                                    className="rounded-[30px] border border-[#e3d9d1] bg-[#f7f2ed] px-6 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)] transition hover:bg-[#f2ebe4]"
-                                >
+                            const cardBody = (
+                                <>
                                     <div className="mb-2 flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-[#8f6e59]">
                                         <Icon className="h-[15px] w-[15px] stroke-[1.7]" />
                                         {card.label}
                                     </div>
                                     <p className="text-[14px] leading-[1.25] text-[#2f2925]">{card.value}</p>
+                                </>
+                            );
+                            const cardClass = "block w-full text-left rounded-[30px] border border-[#e3d9d1] bg-[#f7f2ed] px-6 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)] transition hover:bg-[#f2ebe4]";
+                            // Guests hitting an auth-required card see the client-side
+                            // sign-in modal instead of a hard redirect to /login.
+                            if (card.guestIntent) {
+                                return (
+                                    <GuestGuardedLink
+                                        key={card.label}
+                                        href={card.href}
+                                        isAuthed={!!userId}
+                                        guestIntent={card.guestIntent}
+                                        className={cardClass}
+                                    >
+                                        {cardBody}
+                                    </GuestGuardedLink>
+                                );
+                            }
+                            return (
+                                <Link key={card.label} href={card.href} className={cardClass}>
+                                    {cardBody}
                                 </Link>
                             );
                         })}
-                        {/* Live Chat tile — rendered as a form because it needs to
-                            trigger the support-conversation server action, but
-                            styled identically to the Link tiles above. */}
-                        <form
-                            action={async () => {
-                                "use server";
-                                const res = await startConversationWithSupport();
-                                if ("success" in res && res.conversationId) {
-                                    redirect(`/messages/${res.conversationId}`);
-                                }
-                            }}
-                        >
-                            <button
-                                type="submit"
+                        {/* Live Chat tile — server action requires auth, so guests
+                            get the sign-in modal via GuestGuardedLink. Authed
+                            users hit a form that triggers the support-conversation
+                            server action and redirects into the DM thread. */}
+                        {userId ? (
+                            <form
+                                action={async () => {
+                                    "use server";
+                                    const res = await startConversationWithSupport();
+                                    if ("success" in res && res.conversationId) {
+                                        redirect(`/messages/${res.conversationId}`);
+                                    }
+                                }}
+                            >
+                                <button
+                                    type="submit"
+                                    className="block w-full rounded-[30px] border border-[#e3d9d1] bg-[#f7f2ed] px-6 py-5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.68)] transition hover:bg-[#f2ebe4]"
+                                >
+                                    <div className="mb-2 flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-[#8f6e59]">
+                                        <MessageCircle className="h-[15px] w-[15px] stroke-[1.7]" />
+                                        Live Chat
+                                    </div>
+                                    <p className="text-[14px] leading-[1.25] text-[#2f2925]">Chat with an agent</p>
+                                </button>
+                            </form>
+                        ) : (
+                            <GuestGuardedLink
+                                href="/dashboard"
+                                isAuthed={false}
+                                guestIntent="message"
                                 className="block w-full rounded-[30px] border border-[#e3d9d1] bg-[#f7f2ed] px-6 py-5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.68)] transition hover:bg-[#f2ebe4]"
                             >
                                 <div className="mb-2 flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-[#8f6e59]">
@@ -126,34 +164,44 @@ export default async function ProfileDashboard() {
                                     Live Chat
                                 </div>
                                 <p className="text-[14px] leading-[1.25] text-[#2f2925]">Chat with an agent</p>
-                            </button>
-                        </form>
+                            </GuestGuardedLink>
+                        )}
                     </div>
                 </section>
 
                 <section className="px-6 py-7 sm:px-8">
                     <h2 className="text-[26px] leading-none text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif", fontWeight: 600 }}>My Lists</h2>
                     <div className="mt-3 px-2">
-                        <Link href="/favorites" className="flex items-center justify-between border-b border-[#d9cfc7] px-4 py-7 transition hover:bg-[#ede7df]/40">
+                        <GuestGuardedLink
+                            href="/favorites"
+                            isAuthed={!!userId}
+                            guestIntent="favorite"
+                            className="flex w-full items-center justify-between border-b border-[#d9cfc7] px-4 py-7 text-left transition hover:bg-[#ede7df]/40"
+                        >
                             <span className="text-[16px] text-[#2f2925]">Favorites</span>
                             <span className="flex items-center gap-2 text-[16px] text-[#8a7667]">
                                 {favoriteCount} items
                                 <ChevronRight className="h-4 w-4" />
                             </span>
-                        </Link>
+                        </GuestGuardedLink>
                     </div>
                 </section>
 
                 <section className="px-6 pb-8 sm:px-8 sm:pb-10">
                     <h2 className="text-[26px] leading-none text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif", fontWeight: 600 }}>Settings</h2>
                     <div className="mt-4 space-y-4">
-                        <Link href="/dashboard/settings" className="flex items-center justify-between rounded-[22px] border border-[#d9cfc7] bg-[#f4efea] px-5 py-5 transition hover:bg-[#ede7df]">
+                        <GuestGuardedLink
+                            href="/dashboard/settings"
+                            isAuthed={!!userId}
+                            guestIntent="account"
+                            className="flex w-full items-center justify-between rounded-[22px] border border-[#d9cfc7] bg-[#f4efea] px-5 py-5 text-left transition hover:bg-[#ede7df]"
+                        >
                             <span className="flex items-center gap-3.5 text-[15px] text-[#2f2925]">
                                 <UserRound className="h-5 w-5 text-[#8f6e59]" />
                                 Edit Profile & Account
                             </span>
                             <ChevronRight className="h-5 w-5 text-[#8f6e59]" />
-                        </Link>
+                        </GuestGuardedLink>
 
                         <Link href="/policies" scroll className="flex items-center justify-between rounded-[22px] border border-[#d9cfc7] bg-[#f4efea] px-5 py-5 transition hover:bg-[#ede7df]">
                             <span className="flex items-center gap-3.5 text-[15px] text-[#2f2925]">
@@ -171,9 +219,11 @@ export default async function ProfileDashboard() {
                             <ChevronRight className="h-5 w-5 text-[#8f6e59]" />
                         </Link>
 
-                        <a href="/logout" className="mt-3 inline-flex w-full items-center justify-center rounded-[22px] border border-[#d9cfc7] bg-[#f4efea] px-5 py-5 text-[15px] text-[#2f2925] transition hover:bg-[#ede7df]">
-                            Log out
-                        </a>
+                        {userId ? (
+                            <a href="/logout" className="mt-3 inline-flex w-full items-center justify-center rounded-[22px] border border-[#d9cfc7] bg-[#f4efea] px-5 py-5 text-[15px] text-[#2f2925] transition hover:bg-[#ede7df]">
+                                Log out
+                            </a>
+                        ) : null}
                     </div>
                 </section>
             </div>
