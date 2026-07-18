@@ -25,11 +25,15 @@ const items = [
 
 // Maps each nav-tab href to the SignInPromptModal intent shown when a guest
 // taps it. Only entries listed here get intercepted; everything else (Home,
-// Explore) navigates normally.
+// Explore, Account) navigates normally.
+//
+// /dashboard is deliberately NOT intercepted — it's a publicly-accessible
+// page (guests see the Policy card + a Sign In CTA there). This is a
+// compliance requirement for TCR/Twilio A2P 10DLC reviewers who need
+// to reach policy pages without an account.
 const GUEST_PROMPT_INTENTS: Record<string, SignInPromptIntent> = {
     "/sell": "sell",
     "/dashboard/purchases": "orders",
-    "/dashboard": "account",
 };
 
 export default function MobileBottomNav({ isAuthed = false }: { isAuthed?: boolean }) {
