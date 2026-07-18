@@ -61,17 +61,30 @@ export default async function ProfileDashboard() {
                         />
                     ) : (
                         <div className="mx-auto flex h-[96px] w-[96px] items-center justify-center rounded-full border-[4px] border-[#e1d6cd] bg-[linear-gradient(135deg,#d5c1b1_0%,#c8ad9c_100%)] text-[36px] text-[#7a6050]" style={{ fontFamily: "var(--font-serif), serif" }}>
-                            TU
+                            ?
                         </div>
                     )}
-                    <h1 className="mt-4 text-[38px] leading-[1] text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif" }}>{session?.user?.name ?? "Test User"}</h1>
-                    <p className="mt-2 text-[14px] text-[#8a7667]">{session?.user?.email}</p>
-                    <Link
-                        href={profileHref}
-                        className="mt-6 inline-flex h-12 items-center rounded-full border border-[#d7cac0] bg-[#f4efea] px-7 text-[14px] font-normal text-[#2f2925] transition hover:bg-[#ede7df]"
-                    >
-                        View Profile
-                    </Link>
+                    <h1 className="mt-4 text-[38px] leading-[1] text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif" }}>
+                        {userId ? (session?.user?.name ?? "Your Account") : "Welcome to Modaire"}
+                    </h1>
+                    <p className="mt-2 text-[14px] text-[#8a7667]">
+                        {userId ? session?.user?.email : "Sign in to see your orders, favorites, and more"}
+                    </p>
+                    {userId ? (
+                        <Link
+                            href={profileHref}
+                            className="mt-6 inline-flex h-12 items-center rounded-full border border-[#d7cac0] bg-[#f4efea] px-7 text-[14px] font-normal text-[#2f2925] transition hover:bg-[#ede7df]"
+                        >
+                            View Profile
+                        </Link>
+                    ) : (
+                        <Link
+                            href="/login?callbackUrl=/dashboard"
+                            className="mt-6 inline-flex h-12 items-center rounded-full bg-[#5f4437] px-8 text-[14px] font-medium text-white transition hover:bg-[#4a3328]"
+                        >
+                            Sign In
+                        </Link>
+                    )}
                 </section>
 
                 <section className="border-b border-[#e8dfd8] px-6 py-7 sm:px-8">
