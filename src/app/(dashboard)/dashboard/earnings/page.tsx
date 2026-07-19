@@ -2,7 +2,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { getStripeBalance, createStripeDashboardLink, onboardSellerAction } from "@/app/actions/stripe";
 import { redirect } from "next/navigation";
-import { Clock, ExternalLink, TrendingUp, AlertCircle } from "lucide-react";
+import { Clock, ExternalLink, TrendingUp, AlertCircle, ShieldCheck } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +11,7 @@ type OrderAggregateDelegate = {
         _sum: { seller_transfer_amount_cents: number | null };
         _count: number;
     }>;
+    findFirst: (args: unknown) => Promise<{ hold_until: Date | null } | null>;
 };
 
 async function handleConnectStripe() {
@@ -46,6 +47,37 @@ export default async function EarningsPage() {
     const awaitingCount = awaitingAggregate._count ?? 0;
     const awaitingDollars = awaitingCents / 100;
 
+    // Held payouts — the 3-day buyer-review window between delivery and
+    // Stripe transfer. Money exists on the Order row but hasn't been sent
+    // to Stripe yet, so Stripe's own "Pending" balance shows $0 for it.
+    // Without this card, sellers see nothing during the hold and think
+    // their payout vanished.
+    const now = new Date();
+    const heldWhere = {
+        seller_transfer_status: "PENDING_HOLD",
+        delivered_at: { not: null },
+        hold_until: { gt: now },
+        purchase: { listing: { user_id: session.user.id } },
+    };
+    const [heldAggregate, nextRelease] = await Promise.all([
+        orderDelegate.aggregate({
+            where: heldWhere,
+            _sum: { seller_transfer_amount_cents: true },
+            _count: true,
+        }),
+        orderDelegate.findFirst({
+            where: heldWhere,
+            orderBy: { hold_until: "asc" },
+            select: { hold_until: true },
+        }),
+    ]);
+    const heldCents = heldAggregate._sum.seller_transfer_amount_cents ?? 0;
+    const heldCount = heldAggregate._count ?? 0;
+    const heldDollars = heldCents / 100;
+    const nextReleaseLabel = heldCount > 0 && nextRelease?.hold_until
+        ? formatReleaseLabel(nextRelease.hold_until, now)
+        : "";
+
     // Pre-fetch the dashboard link so it reliably opens in a new tab. Skip for
     // sellers who haven't connected Stripe yet — there's no dashboard to link to.
     let stripeDashboardUrl = "https://dashboard.stripe.com";
@@ -74,7 +106,7 @@ export default async function EarningsPage() {
                 </a>
             </div>
 
-            <div className={`grid grid-cols-1 gap-6 ${awaitingCount > 0 ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
+            <div className={`grid grid-cols-1 gap-6 ${gridColumnClass(2 + (heldCount > 0 ? 1 : 0) + (awaitingCount > 0 ? 1 : 0))}`}>
                 {/* Available Balance */}
                 <a href={stripeDashboardUrl} target="_blank" rel="noopener noreferrer" className="block w-full text-left rounded-[24px] bg-[linear-gradient(135deg,#b89881_0%,#7f5f4e_100%)] p-6 sm:p-8 text-white shadow-[0_12px_30px_rgba(111,81,67,0.18)] relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_14px_36px_rgba(111,81,67,0.25)]">
                     <div className="space-y-6 relative z-10">
@@ -110,6 +142,23 @@ export default async function EarningsPage() {
                     </div>
                 </div>
 
+                {heldCount > 0 && (
+                    <div className="rounded-[24px] border border-[#d9cfc7] bg-[#efe6dd] p-6 sm:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]">
+                        <div className="space-y-6">
+                            <div className="flex items-center gap-2.5">
+                                <ShieldCheck className="w-4 h-4 text-[#7f5f4e]" />
+                                <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-[#7f5f4e]">Held</span>
+                            </div>
+                            <h2 className="text-[44px] md:text-[54px] leading-none text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif" }}>
+                                ${heldDollars.toFixed(2)}
+                            </h2>
+                            <p className="text-[14px] text-[#4a3d33] leading-relaxed">
+                                From {heldCount} delivered {heldCount === 1 ? "item" : "items"}. {nextReleaseLabel} per Modaire&rsquo;s 3-day buyer-review policy.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
                 {awaitingCount > 0 && (
                     <div className="rounded-[24px] border border-amber-200 bg-amber-50 p-6 sm:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]">
                         <div className="space-y-6">
@@ -139,10 +188,22 @@ export default async function EarningsPage() {
             <div className="rounded-[24px] border border-[#e3d9d1] bg-white p-5 sm:p-6 shadow-[0_4px_20px_rgba(0,0,0,0.02)] space-y-4">
                 <h3 className="text-[20px] text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif", fontWeight: 500 }}>Understanding your payouts</h3>
                 <p className="text-[15px] text-[#8a7667] leading-[1.6]">
-                    Modaire partners with <span className="text-[#2f2925] font-medium">Stripe Express</span> for secure, automated payments.
-                    Funds typically transition from <em>Pending</em> to <em>Available</em> within 2–7 business days.
-                    Once available, they are dispatched directly to your connected bank account.
+                    Modaire partners with <span className="text-[#2f2925] font-medium">Stripe Express</span> for secure, automated payments. Your money moves through these stages:
                 </p>
+                <ol className="space-y-2 text-[14px] text-[#4a3d33] leading-[1.6] list-decimal pl-5 marker:text-[#8a7667]">
+                    <li>
+                        <span className="text-[#2f2925] font-medium">Held</span> — for 3 days after delivery, your payout waits in a buyer-review window so any disputes can be raised.
+                    </li>
+                    <li>
+                        <span className="text-[#2f2925] font-medium">Pending</span> — Stripe transfers your funds toward your bank (2–7 business days).
+                    </li>
+                    <li>
+                        <span className="text-[#2f2925] font-medium">Available</span> — cleared and dispatched to your connected bank account.
+                    </li>
+                    <li>
+                        <span className="text-[#2f2925] font-medium">Awaiting Stripe Connection</span> — if you haven&rsquo;t connected Stripe yet, sold-item funds wait here with no deadline to claim.
+                    </li>
+                </ol>
                 {!user?.stripe_account_id && (
                     <p className="text-[13px] text-[#8a7667] leading-[1.6]">
                         Funds from completed sales are held on Modaire until you connect Stripe — there is no deadline to claim them.
@@ -151,4 +212,36 @@ export default async function EarningsPage() {
             </div>
         </div>
     );
+}
+
+/**
+ * Grid Tailwind class based on how many balance cards are visible.
+ * 2 = base state (Available + Pending)
+ * 3 = one extra (Held OR Awaiting)
+ * 4 = both extras — falls back to 2 cols on md, 4 on lg to keep cards readable.
+ */
+function gridColumnClass(count: number): string {
+    if (count >= 4) return "md:grid-cols-2 lg:grid-cols-4";
+    if (count === 3) return "md:grid-cols-3";
+    return "md:grid-cols-2";
+}
+
+/**
+ * Human-readable release label for the Held card, computed from the
+ * earliest `hold_until` on any held order. Handles the common cases
+ * a seller would see:
+ *   - today       → "Releases today"
+ *   - tomorrow    → "Releases tomorrow"
+ *   - within week → "Releases in N days"
+ *   - farther     → "Releases on Jul 22"
+ */
+function formatReleaseLabel(holdUntil: Date, now: Date): string {
+    const msPerDay = 24 * 60 * 60 * 1000;
+    const startOfNow = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfHold = new Date(holdUntil.getFullYear(), holdUntil.getMonth(), holdUntil.getDate());
+    const days = Math.round((startOfHold.getTime() - startOfNow.getTime()) / msPerDay);
+    if (days <= 0) return "Releases today";
+    if (days === 1) return "Releases tomorrow";
+    if (days <= 7) return `Releases in ${days} days`;
+    return `Releases on ${holdUntil.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
 }
