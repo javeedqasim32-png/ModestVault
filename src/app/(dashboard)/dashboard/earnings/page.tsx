@@ -106,81 +106,78 @@ export default async function EarningsPage() {
                 </a>
             </div>
 
-            <div className={`grid grid-cols-1 gap-6 ${gridColumnClass(2 + (heldCount > 0 ? 1 : 0) + (awaitingCount > 0 ? 1 : 0))}`}>
-                {/* Available Balance */}
-                <a href={stripeDashboardUrl} target="_blank" rel="noopener noreferrer" className="block w-full text-left rounded-[24px] bg-[linear-gradient(135deg,#b89881_0%,#7f5f4e_100%)] p-6 sm:p-8 text-white shadow-[0_12px_30px_rgba(111,81,67,0.18)] relative overflow-hidden transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_14px_36px_rgba(111,81,67,0.25)]">
-                    <div className="space-y-6 relative z-10">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2.5">
-                                <TrendingUp className="w-4 h-4 text-white/80" />
-                                <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-white/80">Available Balance</span>
-                            </div>
-                            <ExternalLink className="w-4 h-4 text-white/60" />
-                        </div>
-                        <h2 className="text-[44px] md:text-[54px] leading-none text-white" style={{ fontFamily: "var(--font-serif), serif" }}>
-                            ${balance.available.toFixed(2)}
-                        </h2>
-                        <p className="text-[14px] text-white/80 leading-relaxed">
-                            Secured and ready for bank transfer. Click to view dashboard.
-                        </p>
+            <div className={`grid grid-cols-1 gap-4 ${gridColumnClass(2 + (heldCount > 0 ? 1 : 0) + (awaitingCount > 0 ? 1 : 0))}`}>
+                {/* Available Balance — cream tile styled to match /dashboard cards */}
+                <a
+                    href={stripeDashboardUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block w-full text-left rounded-[30px] border border-[#e3d9d1] bg-[#f7f2ed] px-6 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)] transition hover:bg-[#f2ebe4]"
+                >
+                    <div className="mb-2 flex items-center justify-between text-[11px] font-medium uppercase tracking-[0.16em] text-[#8f6e59]">
+                        <span className="flex items-center gap-2">
+                            <TrendingUp className="h-[15px] w-[15px] stroke-[1.7]" />
+                            Available Balance
+                        </span>
+                        <ExternalLink className="h-[13px] w-[13px] stroke-[1.7] opacity-70" />
                     </div>
+                    <p className="text-[28px] md:text-[32px] leading-none text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif" }}>
+                        ${balance.available.toFixed(2)}
+                    </p>
+                    <p className="mt-2 text-[13px] leading-[1.35] text-[#8a7667]">
+                        Ready for bank transfer. Tap for Stripe dashboard.
+                    </p>
                 </a>
 
-                {/* Pending Balance */}
-                <div className="rounded-[24px] border border-[#d9cfc7] bg-[#f7f2ed] p-6 sm:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]">
-                    <div className="space-y-6">
-                        <div className="flex items-center gap-2.5">
-                            <Clock className="w-4 h-4 text-[#8f6e59]" />
-                            <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-[#8f6e59]">Pending</span>
-                        </div>
-                        <h2 className="text-[44px] md:text-[54px] leading-none text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif" }}>
-                            ${balance.pending.toFixed(2)}
-                        </h2>
-                        <p className="text-[14px] text-[#8a7667] leading-relaxed">
-                            Funds in transit from completed sales.
-                        </p>
+                {/* Pending Balance (from Stripe — funds in transit) */}
+                <div className="rounded-[30px] border border-[#e3d9d1] bg-[#f7f2ed] px-6 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]">
+                    <div className="mb-2 flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-[#8f6e59]">
+                        <Clock className="h-[15px] w-[15px] stroke-[1.7]" />
+                        Pending
                     </div>
+                    <p className="text-[28px] md:text-[32px] leading-none text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif" }}>
+                        ${balance.pending.toFixed(2)}
+                    </p>
+                    <p className="mt-2 text-[13px] leading-[1.35] text-[#8a7667]">
+                        Funds in transit from completed sales.
+                    </p>
                 </div>
 
                 {heldCount > 0 && (
-                    <div className="rounded-[24px] border border-[#d9cfc7] bg-[#efe6dd] p-6 sm:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]">
-                        <div className="space-y-6">
-                            <div className="flex items-center gap-2.5">
-                                <ShieldCheck className="w-4 h-4 text-[#7f5f4e]" />
-                                <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-[#7f5f4e]">Held</span>
-                            </div>
-                            <h2 className="text-[44px] md:text-[54px] leading-none text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif" }}>
-                                ${heldDollars.toFixed(2)}
-                            </h2>
-                            <p className="text-[14px] text-[#4a3d33] leading-relaxed">
-                                From {heldCount} delivered {heldCount === 1 ? "item" : "items"}. {nextReleaseLabel} per Modaire&rsquo;s 3-day buyer-review policy.
-                            </p>
+                    <div className="rounded-[30px] border border-[#e3d9d1] bg-[#f7f2ed] px-6 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]">
+                        <div className="mb-2 flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-[#8f6e59]">
+                            <ShieldCheck className="h-[15px] w-[15px] stroke-[1.7]" />
+                            Hold
                         </div>
+                        <p className="text-[28px] md:text-[32px] leading-none text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif" }}>
+                            ${heldDollars.toFixed(2)}
+                        </p>
+                        <p className="mt-2 text-[13px] leading-[1.35] text-[#8a7667]">
+                            From {heldCount} delivered {heldCount === 1 ? "item" : "items"}. {nextReleaseLabel} per Modaire&rsquo;s 3-day buyer-review policy.
+                        </p>
                     </div>
                 )}
 
                 {awaitingCount > 0 && (
-                    <div className="rounded-[24px] border border-amber-200 bg-amber-50 p-6 sm:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]">
-                        <div className="space-y-6">
-                            <div className="flex items-center gap-2.5">
-                                <AlertCircle className="w-4 h-4 text-amber-700" />
-                                <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-amber-700">Awaiting Stripe Connection</span>
-                            </div>
-                            <h2 className="text-[44px] md:text-[54px] leading-none text-amber-900" style={{ fontFamily: "var(--font-serif), serif" }}>
-                                ${awaitingDollars.toFixed(2)}
-                            </h2>
-                            <p className="text-[14px] text-amber-900/80 leading-relaxed">
-                                From {awaitingCount} sold {awaitingCount === 1 ? "item" : "items"}. Connect Stripe to claim your payout.
-                            </p>
-                            <form action={handleConnectStripe}>
-                                <button
-                                    type="submit"
-                                    className="inline-flex items-center justify-center rounded-full bg-amber-900 px-6 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-700 focus:ring-offset-2"
-                                >
-                                    Connect Stripe to claim
-                                </button>
-                            </form>
+                    <div className="rounded-[30px] border border-amber-200 bg-amber-50/70 px-6 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]">
+                        <div className="mb-2 flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-amber-800">
+                            <AlertCircle className="h-[15px] w-[15px] stroke-[1.7]" />
+                            Awaiting Stripe Connection
                         </div>
+                        <p className="text-[28px] md:text-[32px] leading-none text-amber-900" style={{ fontFamily: "var(--font-serif), serif" }}>
+                            ${awaitingDollars.toFixed(2)}
+                        </p>
+                        <p className="mt-2 text-[13px] leading-[1.35] text-amber-900/80">
+                            From {awaitingCount} sold {awaitingCount === 1 ? "item" : "items"}. Connect Stripe to claim.
+                        </p>
+                        <form action={handleConnectStripe} className="mt-3">
+                            <button
+                                type="submit"
+                                className="inline-flex h-9 items-center justify-center rounded-full bg-amber-900 px-4 text-[12px] font-medium text-white shadow-sm transition-colors hover:bg-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-700 focus:ring-offset-2"
+                            >
+                                Connect Stripe
+                            </button>
+                        </form>
                     </div>
                 )}
             </div>
@@ -192,7 +189,7 @@ export default async function EarningsPage() {
                 </p>
                 <ol className="space-y-2 text-[14px] text-[#4a3d33] leading-[1.6] list-decimal pl-5 marker:text-[#8a7667]">
                     <li>
-                        <span className="text-[#2f2925] font-medium">Held</span> — for 3 days after delivery, your payout waits in a buyer-review window so any disputes can be raised.
+                        <span className="text-[#2f2925] font-medium">Hold</span> — for 3 days after delivery, your payout waits in a buyer-review window so any disputes can be raised.
                     </li>
                     <li>
                         <span className="text-[#2f2925] font-medium">Pending</span> — Stripe transfers your funds toward your bank (2–7 business days).
