@@ -81,18 +81,27 @@ export default async function EarningsPage() {
         : "";
 
     // KPI strip data — lifetime + this month + last month + count.
-    // All scoped to orders whose listing is owned by this seller.
+    // Dollar KPIs (Lifetime/This Month/Last Month) count ONLY orders that
+    // have been paid out (RELEASED) — that's what "earned" means to a
+    // seller: money in hand, not money still in the payout pipeline. The
+    // Hold/Pending/Awaiting money is already surfaced in its own tiles
+    // below, so double-counting it here would be misleading.
+    // Date filter uses seller_transfer_released_at (when the payout
+    // actually landed) rather than created_at (when the order was made)
+    // for the same reason — an order created in June but released in
+    // July should count as July's earnings.
     const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const sellerScope = { purchase: { listing: { user_id: session.user.id } } };
+    const releasedScope = { ...sellerScope, seller_transfer_status: "RELEASED" };
     const [lifetimeAgg, thisMonthAgg, lastMonthAgg, totalSalesCount, recentOrders] = await Promise.all([
-        orderDelegate.aggregate({ where: sellerScope, _sum: { seller_transfer_amount_cents: true } }),
+        orderDelegate.aggregate({ where: releasedScope, _sum: { seller_transfer_amount_cents: true } }),
         orderDelegate.aggregate({
-            where: { ...sellerScope, created_at: { gte: startOfThisMonth } },
+            where: { ...releasedScope, seller_transfer_released_at: { gte: startOfThisMonth } },
             _sum: { seller_transfer_amount_cents: true },
         }),
         orderDelegate.aggregate({
-            where: { ...sellerScope, created_at: { gte: startOfLastMonth, lt: startOfThisMonth } },
+            where: { ...releasedScope, seller_transfer_released_at: { gte: startOfLastMonth, lt: startOfThisMonth } },
             _sum: { seller_transfer_amount_cents: true },
         }),
         (prisma as unknown as { order: { count: (args: unknown) => Promise<number> } }).order.count({
