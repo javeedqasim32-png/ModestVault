@@ -13,7 +13,6 @@ type OrderAggregateDelegate = {
         _sum: { seller_transfer_amount_cents: number | null };
         _count: number;
     }>;
-    findFirst: (args: unknown) => Promise<{ hold_until: Date | null } | null>;
 };
 
 async function handleConnectStripe() {
@@ -61,24 +60,14 @@ export default async function EarningsPage() {
         hold_until: { gt: now },
         purchase: { listing: { user_id: session.user.id } },
     };
-    const [heldAggregate, nextRelease] = await Promise.all([
-        orderDelegate.aggregate({
-            where: heldWhere,
-            _sum: { seller_transfer_amount_cents: true },
-            _count: true,
-        }),
-        orderDelegate.findFirst({
-            where: heldWhere,
-            orderBy: { hold_until: "asc" },
-            select: { hold_until: true },
-        }),
-    ]);
+    const heldAggregate = await orderDelegate.aggregate({
+        where: heldWhere,
+        _sum: { seller_transfer_amount_cents: true },
+        _count: true,
+    });
     const heldCents = heldAggregate._sum.seller_transfer_amount_cents ?? 0;
     const heldCount = heldAggregate._count ?? 0;
     const heldDollars = heldCents / 100;
-    const nextReleaseLabel = heldCount > 0 && nextRelease?.hold_until
-        ? formatReleaseLabel(nextRelease.hold_until, now)
-        : "";
 
     // KPI strip data — lifetime + this month + last month + count.
     // Dollar KPIs (Lifetime/This Month/Last Month) count ONLY orders that
@@ -233,7 +222,7 @@ export default async function EarningsPage() {
                         ${(heldDollars + balance.pending).toFixed(2)}
                     </p>
                     <p className="mt-2 text-[13px] leading-[1.35] text-[#8a7667]">
-                        {buildPendingCopy(heldCount, heldDollars, balance.pending, nextReleaseLabel)}
+                        {buildPendingCopy(heldCount, heldDollars, balance.pending)}
                     </p>
                 </div>
 
@@ -355,50 +344,20 @@ function gridColumnClass(count: number): string {
 }
 
 /**
- * Build the Pending tile subcopy. The tile combines two upstream
- * sources — Modaire's 3-day buyer-review hold + Stripe's own transit
- * balance — so the copy needs to explain WHICH of those is contributing
- * to today's number. Handles four cases explicitly so the seller
- * always sees an accurate story.
+ * Simple Pending tile subcopy. Sellers care about ONE thing: when
+ * will this money be available? "2–7 business days" answers that
+ * without dragging them through hold-vs-transit mechanics.
  */
 function buildPendingCopy(
     heldCount: number,
     heldDollars: number,
     stripePendingDollars: number,
-    nextReleaseLabel: string,
 ): string {
-    const hasHold = heldCount > 0;
-    const hasStripe = stripePendingDollars > 0;
-    if (hasHold && hasStripe) {
-        return `${heldCount} delivered ${heldCount === 1 ? "item" : "items"} in the 3-day buyer-review hold, plus funds in Stripe transit. ${nextReleaseLabel}.`;
+    const totalDollars = heldDollars + stripePendingDollars;
+    if (totalDollars === 0 && heldCount === 0) {
+        return "No payouts in flight right now.";
     }
-    if (hasHold) {
-        return `From ${heldCount} delivered ${heldCount === 1 ? "item" : "items"} in Modaire's 3-day buyer-review hold. ${nextReleaseLabel}.`;
-    }
-    if (hasStripe) {
-        return "Funds in transit through Stripe to your bank (2–7 business days).";
-    }
-    return "No payouts in flight right now.";
-}
-
-/**
- * Human-readable release label for the Held card, computed from the
- * earliest `hold_until` on any held order. Handles the common cases
- * a seller would see:
- *   - today       → "Releases today"
- *   - tomorrow    → "Releases tomorrow"
- *   - within week → "Releases in N days"
- *   - farther     → "Releases on Jul 22"
- */
-function formatReleaseLabel(holdUntil: Date, now: Date): string {
-    const msPerDay = 24 * 60 * 60 * 1000;
-    const startOfNow = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const startOfHold = new Date(holdUntil.getFullYear(), holdUntil.getMonth(), holdUntil.getDate());
-    const days = Math.round((startOfHold.getTime() - startOfNow.getTime()) / msPerDay);
-    if (days <= 0) return "Releases today";
-    if (days === 1) return "Releases tomorrow";
-    if (days <= 7) return `Releases in ${days} days`;
-    return `Releases on ${holdUntil.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+    return "2–7 business days to be available.";
 }
 
 /**
