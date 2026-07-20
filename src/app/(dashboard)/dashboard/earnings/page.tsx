@@ -4,7 +4,7 @@ import { getStripeBalance, createStripeDashboardLink, onboardSellerAction } from
 import { redirect } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { Clock, ExternalLink, TrendingUp, AlertCircle, ShieldCheck, Package, Calendar, DollarSign } from "lucide-react";
+import { Clock, ExternalLink, TrendingUp, AlertCircle, Package, Calendar, DollarSign } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -197,8 +197,9 @@ export default async function EarningsPage() {
                 />
             </div>
 
-            <div className={`grid grid-cols-1 gap-4 ${gridColumnClass(2 + (heldCount > 0 ? 1 : 0) + (awaitingCount > 0 ? 1 : 0))}`}>
-                {/* Available Balance — cream tile styled to match /dashboard cards */}
+            <div className={`grid grid-cols-1 gap-4 ${gridColumnClass(2 + (awaitingCount > 0 ? 1 : 0))}`}>
+                {/* Stripe Balance — money already sitting in the seller's
+                    Stripe Connect account, ready to withdraw. */}
                 <a
                     href={stripeDashboardUrl}
                     target="_blank"
@@ -208,7 +209,7 @@ export default async function EarningsPage() {
                     <div className="mb-2 flex items-center justify-between text-[11px] font-medium uppercase tracking-[0.16em] text-[#8f6e59]">
                         <span className="flex items-center gap-2">
                             <TrendingUp className="h-[15px] w-[15px] stroke-[1.7]" />
-                            Available Balance
+                            Stripe Balance
                         </span>
                         <ExternalLink className="h-[13px] w-[13px] stroke-[1.7] opacity-70" />
                     </div>
@@ -216,38 +217,25 @@ export default async function EarningsPage() {
                         ${balance.available.toFixed(2)}
                     </p>
                     <p className="mt-2 text-[13px] leading-[1.35] text-[#8a7667]">
-                        Ready for bank transfer. Tap for Stripe dashboard.
+                        Available to withdraw. Tap to open Stripe dashboard.
                     </p>
                 </a>
 
-                {/* Pending Balance (from Stripe — funds in transit) */}
+                {/* Pending — combines Modaire's 3-day buyer-review hold with
+                    Stripe's own in-transit balance. Together these are the
+                    two "money still on its way" stages the seller can watch. */}
                 <div className="rounded-[30px] border border-[#e3d9d1] bg-[#f7f2ed] px-6 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]">
                     <div className="mb-2 flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-[#8f6e59]">
                         <Clock className="h-[15px] w-[15px] stroke-[1.7]" />
                         Pending
                     </div>
                     <p className="text-[28px] md:text-[32px] leading-none text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif" }}>
-                        ${balance.pending.toFixed(2)}
+                        ${(heldDollars + balance.pending).toFixed(2)}
                     </p>
                     <p className="mt-2 text-[13px] leading-[1.35] text-[#8a7667]">
-                        Funds in transit from completed sales.
+                        {buildPendingCopy(heldCount, heldDollars, balance.pending, nextReleaseLabel)}
                     </p>
                 </div>
-
-                {heldCount > 0 && (
-                    <div className="rounded-[30px] border border-[#e3d9d1] bg-[#f7f2ed] px-6 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]">
-                        <div className="mb-2 flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-[#8f6e59]">
-                            <ShieldCheck className="h-[15px] w-[15px] stroke-[1.7]" />
-                            Hold
-                        </div>
-                        <p className="text-[28px] md:text-[32px] leading-none text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif" }}>
-                            ${heldDollars.toFixed(2)}
-                        </p>
-                        <p className="mt-2 text-[13px] leading-[1.35] text-[#8a7667]">
-                            From {heldCount} delivered {heldCount === 1 ? "item" : "items"}. {nextReleaseLabel} per Modaire&rsquo;s 3-day buyer-review policy.
-                        </p>
-                    </div>
-                )}
 
                 {awaitingCount > 0 && (
                     <div className="rounded-[30px] border border-amber-200 bg-amber-50/70 px-6 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]">
@@ -337,13 +325,10 @@ export default async function EarningsPage() {
                 </p>
                 <ol className="space-y-2 text-[14px] text-[#4a3d33] leading-[1.6] list-decimal pl-5 marker:text-[#8a7667]">
                     <li>
-                        <span className="text-[#2f2925] font-medium">Hold</span> — for 3 days after delivery, your payout waits in a buyer-review window so any disputes can be raised.
+                        <span className="text-[#2f2925] font-medium">Pending</span> — after an item is delivered, funds sit in a 3-day buyer-review hold on Modaire, then move through Stripe&rsquo;s 2–7 business day transit. Both stages are combined in the Pending tile.
                     </li>
                     <li>
-                        <span className="text-[#2f2925] font-medium">Pending</span> — Stripe transfers your funds toward your bank (2–7 business days).
-                    </li>
-                    <li>
-                        <span className="text-[#2f2925] font-medium">Available</span> — cleared and dispatched to your connected bank account.
+                        <span className="text-[#2f2925] font-medium">Stripe Balance</span> — cleared and available in your Stripe Express account. Stripe auto-payouts these funds to your connected bank on the schedule you&rsquo;ve chosen.
                     </li>
                     <li>
                         <span className="text-[#2f2925] font-medium">Awaiting Stripe Connection</span> — if you haven&rsquo;t connected Stripe yet, sold-item funds wait here with no deadline to claim.
@@ -361,14 +346,39 @@ export default async function EarningsPage() {
 
 /**
  * Grid Tailwind class based on how many balance cards are visible.
- * 2 = base state (Available + Pending)
- * 3 = one extra (Held OR Awaiting)
- * 4 = both extras — falls back to 2 cols on md, 4 on lg to keep cards readable.
+ * 2 = base state (Stripe Balance + Pending)
+ * 3 = with Awaiting Stripe Connection card
  */
 function gridColumnClass(count: number): string {
-    if (count >= 4) return "md:grid-cols-2 lg:grid-cols-4";
     if (count === 3) return "md:grid-cols-3";
     return "md:grid-cols-2";
+}
+
+/**
+ * Build the Pending tile subcopy. The tile combines two upstream
+ * sources — Modaire's 3-day buyer-review hold + Stripe's own transit
+ * balance — so the copy needs to explain WHICH of those is contributing
+ * to today's number. Handles four cases explicitly so the seller
+ * always sees an accurate story.
+ */
+function buildPendingCopy(
+    heldCount: number,
+    heldDollars: number,
+    stripePendingDollars: number,
+    nextReleaseLabel: string,
+): string {
+    const hasHold = heldCount > 0;
+    const hasStripe = stripePendingDollars > 0;
+    if (hasHold && hasStripe) {
+        return `${heldCount} delivered ${heldCount === 1 ? "item" : "items"} in the 3-day buyer-review hold, plus funds in Stripe transit. ${nextReleaseLabel}.`;
+    }
+    if (hasHold) {
+        return `From ${heldCount} delivered ${heldCount === 1 ? "item" : "items"} in Modaire's 3-day buyer-review hold. ${nextReleaseLabel}.`;
+    }
+    if (hasStripe) {
+        return "Funds in transit through Stripe to your bank (2–7 business days).";
+    }
+    return "No payouts in flight right now.";
 }
 
 /**
