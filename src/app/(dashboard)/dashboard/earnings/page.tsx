@@ -2,7 +2,9 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { getStripeBalance, createStripeDashboardLink, onboardSellerAction } from "@/app/actions/stripe";
 import { redirect } from "next/navigation";
-import { Clock, ExternalLink, TrendingUp, AlertCircle, ShieldCheck } from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
+import { Clock, ExternalLink, TrendingUp, AlertCircle, ShieldCheck, Package, Calendar, DollarSign } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -78,6 +80,61 @@ export default async function EarningsPage() {
         ? formatReleaseLabel(nextRelease.hold_until, now)
         : "";
 
+    // KPI strip data — lifetime + this month + last month + count.
+    // All scoped to orders whose listing is owned by this seller.
+    const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const sellerScope = { purchase: { listing: { user_id: session.user.id } } };
+    const [lifetimeAgg, thisMonthAgg, lastMonthAgg, totalSalesCount, recentOrders] = await Promise.all([
+        orderDelegate.aggregate({ where: sellerScope, _sum: { seller_transfer_amount_cents: true } }),
+        orderDelegate.aggregate({
+            where: { ...sellerScope, created_at: { gte: startOfThisMonth } },
+            _sum: { seller_transfer_amount_cents: true },
+        }),
+        orderDelegate.aggregate({
+            where: { ...sellerScope, created_at: { gte: startOfLastMonth, lt: startOfThisMonth } },
+            _sum: { seller_transfer_amount_cents: true },
+        }),
+        (prisma as unknown as { order: { count: (args: unknown) => Promise<number> } }).order.count({
+            where: sellerScope,
+        }),
+        // Recent 10 orders — feeds the activity list. Include the purchase +
+        // listing so we can render item title + thumbnail + amount + status
+        // without a second query.
+        (prisma as unknown as {
+            order: {
+                findMany: (args: unknown) => Promise<Array<{
+                    id: string;
+                    created_at: Date;
+                    delivered_at: Date | null;
+                    shipping_status: string;
+                    seller_transfer_status: string;
+                    seller_transfer_amount_cents: number | null;
+                    hold_until: Date | null;
+                    purchase: {
+                        amount: unknown;
+                        listing: { id: string; title: string; image_url: string };
+                    };
+                }>>;
+            };
+        }).order.findMany({
+            where: sellerScope,
+            orderBy: { created_at: "desc" },
+            take: 10,
+            include: {
+                purchase: {
+                    select: {
+                        amount: true,
+                        listing: { select: { id: true, title: true, image_url: true } },
+                    },
+                },
+            },
+        }),
+    ]);
+    const lifetimeDollars = (lifetimeAgg._sum.seller_transfer_amount_cents ?? 0) / 100;
+    const thisMonthDollars = (thisMonthAgg._sum.seller_transfer_amount_cents ?? 0) / 100;
+    const lastMonthDollars = (lastMonthAgg._sum.seller_transfer_amount_cents ?? 0) / 100;
+
     // Pre-fetch the dashboard link so it reliably opens in a new tab. Skip for
     // sellers who haven't connected Stripe yet — there's no dashboard to link to.
     let stripeDashboardUrl = "https://dashboard.stripe.com";
@@ -104,6 +161,31 @@ export default async function EarningsPage() {
                     <ExternalLink className="w-4 h-4 mr-2" />
                     Stripe Dashboard
                 </a>
+            </div>
+
+            {/* KPI STRIP — top-of-page snapshot. Thin tiles, one line each,
+                dense enough to feel like a real financial dashboard header. */}
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                <KpiTile
+                    label="Lifetime Earned"
+                    value={`$${lifetimeDollars.toFixed(2)}`}
+                    icon={<DollarSign className="h-[13px] w-[13px] stroke-[1.8]" />}
+                />
+                <KpiTile
+                    label="This Month"
+                    value={`$${thisMonthDollars.toFixed(2)}`}
+                    icon={<TrendingUp className="h-[13px] w-[13px] stroke-[1.8]" />}
+                />
+                <KpiTile
+                    label="Last Month"
+                    value={`$${lastMonthDollars.toFixed(2)}`}
+                    icon={<Calendar className="h-[13px] w-[13px] stroke-[1.8]" />}
+                />
+                <KpiTile
+                    label="Total Sales"
+                    value={`${totalSalesCount} ${totalSalesCount === 1 ? "item" : "items"}`}
+                    icon={<Package className="h-[13px] w-[13px] stroke-[1.8]" />}
+                />
             </div>
 
             <div className={`grid grid-cols-1 gap-4 ${gridColumnClass(2 + (heldCount > 0 ? 1 : 0) + (awaitingCount > 0 ? 1 : 0))}`}>
@@ -182,6 +264,63 @@ export default async function EarningsPage() {
                 )}
             </div>
 
+            {/* RECENT ACTIVITY — the "real bank statement" section. Only
+                rendered when the seller has any orders; empty state shows
+                a friendly "no sales yet" message. */}
+            <div className="rounded-[24px] border border-[#e3d9d1] bg-white p-5 sm:p-6 shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
+                <div className="mb-5 flex items-center justify-between">
+                    <h3 className="text-[20px] text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif", fontWeight: 500 }}>
+                        Recent activity
+                    </h3>
+                    {totalSalesCount > 10 ? (
+                        <Link href="/dashboard/sales" className="text-[12px] font-medium text-[#8f6e59] hover:text-[#4a3328] transition">
+                            View all sales →
+                        </Link>
+                    ) : null}
+                </div>
+                {recentOrders.length === 0 ? (
+                    <p className="py-8 text-center text-[14px] text-[#8a7667]">
+                        No sales yet. Your first order will show up here.
+                    </p>
+                ) : (
+                    <ul className="divide-y divide-[#f2ebe4]">
+                        {recentOrders.map((order) => {
+                            const listing = order.purchase.listing;
+                            const amount = (order.seller_transfer_amount_cents ?? 0) / 100;
+                            const status = mapOrderToActivityStatus(order, now);
+                            return (
+                                <li key={order.id} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+                                    <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-[#e3d9d1] bg-[#f2ebe4]">
+                                        {listing.image_url ? (
+                                            <Image
+                                                src={listing.image_url}
+                                                alt={listing.title}
+                                                fill
+                                                className="object-cover"
+                                                sizes="48px"
+                                                unoptimized
+                                            />
+                                        ) : null}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="truncate text-[14px] font-medium text-[#2f2925]">{listing.title}</p>
+                                        <p className="mt-0.5 text-[12px] text-[#8a7667]">
+                                            {formatShortDate(order.created_at)}
+                                        </p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-[14px] font-semibold text-[#2f2925]">${amount.toFixed(2)}</p>
+                                        <span className={`mt-1 inline-block rounded-full px-2 py-[2px] text-[10px] font-semibold uppercase tracking-widest ${status.className}`}>
+                                            {status.label}
+                                        </span>
+                                    </div>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                )}
+            </div>
+
             <div className="rounded-[24px] border border-[#e3d9d1] bg-white p-5 sm:p-6 shadow-[0_4px_20px_rgba(0,0,0,0.02)] space-y-4">
                 <h3 className="text-[20px] text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif", fontWeight: 500 }}>Understanding your payouts</h3>
                 <p className="text-[15px] text-[#8a7667] leading-[1.6]">
@@ -241,4 +380,69 @@ function formatReleaseLabel(holdUntil: Date, now: Date): string {
     if (days === 1) return "Releases tomorrow";
     if (days <= 7) return `Releases in ${days} days`;
     return `Releases on ${holdUntil.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+}
+
+/**
+ * Small KPI tile for the top-of-page snapshot strip. Denser than the
+ * balance tiles below (single-line label + single-line value).
+ */
+function KpiTile({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {
+    return (
+        <div className="rounded-[22px] border border-[#e3d9d1] bg-white px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]">
+            <div className="mb-1 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-[#8f6e59]">
+                {icon}
+                {label}
+            </div>
+            <p className="text-[20px] leading-none text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif" }}>
+                {value}
+            </p>
+        </div>
+    );
+}
+
+/**
+ * Map an order's state to an activity-list status pill. Order matters:
+ * REJECTED / REFUNDED / RELEASED are terminal; hold/awaiting/in-transit
+ * are intermediate; delivered without release yet is pending.
+ */
+function mapOrderToActivityStatus(
+    order: {
+        shipping_status: string;
+        seller_transfer_status: string;
+        delivered_at: Date | null;
+        hold_until: Date | null;
+    },
+    now: Date,
+): { label: string; className: string } {
+    if (order.seller_transfer_status === "RELEASED") {
+        return { label: "Paid Out", className: "bg-emerald-100 text-emerald-800" };
+    }
+    if (order.seller_transfer_status === "AWAITING_SELLER_STRIPE") {
+        return { label: "Awaiting Setup", className: "bg-amber-100 text-amber-800" };
+    }
+    if (order.seller_transfer_status === "PENDING_HOLD" && order.delivered_at && order.hold_until && order.hold_until > now) {
+        return { label: "In Hold", className: "bg-[#efe6dd] text-[#7f5f4e]" };
+    }
+    if (order.shipping_status === "DELIVERED") {
+        return { label: "Delivered", className: "bg-blue-100 text-blue-800" };
+    }
+    if (order.shipping_status === "SHIPPED") {
+        return { label: "In Transit", className: "bg-sky-100 text-sky-800" };
+    }
+    if (order.shipping_status === "CANCELLED" || order.shipping_status === "RETURNED") {
+        return { label: order.shipping_status === "CANCELLED" ? "Cancelled" : "Returned", className: "bg-red-100 text-red-800" };
+    }
+    return { label: "Processing", className: "bg-neutral-100 text-neutral-800" };
+}
+
+/**
+ * Compact date for the activity list — "Jul 18" or "Jul 18, 2025" if the
+ * year is different from today's.
+ */
+function formatShortDate(date: Date): string {
+    const now = new Date();
+    const opts: Intl.DateTimeFormatOptions = date.getFullYear() === now.getFullYear()
+        ? { month: "short", day: "numeric" }
+        : { month: "short", day: "numeric", year: "numeric" };
+    return date.toLocaleDateString("en-US", opts);
 }
