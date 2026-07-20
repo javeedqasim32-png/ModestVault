@@ -13,6 +13,7 @@ type OrderAggregateDelegate = {
         _sum: { seller_transfer_amount_cents: number | null };
         _count: number;
     }>;
+    findFirst: (args: unknown) => Promise<{ hold_until: Date | null } | null>;
 };
 
 async function handleConnectStripe() {
@@ -60,14 +61,26 @@ export default async function EarningsPage() {
         hold_until: { gt: now },
         purchase: { listing: { user_id: session.user.id } },
     };
-    const heldAggregate = await orderDelegate.aggregate({
-        where: heldWhere,
-        _sum: { seller_transfer_amount_cents: true },
-        _count: true,
-    });
+    const [heldAggregate, nextRelease] = await Promise.all([
+        orderDelegate.aggregate({
+            where: heldWhere,
+            _sum: { seller_transfer_amount_cents: true },
+            _count: true,
+        }),
+        // Earliest hold_until across all held orders — drives the
+        // "Estimated availability: {date}" copy on the Pending tile.
+        orderDelegate.findFirst({
+            where: heldWhere,
+            orderBy: { hold_until: "asc" },
+            select: { hold_until: true },
+        }),
+    ]);
     const heldCents = heldAggregate._sum.seller_transfer_amount_cents ?? 0;
     const heldCount = heldAggregate._count ?? 0;
     const heldDollars = heldCents / 100;
+    const estimatedAvailability = heldCount > 0 && nextRelease?.hold_until
+        ? nextRelease.hold_until
+        : null;
 
     // KPI strip data — lifetime + this month + last month + count.
     // Dollar KPIs (Lifetime/This Month/Last Month) count ONLY orders that
@@ -80,17 +93,20 @@ export default async function EarningsPage() {
     // for the same reason — an order created in June but released in
     // July should count as July's earnings.
     const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    // "Last 30 days" is a ROLLING window, not calendar-based, so the
+    // number is meaningful every day of the month (calendar-based would
+    // show $0 on the 1st).
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const sellerScope = { purchase: { listing: { user_id: session.user.id } } };
     const releasedScope = { ...sellerScope, seller_transfer_status: "RELEASED" };
-    const [lifetimeAgg, thisMonthAgg, lastMonthAgg, totalSalesCount, recentOrders] = await Promise.all([
+    const [lifetimeAgg, thisMonthAgg, last30DaysAgg, totalSalesCount, recentOrders] = await Promise.all([
         orderDelegate.aggregate({ where: releasedScope, _sum: { seller_transfer_amount_cents: true } }),
         orderDelegate.aggregate({
             where: { ...releasedScope, seller_transfer_released_at: { gte: startOfThisMonth } },
             _sum: { seller_transfer_amount_cents: true },
         }),
         orderDelegate.aggregate({
-            where: { ...releasedScope, seller_transfer_released_at: { gte: startOfLastMonth, lt: startOfThisMonth } },
+            where: { ...releasedScope, seller_transfer_released_at: { gte: thirtyDaysAgo } },
             _sum: { seller_transfer_amount_cents: true },
         }),
         (prisma as unknown as { order: { count: (args: unknown) => Promise<number> } }).order.count({
@@ -131,7 +147,7 @@ export default async function EarningsPage() {
     ]);
     const lifetimeDollars = (lifetimeAgg._sum.seller_transfer_amount_cents ?? 0) / 100;
     const thisMonthDollars = (thisMonthAgg._sum.seller_transfer_amount_cents ?? 0) / 100;
-    const lastMonthDollars = (lastMonthAgg._sum.seller_transfer_amount_cents ?? 0) / 100;
+    const last30DaysDollars = (last30DaysAgg._sum.seller_transfer_amount_cents ?? 0) / 100;
 
     // Pre-fetch the dashboard link so it reliably opens in a new tab. Skip for
     // sellers who haven't connected Stripe yet — there's no dashboard to link to.
@@ -155,9 +171,15 @@ export default async function EarningsPage() {
                     <p className="mt-2 text-[15px] text-[#8a7667]">Track your marketplace success and payouts.</p>
                 </div>
 
-                <a href={stripeDashboardUrl} target="_blank" rel="noopener noreferrer" className="inline-flex h-10 items-center justify-center rounded-full border border-[#d9cfc7] bg-white px-4 py-2 text-sm font-medium text-[#4a3328] transition hover:bg-[#ede7df] shadow-sm">
+                <a
+                    href={stripeDashboardUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="View payout details"
+                    className="inline-flex h-10 items-center justify-center rounded-full border border-[#d9cfc7] bg-white px-4 py-2 text-sm font-medium text-[#4a3328] transition hover:bg-[#ede7df] shadow-sm"
+                >
                     <ExternalLink className="w-4 h-4 mr-2" />
-                    Stripe Dashboard
+                    Payout Details
                 </a>
             </div>
 
@@ -175,54 +197,57 @@ export default async function EarningsPage() {
                     icon={<TrendingUp className="h-[13px] w-[13px] stroke-[1.8]" />}
                 />
                 <KpiTile
-                    label="Last Month"
-                    value={`$${lastMonthDollars.toFixed(2)}`}
+                    label="Last 30 Days"
+                    value={`$${last30DaysDollars.toFixed(2)}`}
                     icon={<Calendar className="h-[13px] w-[13px] stroke-[1.8]" />}
                 />
                 <KpiTile
-                    label="Total Sales"
+                    label="Items Sold"
                     value={`${totalSalesCount} ${totalSalesCount === 1 ? "item" : "items"}`}
                     icon={<Package className="h-[13px] w-[13px] stroke-[1.8]" />}
                 />
             </div>
 
             <div className={`grid grid-cols-1 gap-4 ${gridColumnClass(2 + (awaitingCount > 0 ? 1 : 0))}`}>
-                {/* Stripe Balance — money already sitting in the seller's
-                    Stripe Connect account, ready to withdraw. */}
+                {/* Available Balance — money sitting in the seller's
+                    connected payout account, ready to be released to
+                    their bank. Clicking opens the hosted payout details
+                    page (Stripe Express) — the label doesn't leak that. */}
                 <a
                     href={stripeDashboardUrl}
                     target="_blank"
                     rel="noopener noreferrer"
+                    aria-label="View payout details"
                     className="block w-full text-left rounded-[30px] border border-[#e3d9d1] bg-[#f7f2ed] px-6 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)] transition hover:bg-[#f2ebe4]"
                 >
                     <div className="mb-2 flex items-center justify-between text-[11px] font-medium uppercase tracking-[0.16em] text-[#8f6e59]">
                         <span className="flex items-center gap-2">
                             <TrendingUp className="h-[15px] w-[15px] stroke-[1.7]" />
-                            Stripe Balance
+                            Available Balance
                         </span>
-                        <ExternalLink className="h-[13px] w-[13px] stroke-[1.7] opacity-70" />
+                        <ExternalLink className="h-[13px] w-[13px] stroke-[1.7] opacity-70" aria-hidden />
                     </div>
                     <p className="text-[28px] md:text-[32px] leading-none text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif" }}>
                         ${balance.available.toFixed(2)}
                     </p>
                     <p className="mt-2 text-[13px] leading-[1.35] text-[#8a7667]">
-                        Available to withdraw. Tap to open Stripe dashboard.
+                        Ready for payout
                     </p>
                 </a>
 
-                {/* Pending — combines Modaire's 3-day buyer-review hold with
-                    Stripe's own in-transit balance. Together these are the
-                    two "money still on its way" stages the seller can watch. */}
+                {/* Pending Payouts — combines the buyer-protection window
+                    (Modaire's 3-day hold post-delivery) with in-transit
+                    funds heading to the seller's payout account. */}
                 <div className="rounded-[30px] border border-[#e3d9d1] bg-[#f7f2ed] px-6 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.68)]">
                     <div className="mb-2 flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-[#8f6e59]">
                         <Clock className="h-[15px] w-[15px] stroke-[1.7]" />
-                        Pending
+                        Pending Payouts
                     </div>
                     <p className="text-[28px] md:text-[32px] leading-none text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif" }}>
                         ${(heldDollars + balance.pending).toFixed(2)}
                     </p>
                     <p className="mt-2 text-[13px] leading-[1.35] text-[#8a7667]">
-                        {buildPendingCopy(heldCount, heldDollars, balance.pending)}
+                        {buildPendingCopy(heldCount, heldDollars, balance.pending, estimatedAvailability)}
                     </p>
                 </div>
 
@@ -256,7 +281,7 @@ export default async function EarningsPage() {
             <div className="rounded-[24px] border border-[#e3d9d1] bg-white p-5 sm:p-6 shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
                 <div className="mb-5 flex items-center justify-between">
                     <h3 className="text-[20px] text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif", fontWeight: 500 }}>
-                        Recent activity
+                        Sales &amp; Payouts
                     </h3>
                     {totalSalesCount > 10 ? (
                         <Link href="/dashboard/sales" className="text-[12px] font-medium text-[#8f6e59] hover:text-[#4a3328] transition">
@@ -296,7 +321,7 @@ export default async function EarningsPage() {
                                     </div>
                                     <div className="text-right">
                                         <p className="text-[14px] font-semibold text-[#2f2925]">${amount.toFixed(2)}</p>
-                                        <span className={`mt-1 inline-block rounded-full px-2 py-[2px] text-[10px] font-semibold uppercase tracking-widest ${status.className}`}>
+                                        <span className={`mt-1 inline-block rounded-full px-2.5 py-[3px] text-[11px] font-medium tracking-[0.01em] ${status.className}`}>
                                             {status.label}
                                         </span>
                                     </div>
@@ -310,22 +335,22 @@ export default async function EarningsPage() {
             <div className="rounded-[24px] border border-[#e3d9d1] bg-white p-5 sm:p-6 shadow-[0_4px_20px_rgba(0,0,0,0.02)] space-y-4">
                 <h3 className="text-[20px] text-[#2f2925]" style={{ fontFamily: "var(--font-serif), serif", fontWeight: 500 }}>Understanding your payouts</h3>
                 <p className="text-[15px] text-[#8a7667] leading-[1.6]">
-                    Modaire partners with <span className="text-[#2f2925] font-medium">Stripe Express</span> for secure, automated payments. Your money moves through these stages:
+                    Modaire securely handles all seller payouts. Your earnings move through these stages:
                 </p>
                 <ol className="space-y-2 text-[14px] text-[#4a3d33] leading-[1.6] list-decimal pl-5 marker:text-[#8a7667]">
                     <li>
-                        <span className="text-[#2f2925] font-medium">Pending</span> — after an item is delivered, funds sit in a 3-day buyer-review hold on Modaire, then move through Stripe&rsquo;s 2–7 business day transit. Both stages are combined in the Pending tile.
+                        <span className="text-[#2f2925] font-medium">Pending Payouts</span> — after an item is delivered, funds sit in a short buyer-protection window, then move to your connected payout account.
                     </li>
                     <li>
-                        <span className="text-[#2f2925] font-medium">Stripe Balance</span> — cleared and available in your Stripe Express account. Stripe auto-payouts these funds to your connected bank on the schedule you&rsquo;ve chosen.
+                        <span className="text-[#2f2925] font-medium">Available Balance</span> — cleared and ready to be released to your bank on your chosen payout schedule.
                     </li>
                     <li>
-                        <span className="text-[#2f2925] font-medium">Awaiting Stripe Connection</span> — if you haven&rsquo;t connected Stripe yet, sold-item funds wait here with no deadline to claim.
+                        <span className="text-[#2f2925] font-medium">Awaiting Setup</span> — if you haven&rsquo;t connected a payout account yet, sold-item funds wait here with no deadline to claim.
                     </li>
                 </ol>
                 {!user?.stripe_account_id && (
                     <p className="text-[13px] text-[#8a7667] leading-[1.6]">
-                        Funds from completed sales are held on Modaire until you connect Stripe — there is no deadline to claim them.
+                        Funds from completed sales are held on Modaire until you connect your payout account — there is no deadline to claim them.
                     </p>
                 )}
             </div>
@@ -344,20 +369,29 @@ function gridColumnClass(count: number): string {
 }
 
 /**
- * Simple Pending tile subcopy. Sellers care about ONE thing: when
- * will this money be available? "2–7 business days" answers that
- * without dragging them through hold-vs-transit mechanics.
+ * Pending Payouts tile subcopy. Prefers a specific estimated date
+ * when we can compute one (from the earliest hold_until across the
+ * seller's held orders). Otherwise softens to a reassuring statement
+ * about the buyer-protection window.
  */
 function buildPendingCopy(
     heldCount: number,
     heldDollars: number,
     stripePendingDollars: number,
+    estimatedAvailability: Date | null,
 ): string {
     const totalDollars = heldDollars + stripePendingDollars;
     if (totalDollars === 0 && heldCount === 0) {
         return "No payouts in flight right now.";
     }
-    return "2–7 business days to be available.";
+    if (estimatedAvailability) {
+        const formatted = estimatedAvailability.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+        });
+        return `Estimated availability: ${formatted}`;
+    }
+    return "Available after buyer protection ends.";
 }
 
 /**
@@ -379,9 +413,10 @@ function KpiTile({ label, value, icon }: { label: string; value: string; icon: R
 }
 
 /**
- * Map an order's state to an activity-list status pill. Order matters:
- * REJECTED / REFUNDED / RELEASED are terminal; hold/awaiting/in-transit
- * are intermediate; delivered without release yet is pending.
+ * Map an order's state to an activity-list status pill. Uses
+ * customer-friendly labels ("Buyer Protection" instead of "IN HOLD",
+ * "Pending Payout" instead of "PROCESSING") that don't leak internal
+ * payment mechanics. Title case + softer weight for premium feel.
  */
 function mapOrderToActivityStatus(
     order: {
@@ -393,24 +428,27 @@ function mapOrderToActivityStatus(
     now: Date,
 ): { label: string; className: string } {
     if (order.seller_transfer_status === "RELEASED") {
-        return { label: "Paid Out", className: "bg-emerald-100 text-emerald-800" };
+        return { label: "Paid", className: "bg-emerald-50 text-emerald-800" };
     }
     if (order.seller_transfer_status === "AWAITING_SELLER_STRIPE") {
-        return { label: "Awaiting Setup", className: "bg-amber-100 text-amber-800" };
+        return { label: "Awaiting Setup", className: "bg-amber-50 text-amber-800" };
     }
     if (order.seller_transfer_status === "PENDING_HOLD" && order.delivered_at && order.hold_until && order.hold_until > now) {
-        return { label: "In Hold", className: "bg-[#efe6dd] text-[#7f5f4e]" };
+        return { label: "Buyer Protection", className: "bg-[#efe6dd] text-[#7f5f4e]" };
     }
     if (order.shipping_status === "DELIVERED") {
-        return { label: "Delivered", className: "bg-blue-100 text-blue-800" };
+        return { label: "Delivered", className: "bg-blue-50 text-blue-800" };
     }
     if (order.shipping_status === "SHIPPED") {
-        return { label: "In Transit", className: "bg-sky-100 text-sky-800" };
+        return { label: "In Transit", className: "bg-sky-50 text-sky-800" };
     }
-    if (order.shipping_status === "CANCELLED" || order.shipping_status === "RETURNED") {
-        return { label: order.shipping_status === "CANCELLED" ? "Cancelled" : "Returned", className: "bg-red-100 text-red-800" };
+    if (order.shipping_status === "CANCELLED") {
+        return { label: "Cancelled", className: "bg-red-50 text-red-800" };
     }
-    return { label: "Processing", className: "bg-neutral-100 text-neutral-800" };
+    if (order.shipping_status === "RETURNED") {
+        return { label: "Returned", className: "bg-red-50 text-red-800" };
+    }
+    return { label: "Pending Payout", className: "bg-neutral-100 text-neutral-800" };
 }
 
 /**
