@@ -96,6 +96,11 @@ export default async function SellerProfilePage({ params }: { params: Promise<{ 
     ...serializeListing(listing),
     coverImage: getPrimaryListingImage(listing, "card"),
   }));
+  // Split for the two profile sections. SOLD items stay clickable
+  // (buyers use them as social proof / to see the seller's aesthetic),
+  // just visually flagged with a badge on the tile.
+  const activeListings = listings.filter((l) => l.status === "AVAILABLE");
+  const soldListings = listings.filter((l) => l.status === "SOLD");
 
   const favoriteListingIds = new Set(await getFavoriteListingIdsForSessionUser(listings.map((listing) => listing.id)));
   const { followersCount } = await getFollowCounts(seller.id);
@@ -186,59 +191,56 @@ export default async function SellerProfilePage({ params }: { params: Promise<{ 
         </section>
 
         <section className="px-4 pb-6 pt-5">
-          <h2 className={`${cormorantHeading.className} mb-3 text-[23px] font-medium leading-[1.05] text-foreground`}>
-            Listings
-          </h2>
-          {listings.length === 0 ? (
+          <div className="mb-3 flex items-baseline justify-between">
+            <h2 className={`${cormorantHeading.className} text-[23px] font-medium leading-[1.05] text-foreground`}>
+              Available
+            </h2>
+            {activeListings.length > 0 ? (
+              <span className="text-[11px] font-normal uppercase tracking-[0.14em] text-[#8a7667]">
+                {activeListings.length} {activeListings.length === 1 ? "item" : "items"}
+              </span>
+            ) : null}
+          </div>
+          {activeListings.length === 0 ? (
             <div className="rounded-[14px] border border-[#ddd3cb] bg-[#f7f2ed] px-5 py-8 text-[13px] text-[#8a7667]">
               No live listings from this seller yet.
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-[10px] pb-4 sm:grid-cols-3 lg:grid-cols-4">
-              {listings.map((listing) => (
-                <Link
+              {activeListings.map((listing) => (
+                <ProfileListingTile
                   key={listing.id}
-                  href={`/listings/${listing.id}`}
-                  className="group relative flex min-w-0 flex-col overflow-hidden rounded-[16px] border border-[#ece3dc] bg-white transition-transform duration-150 hover:-translate-y-0.5"
-                >
-                  <div className="relative aspect-[3/4] w-full min-w-0 overflow-hidden bg-[#faf8f6]">
-                    <Image
-                      src={listing.coverImage}
-                      alt={listing.title}
-                      fill
-                      className="object-cover object-center transition-transform duration-500 group-hover:scale-105"
-                      sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-                    />
-                    <div className="absolute right-[6px] top-[6px] z-10 flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-full bg-white/90">
-                      <div className="scale-[0.65]">
-                        <FavoriteButton listingId={listing.id} initialFavorited={favoriteListingIds.has(listing.id)} />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex min-w-0 flex-col px-[10px] pb-[10px] pt-[8px]">
-                    <div className="mb-[2px] truncate text-[9px] uppercase tracking-[0.1em] text-[#8a7667]">
-                      {listing.category}
-                    </div>
-                    <h3 className="mb-[2px] line-clamp-2 text-[12px] font-normal leading-[1.3] text-[#2f2925]" title={listing.title}>
-                      {listing.title}
-                    </h3>
-                    <div className="mt-auto flex items-end justify-between gap-2">
-                      <p className="truncate text-[13px] font-semibold text-[#2f2925]">
-                        ${Number(listing.price).toLocaleString()}
-                      </p>
-                      {listing.size ? (
-                        <span className="shrink-0 text-[12px] font-normal uppercase tracking-[0.04em] text-[#8a7667]">
-                          {toSizeCode(listing.size)}
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-                </Link>
+                  listing={listing}
+                  isSold={false}
+                  isFavorited={favoriteListingIds.has(listing.id)}
+                />
               ))}
             </div>
           )}
         </section>
+
+        {soldListings.length > 0 ? (
+          <section className="px-4 pb-6 pt-2">
+            <div className="mb-3 flex items-baseline justify-between">
+              <h2 className={`${cormorantHeading.className} text-[23px] font-medium leading-[1.05] text-foreground`}>
+                Sold
+              </h2>
+              <span className="text-[11px] font-normal uppercase tracking-[0.14em] text-[#8a7667]">
+                {soldListings.length} {soldListings.length === 1 ? "item" : "items"}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-[10px] pb-4 sm:grid-cols-3 lg:grid-cols-4">
+              {soldListings.map((listing) => (
+                <ProfileListingTile
+                  key={listing.id}
+                  listing={listing}
+                  isSold={true}
+                  isFavorited={favoriteListingIds.has(listing.id)}
+                />
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <div id="reviews">
           <SellerReviewsSection
@@ -251,4 +253,77 @@ export default async function SellerProfilePage({ params }: { params: Promise<{ 
       </div>
     </div>
   );
+}
+
+/**
+ * Listing tile used in both the Available and Sold sections. When
+ * `isSold`, the photo is desaturated + a SOLD badge overlays the tile
+ * so a buyer can't mistake it for still-purchasable. The tile stays
+ * clickable — buyers use sold pieces as social proof of the seller's
+ * aesthetic + past inventory.
+ */
+type ProfileListingTileProps = {
+    listing: {
+        id: string;
+        title: string;
+        category: string;
+        price: number;
+        size: string | null;
+        coverImage: string;
+    };
+    isSold: boolean;
+    isFavorited: boolean;
+};
+
+function ProfileListingTile({ listing, isSold, isFavorited }: ProfileListingTileProps) {
+    return (
+        <Link
+            href={`/listings/${listing.id}`}
+            className="group relative flex min-w-0 flex-col overflow-hidden rounded-[16px] border border-[#ece3dc] bg-white transition-transform duration-150 hover:-translate-y-0.5"
+        >
+            <div className="relative aspect-[3/4] w-full min-w-0 overflow-hidden bg-[#faf8f6]">
+                <Image
+                    src={listing.coverImage}
+                    alt={listing.title}
+                    fill
+                    className={`object-cover object-center transition-transform duration-500 group-hover:scale-105 ${isSold ? "grayscale-[0.25] opacity-80" : ""}`}
+                    sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                />
+                {isSold ? (
+                    <>
+                        <div className="absolute inset-0 bg-black/10" />
+                        <span className="absolute left-[6px] top-[6px] z-10 rounded-full bg-[#2f2925] px-2 py-[3px] text-[9px] font-bold uppercase tracking-[0.14em] text-white shadow-sm">
+                            Sold
+                        </span>
+                    </>
+                ) : null}
+                {!isSold ? (
+                    <div className="absolute right-[6px] top-[6px] z-10 flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-full bg-white/90">
+                        <div className="scale-[0.65]">
+                            <FavoriteButton listingId={listing.id} initialFavorited={isFavorited} />
+                        </div>
+                    </div>
+                ) : null}
+            </div>
+
+            <div className="flex min-w-0 flex-col px-[10px] pb-[10px] pt-[8px]">
+                <div className="mb-[2px] truncate text-[9px] uppercase tracking-[0.1em] text-[#8a7667]">
+                    {listing.category}
+                </div>
+                <h3 className="mb-[2px] line-clamp-2 text-[12px] font-normal leading-[1.3] text-[#2f2925]" title={listing.title}>
+                    {listing.title}
+                </h3>
+                <div className="mt-auto flex items-end justify-between gap-2">
+                    <p className={`truncate text-[13px] font-semibold ${isSold ? "text-[#8a7667] line-through" : "text-[#2f2925]"}`}>
+                        ${Number(listing.price).toLocaleString()}
+                    </p>
+                    {listing.size ? (
+                        <span className="shrink-0 text-[12px] font-normal uppercase tracking-[0.04em] text-[#8a7667]">
+                            {toSizeCode(listing.size)}
+                        </span>
+                    ) : null}
+                </div>
+            </div>
+        </Link>
+    );
 }
