@@ -19,32 +19,7 @@ export type ListingBrowseFilters = {
      * agree.
      */
     sale?: boolean;
-    /**
-     * When true, restrict to "Designer Finds": listings with a `brand`
-     * value that isn't null / empty and isn't one of the known non-brand
-     * junk values sellers sometimes type (Custom Made, None, No Brand,
-     * etc.). Not a curated allowlist — just filters out obviously
-     * non-branded entries.
-     */
-    designer?: boolean;
 };
-
-/**
- * Brand values sellers have typed into the "brand" field that aren't
- * actual brand names. Compared case-insensitively so "custom made",
- * "Custom Made", and "CUSTOM MADE" all excluded. Extend as needed —
- * keep entries lowercased.
- */
-export const NON_DESIGNER_BRAND_VALUES = [
-    "custom made",
-    "formal with handwork",
-    "none",
-    "cross stitch",
-    "ethnc",
-    "party wear",
-    "modest and nice",
-    "no brand",
-];
 
 export type ListingFilterOptionSets = {
     styles: string[];
@@ -109,9 +84,6 @@ export function parseBrowseFilters(searchParams: Record<string, string | string[
     // Accept "1" or "true" (case-insensitive) to keep URLs readable.
     const sale = saleRaw ? ["1", "true"].includes(saleRaw.toLowerCase()) : false;
 
-    const designerRaw = Array.isArray(searchParams.designer) ? searchParams.designer[0] : searchParams.designer;
-    const designer = designerRaw ? ["1", "true"].includes(designerRaw.toLowerCase()) : false;
-
     return {
         search,
         styles,
@@ -123,7 +95,6 @@ export function parseBrowseFilters(searchParams: Record<string, string | string[
         minPrice,
         maxPrice,
         sale,
-        designer,
     };
 }
 
@@ -179,22 +150,6 @@ export function buildListingBrowseWhere(filters: ListingBrowseFilters): Prisma.L
                         },
                     },
                 },
-            }
-            : {}),
-        // Designer Finds — brand must exist AND not be one of the known
-        // junk values ("None", "Custom Made", "No Brand", etc). Matched
-        // case-insensitively so "custom made" and "CUSTOM MADE" both
-        // excluded. The NON_DESIGNER_BRAND_VALUES list can be extended
-        // without a schema change.
-        ...(filters.designer
-            ? {
-                AND: [
-                    { brand: { not: null } },
-                    { brand: { not: "" } },
-                    ...NON_DESIGNER_BRAND_VALUES.map((junk) => ({
-                        NOT: { brand: { equals: junk, mode: "insensitive" as const } },
-                    })),
-                ],
             }
             : {}),
     };
@@ -271,8 +226,7 @@ export function hasActiveBrowseFilters(filters: ListingBrowseFilters) {
         filters.conditions.length ||
         typeof filters.minPrice === "number" ||
         typeof filters.maxPrice === "number" ||
-        filters.sale ||
-        filters.designer
+        filters.sale
     );
 }
 
@@ -288,7 +242,6 @@ export function toBrowseQueryString(filters: ListingBrowseFilters) {
     if (typeof filters.minPrice === "number") params.set("minPrice", String(filters.minPrice));
     if (typeof filters.maxPrice === "number") params.set("maxPrice", String(filters.maxPrice));
     if (filters.sale) params.set("sale", "1");
-    if (filters.designer) params.set("designer", "1");
     return params.toString();
 }
 

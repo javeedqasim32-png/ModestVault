@@ -1,22 +1,23 @@
 import Link from "next/link";
-import { Sparkles, Tag, Gem, Heart, type LucideIcon } from "lucide-react";
+import { Sparkles, Tag, Handbag, Heart, type LucideIcon } from "lucide-react";
 
 /**
  * Horizontal quick-action row rendered on the homepage between the
  * "Trending Now" and "Featured" sections. Four one-tap shortcuts to the
  * browsing behaviors we know users want:
  *
- *   1. New In         — /browse?sort=newest
- *   2. Sale           — /browse?sale=1        (only listings with an
- *                       active accepted promotion; the sale filter
- *                       mirrors the four gates in getEffectivePriceForListing)
- *   3. Designer Finds — /browse?designer=1    (brand is set AND isn't
- *                       one of the known non-brand junk values — see
- *                       NON_DESIGNER_BRAND_VALUES in listingFilters.ts)
- *   4. Saved Items    — /favorites            (auth-gated at the
- *                       destination; the favorites page redirects to
- *                       /login with a callbackUrl if the visitor isn't
- *                       signed in — no special handling needed here)
+ *   1. New In       — /browse?sort=newest
+ *   2. Sale         — /browse?sale=1              (only listings with an
+ *                     active accepted promotion; the sale filter
+ *                     mirrors the four gates in getEffectivePriceForListing)
+ *   3. Clutches     — /browse?subcategories=Bags  (aesthetic label —
+ *                     filter targets the "Bags" subcategory under
+ *                     Accessories in the taxonomy, which covers all bag
+ *                     types the marketplace stocks)
+ *   4. Saved Items  — /favorites                  (auth-gated at the
+ *                     destination; the favorites page redirects to
+ *                     /login with a callbackUrl if the visitor isn't
+ *                     signed in — no special handling needed here)
  *
  * Pure Link elements, no client-side state — server component. Middle-
  * click / right-click open-in-new-tab behavior comes free.
@@ -31,7 +32,7 @@ type Pill = {
 const PILLS: Pill[] = [
     { icon: Sparkles, label: "New In", href: "/browse?sort=newest" },
     { icon: Tag, label: "Sale", href: "/browse?sale=1" },
-    { icon: Gem, label: "Designer Finds", href: "/browse?designer=1" },
+    { icon: Handbag, label: "Clutches", href: "/browse?subcategories=Bags" },
     { icon: Heart, label: "Saved Items", href: "/favorites" },
 ];
 
