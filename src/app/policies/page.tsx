@@ -3,6 +3,8 @@
 import type { ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 import { useEffect, useLayoutEffect, useState } from "react";
+import TermsBody from "@/components/policies/TermsBody";
+import PrivacyBody from "@/components/policies/PrivacyBody";
 
 // Sections default to OPEN. TCR/Twilio A2P 10DLC reviewers land on this
 // page and need to see policy content immediately — a collapsed accordion
@@ -26,174 +28,12 @@ const policyItems: readonly PolicyItem[] = [
   {
     id: "terms",
     label: "Terms & Conditions",
-    body: (
-      <div className="space-y-4">
-        <p>
-          By using Modaire (shopmodaire.com), a peer-to-peer marketplace
-          for modest fashion, you agree to these Terms. If you do not
-          agree, do not use the service.
-        </p>
-
-        <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-[#6f5647]">
-          SMS Communications
-        </p>
-        <p>
-          SMS/text messages are optional. Message and data rates may
-          apply. Reply <strong>STOP</strong> to opt out, <strong>HELP</strong>{" "}
-          for help. You must be 18 or older to opt in.
-        </p>
-        <p>
-          When you opt in to SMS on Modaire&rsquo;s signup page, your
-          consent is given directly to Modaire and is not shared with any
-          third-party aggregator, affiliate, or marketing partner. Modaire
-          does not sell, rent, or share your mobile phone number or mobile
-          opt-in data with third parties or affiliates for marketing or
-          promotional purposes.
-        </p>
-        <p>
-          For the full SMS policy &mdash; message types, sample messages,
-          message frequency, supported carriers, and how we handle your
-          data &mdash; see our{" "}
-          <a href="/sms-policy" className="underline hover:text-[#5a4426]">
-            SMS Policy
-          </a>
-          .
-        </p>
-
-        <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-[#6f5647]">
-          Eligibility &amp; Account
-        </p>
-        <p>
-          You must be at least 18 and legally able to enter into a binding
-          contract. You must provide accurate registration information
-          (name, email, address, and phone number for verification) and
-          keep your login credentials secure. Modaire currently supports
-          shipping within the United States.
-        </p>
-
-        <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-[#6f5647]">
-          Marketplace Role
-        </p>
-        <p>
-          Modaire connects independent buyers and sellers. We do not take
-          title to items listed for sale. Sellers are responsible for the
-          accuracy, authenticity, and timely shipment of their items;
-          buyers are responsible for reading listings and paying for what
-          they purchase.
-        </p>
-
-        <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-[#6f5647]">
-          User Conduct
-        </p>
-        <p>
-          You agree not to list counterfeit, stolen, or misrepresented
-          items; circumvent our payment system; harass, threaten, or
-          defraud other users; impersonate anyone; or attempt to access
-          accounts or systems you are not authorized to use. Violations
-          may result in listing removal, suspension, or permanent
-          termination.
-        </p>
-
-        <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-[#6f5647]">
-          Payments
-        </p>
-        <p>
-          All payments are processed by Stripe. Modaire charges a 15%
-          commission on completed sales. Seller payouts are held briefly
-          after delivery confirmation to allow disputes to be raised.
-        </p>
-
-        <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-[#6f5647]">
-          Disclaimers &amp; Liability
-        </p>
-        <p>
-          Modaire is provided &ldquo;as is&rdquo; without warranties of any kind. We
-          are not responsible for the acts or omissions of buyers or
-          sellers. To the extent permitted by law, Modaire&apos;s aggregate
-          liability for any claim will not exceed the greater of the fees
-          collected from you in the 90 days before the claim or $100, and
-          we are not liable for indirect or consequential damages.
-        </p>
-
-        <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-[#6f5647]">
-          Contact
-        </p>
-        <p>
-          Questions about these Terms:{" "}
-          <a
-            href={`mailto:${SUPPORT_EMAIL}`}
-            className="underline hover:text-[#5a4426]"
-          >
-            {SUPPORT_EMAIL}
-          </a>
-          .
-        </p>
-      </div>
-    ),
+    body: <TermsBody />,
   },
   {
     id: "privacy",
     label: "Privacy Policy",
-    body: (
-      <div className="space-y-4">
-        <p>
-          We collect your name, email and usage data to operate the marketplace.
-          We never sell your data. Payment information is handled by Stripe and
-          never stored on our servers. You may request account deletion at any
-          time.
-        </p>
-        <div className="pt-2 border-t border-[#d9cfc7]/60">
-          <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-[#6f5647] mb-3">
-            SMS / Text Messaging
-          </p>
-          <div className="space-y-3">
-            <p>
-              When you opt in to SMS on Modaire&rsquo;s signup page, your
-              consent is given directly to Modaire and is not shared with any
-              third-party aggregator, affiliate, or marketing partner.
-            </p>
-            <p>
-              Modaire may collect your mobile phone number when you create an
-              account, update your profile, or choose to receive text message
-              alerts.
-            </p>
-            <p>
-              If you opt in, Modaire may send you SMS/text messages related to
-              your account activity, including alerts about unread
-              buyer/seller messages, marketplace communication, account
-              updates, and other service-related notifications.
-            </p>
-            <p>
-              Message frequency may vary. Message and data rates may apply.
-              You can opt out of SMS messages at any time by replying{" "}
-              <strong>STOP</strong> to any message. You may also contact us at{" "}
-              <a
-                href={`mailto:${SUPPORT_EMAIL}`}
-                className="underline hover:text-[#5a4426]"
-              >
-                {SUPPORT_EMAIL}
-              </a>{" "}
-              for help.
-            </p>
-            <p>
-              Modaire does not sell, rent, or share your mobile phone number
-              with third parties or affiliates for marketing or promotional
-              purposes.
-            </p>
-            <p>
-              Text messaging originator opt-in data and consent will not be
-              shared with any third parties, except as needed to provide SMS
-              messaging services, comply with law, or protect the rights,
-              safety, and security of Modaire, our users, or others.
-            </p>
-            <p>
-              Your decision to opt in to SMS messages is optional and is not
-              required to use Modaire or make a purchase.
-            </p>
-          </div>
-        </div>
-      </div>
-    ),
+    body: <PrivacyBody />,
   },
   {
     id: "seller",

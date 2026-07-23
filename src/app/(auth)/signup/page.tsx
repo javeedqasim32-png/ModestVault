@@ -198,11 +198,11 @@ export default function SignupPage() {
                                     We don&rsquo;t share your opt-in data with third parties for marketing.
                                 </p>
                                 <p className="mt-1 pl-7 text-[11px] leading-[1.5] text-muted-foreground/80">
-                                    <Link href="/policies#terms" className="underline underline-offset-2 hover:text-foreground">
+                                    <Link href="/terms" className="underline underline-offset-2 hover:text-foreground">
                                         Terms &amp; Conditions
                                     </Link>
                                     {" · "}
-                                    <Link href="/policies#privacy" className="underline underline-offset-2 hover:text-foreground">
+                                    <Link href="/privacy" className="underline underline-offset-2 hover:text-foreground">
                                         Privacy Policy
                                     </Link>
                                     {" · "}
