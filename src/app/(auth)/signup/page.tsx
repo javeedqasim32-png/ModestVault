@@ -168,10 +168,15 @@ export default function SignupPage() {
                             </div>
 
                             {/*
-                                Explicit SMS opt-in for TCPA compliance. Unchecked
-                                by default; the copy fully discloses frequency and
-                                the STOP unsubscribe path. Signup action reads
-                                formData.get("sms_opt_in") === "on".
+                                Explicit SMS opt-in for TCPA + A2P 10DLC
+                                compliance. Unchecked by default. Compact
+                                three-line disclosure below the checkbox:
+                                (1) frequency + rates + STOP/HELP keywords,
+                                (2) brief non-sharing statement,
+                                (3) inline row of the three policy links.
+                                Full non-sharing paragraphs live on the linked
+                                Privacy Policy + SMS Policy pages. Signup
+                                action reads formData.get("sms_opt_in") === "on".
                             */}
                             <div className="pt-2">
                                 <label className="flex items-start gap-3 cursor-pointer">
@@ -181,17 +186,29 @@ export default function SignupPage() {
                                         className="mt-1 h-4 w-4 shrink-0 accent-foreground"
                                     />
                                     <span className="text-[13px] leading-[1.55] text-muted-foreground">
-                                        I agree to receive SMS notification for
-                                        buyer/seller messages and shipping
-                                        update on Modaire.
+                                        Receive SMS updates for buyer/seller messages and shipping.
                                     </span>
                                 </label>
-                                {/* TCPA disclosure — indented to align with
-                                    the checkbox label above (checkbox is
-                                    h-4 w-4 = 16px + gap-3 = 12px = 28px total,
-                                    matching pl-7 = 28px). */}
+                                {/* Sub-copy indented to align with the label
+                                    above (pl-7 = 28px = h-4 w-4 + gap-3). */}
+                                <p className="mt-1.5 pl-7 text-[12px] leading-[1.5] text-muted-foreground">
+                                    Message frequency varies. Msg &amp; data rates may apply. Reply STOP to opt out, HELP for help.
+                                </p>
                                 <p className="mt-1 pl-7 text-[11px] leading-[1.5] text-muted-foreground/80">
-                                    Msg &amp; data rates may apply. Reply STOP to opt out.
+                                    We don&rsquo;t share your opt-in data with third parties for marketing.
+                                </p>
+                                <p className="mt-1 pl-7 text-[11px] leading-[1.5] text-muted-foreground/80">
+                                    <Link href="/policies#terms" className="underline underline-offset-2 hover:text-foreground">
+                                        Terms &amp; Conditions
+                                    </Link>
+                                    {" · "}
+                                    <Link href="/policies#privacy" className="underline underline-offset-2 hover:text-foreground">
+                                        Privacy Policy
+                                    </Link>
+                                    {" · "}
+                                    <Link href="/sms-policy" className="underline underline-offset-2 hover:text-foreground">
+                                        SMS Policy
+                                    </Link>
                                 </p>
                             </div>
 

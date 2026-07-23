@@ -25,13 +25,39 @@ type PolicyItem = {
 const policyItems: readonly PolicyItem[] = [
   {
     id: "terms",
-    label: "Terms of Service",
+    label: "Terms & Conditions",
     body: (
       <div className="space-y-4">
         <p>
           By using Modaire (shopmodaire.com), a peer-to-peer marketplace
           for modest fashion, you agree to these Terms. If you do not
           agree, do not use the service.
+        </p>
+
+        <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-[#6f5647]">
+          SMS Communications
+        </p>
+        <p>
+          SMS/text messages are optional. Message and data rates may
+          apply. Reply <strong>STOP</strong> to opt out, <strong>HELP</strong>{" "}
+          for help. You must be 18 or older to opt in.
+        </p>
+        <p>
+          When you opt in to SMS on Modaire&rsquo;s signup page, your
+          consent is given directly to Modaire and is not shared with any
+          third-party aggregator, affiliate, or marketing partner. Modaire
+          does not sell, rent, or share your mobile phone number or mobile
+          opt-in data with third parties or affiliates for marketing or
+          promotional purposes.
+        </p>
+        <p>
+          For the full SMS policy &mdash; message types, sample messages,
+          message frequency, supported carriers, and how we handle your
+          data &mdash; see our{" "}
+          <a href="/sms-policy" className="underline hover:text-[#5a4426]">
+            SMS Policy
+          </a>
+          .
         </p>
 
         <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-[#6f5647]">
@@ -78,20 +104,6 @@ const policyItems: readonly PolicyItem[] = [
         </p>
 
         <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-[#6f5647]">
-          SMS Communications
-        </p>
-        <p>
-          SMS/text messages are optional and separately governed by our{" "}
-          <a href="/sms-policy" className="underline hover:text-[#5a4426]">
-            SMS Policy
-          </a>
-          . That page covers what messages we send, how often, how to
-          opt out (reply STOP), how to get help (reply HELP), and how
-          your phone number is protected. Message and data rates may
-          apply. You must be 18 or older to opt in.
-        </p>
-
-        <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-[#6f5647]">
           Disclaimers &amp; Liability
         </p>
         <p>
@@ -135,6 +147,11 @@ const policyItems: readonly PolicyItem[] = [
             SMS / Text Messaging
           </p>
           <div className="space-y-3">
+            <p>
+              When you opt in to SMS on Modaire&rsquo;s signup page, your
+              consent is given directly to Modaire and is not shared with any
+              third-party aggregator, affiliate, or marketing partner.
+            </p>
             <p>
               Modaire may collect your mobile phone number when you create an
               account, update your profile, or choose to receive text message
@@ -294,10 +311,28 @@ export default function PoliciesPage() {
     }
   };
 
-  useLayoutEffect(() => {
-    // Reset before paint and once again on next frame for stable routing.
+  // If the URL has a fragment (#terms-sms, #privacy-sms, etc.), scroll
+  // to that element instead of resetting to the top. This is critical
+  // for the /signup opt-in flow — TCR reviewers deep-link into specific
+  // subsections and expect to land there directly. Without this branch,
+  // resetScrollToTop() would clobber the browser's native anchor scroll.
+  const scrollToHashOrTop = () => {
+    const hash = window.location.hash;
+    if (hash && hash.length > 1) {
+      const el = document.getElementById(hash.slice(1));
+      if (el) {
+        el.scrollIntoView({ behavior: "auto", block: "start" });
+        return;
+      }
+    }
     resetScrollToTop();
-    const raf = window.requestAnimationFrame(() => resetScrollToTop());
+  };
+
+  useLayoutEffect(() => {
+    // Run before paint AND on next frame for stable routing — some browsers
+    // fire scroll restoration between these two, so we bracket it.
+    scrollToHashOrTop();
+    const raf = window.requestAnimationFrame(() => scrollToHashOrTop());
     return () => window.cancelAnimationFrame(raf);
   }, []);
 
@@ -305,7 +340,7 @@ export default function PoliciesPage() {
     // Re-open sections when browser restores this page from cache.
     const onPageShow = () => {
       setOpenItems(DEFAULT_OPEN_STATE);
-      resetScrollToTop();
+      scrollToHashOrTop();
     };
     window.addEventListener("pageshow", onPageShow);
     return () => window.removeEventListener("pageshow", onPageShow);
@@ -318,18 +353,11 @@ export default function PoliciesPage() {
   return (
     <div className="min-h-screen bg-[#f4efea]" style={{ fontFamily: "var(--font-sans), sans-serif" }}>
       <div className="mx-auto w-full max-w-[860px] border-y border-[#ddd3cb] bg-[#f4efea] px-6 py-6 sm:px-8">
-        <h1
-          id="policies-top"
-          className="mb-6 text-[24px] leading-none text-[#2f2925] sm:text-[28px]"
-          style={{ fontFamily: "var(--font-serif), serif", fontWeight: 400 }}
-        >
-          Policies & Terms
-        </h1>
         <div className="space-y-4">
           {policyItems.map((item) => {
             const isOpen = !!openItems[item.id];
             return (
-              <section key={item.id} className="overflow-hidden rounded-[22px] border border-[#d9cfc7] bg-[#f4efea]">
+              <section key={item.id} id={item.id} className="scroll-mt-6 overflow-hidden rounded-[22px] border border-[#d9cfc7] bg-[#f4efea]">
                 <button
                   type="button"
                   onClick={() => toggleItem(item.id)}
