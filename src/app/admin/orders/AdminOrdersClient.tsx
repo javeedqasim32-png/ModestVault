@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { updateOrderShipping, refundOrder } from "@/app/actions/admin";
+import { updateOrderShipping, refundOrder, refundOrderLabelOnly } from "@/app/actions/admin";
 import Image from "next/image";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -27,11 +27,21 @@ type AdminOrder = {
     seller_email: string;
     listing_title: string;
     listing_image: string;
+    shippo_transaction_id: string | null;
+    shippo_label_refund_id: string | null;
+    shippo_label_refund_status: string | null;
 };
 
 type RefundModalState = {
     order: AdminOrder;
     reason: ModaireRefundReason;
+    note: string;
+    error: string | null;
+    submitting: boolean;
+};
+
+type LabelRefundModalState = {
+    order: AdminOrder;
     note: string;
     error: string | null;
     submitting: boolean;
@@ -59,6 +69,45 @@ export default function AdminOrdersClient({ initialOrders }: { initialOrders: Ad
     });
     const [processing, setProcessing] = useState(false);
     const [refundModal, setRefundModal] = useState<RefundModalState | null>(null);
+    const [labelRefundModal, setLabelRefundModal] = useState<LabelRefundModalState | null>(null);
+
+    function openLabelRefundModal(order: AdminOrder) {
+        setLabelRefundModal({ order, note: "", error: null, submitting: false });
+    }
+
+    async function submitLabelRefundModal() {
+        if (!labelRefundModal) return;
+        setLabelRefundModal({ ...labelRefundModal, submitting: true, error: null });
+        try {
+            const res = await refundOrderLabelOnly(labelRefundModal.order.id, {
+                note: labelRefundModal.note || undefined,
+            });
+            if ("error" in res) {
+                setLabelRefundModal({ ...labelRefundModal, submitting: false, error: res.error ?? "Unknown error." });
+                return;
+            }
+            // Reflect the queued refund state in the local row so the button
+            // vanishes and the badge appears without a page refresh.
+            setOrders(prev => prev.map(o => o.id === labelRefundModal.order.id
+                ? { ...o, shippo_label_refund_id: res.refundId, shippo_label_refund_status: res.status }
+                : o
+            ));
+            setLabelRefundModal(null);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : "Unknown error.";
+            setLabelRefundModal({ ...labelRefundModal, submitting: false, error: message });
+        }
+    }
+
+    // Eligibility for the "Refund label only" action mirrors the server-side
+    // guards in refundOrderLabelOnly (src/app/actions/admin.ts). Kept in sync
+    // manually — if either changes the other should too.
+    function isLabelRefundEligible(order: AdminOrder): boolean {
+        if (!order.shippo_transaction_id) return false;
+        if (order.shippo_label_refund_id) return false;
+        if (["SHIPPED", "DELIVERED", "RETURNED"].includes(order.shipping_status)) return false;
+        return true;
+    }
 
     function openRefundModal(order: AdminOrder) {
         setRefundModal({
@@ -243,6 +292,28 @@ export default function AdminOrdersClient({ initialOrders }: { initialOrders: Ad
                                                         Refund Order
                                                     </Button>
                                                 ) : null}
+                                                {isLabelRefundEligible(order) ? (
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        onClick={() => openLabelRefundModal(order)}
+                                                    >
+                                                        Refund label only
+                                                    </Button>
+                                                ) : order.shippo_label_refund_status ? (
+                                                    <span
+                                                        className={`inline-flex items-center rounded-full px-2 py-[3px] text-[10px] font-semibold uppercase tracking-[0.1em] ${
+                                                            order.shippo_label_refund_status === "SUCCESS"
+                                                                ? "bg-emerald-50 text-emerald-800"
+                                                                : order.shippo_label_refund_status === "DECLINED" || order.shippo_label_refund_status === "ERROR"
+                                                                    ? "bg-red-50 text-red-800"
+                                                                    : "bg-amber-50 text-amber-800"
+                                                        }`}
+                                                        title="Label refund status (updated by Shippo webhook)"
+                                                    >
+                                                        Label: {order.shippo_label_refund_status}
+                                                    </span>
+                                                ) : null}
                                             </div>
                                         )}
                                     </td>
@@ -337,6 +408,52 @@ export default function AdminOrdersClient({ initialOrders }: { initialOrders: Ad
                                 }
                             >
                                 {refundModal.submitting ? "Processing…" : "Issue Refund"}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
+
+            {labelRefundModal ? (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+                    <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-xl">
+                        <h2 className="text-lg font-bold text-foreground">Refund shipping label</h2>
+                        <p className="mt-2 text-sm text-muted-foreground">
+                            Refund the shipping label for &ldquo;{labelRefundModal.order.listing_title}&rdquo;?
+                            The buyer&rsquo;s payment and the seller&rsquo;s earnings are unaffected — this only
+                            refunds the label cost from Shippo back to Modaire&rsquo;s balance.
+                        </p>
+                        <label className="mt-4 block text-sm font-medium text-foreground">
+                            Note <span className="text-muted-foreground">(optional — internal audit)</span>
+                            <textarea
+                                value={labelRefundModal.note}
+                                onChange={(e) => setLabelRefundModal({ ...labelRefundModal, note: e.target.value, error: null })}
+                                disabled={labelRefundModal.submitting}
+                                rows={3}
+                                placeholder="e.g., Seller printed a duplicate label; original went unused."
+                                className="mt-1 block w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                            />
+                        </label>
+                        {labelRefundModal.error ? (
+                            <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                                {labelRefundModal.error}
+                            </div>
+                        ) : null}
+                        <div className="mt-5 flex items-center justify-end gap-2">
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setLabelRefundModal(null)}
+                                disabled={labelRefundModal.submitting}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                size="sm"
+                                onClick={submitLabelRefundModal}
+                                disabled={labelRefundModal.submitting}
+                            >
+                                {labelRefundModal.submitting ? "Refunding…" : "Refund label"}
                             </Button>
                         </div>
                     </div>

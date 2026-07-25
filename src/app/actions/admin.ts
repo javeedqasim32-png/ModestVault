@@ -676,3 +676,79 @@ export async function refundOrder(
         initiatorId: admin.id,
     });
 }
+
+/**
+ * Admin-only "refund JUST the shipping label" action. Does NOT touch Stripe,
+ * seller transfer, or order status — only requests a Shippo label refund and
+ * stamps the tracking columns. Use for cases where a label was purchased but
+ * never used (seller shipped via different carrier, printed a duplicate, etc.)
+ * and the buyer/seller money should stay put.
+ *
+ * Full-order refunds still cascade a label refund via processRefund() at
+ * line 461 — this is an orthogonal path, not a replacement.
+ *
+ * Eligibility guards mirror what Shippo itself will accept:
+ *   - Order must have a shippo_transaction_id (a label was purchased)
+ *   - No existing shippo_label_refund_id (idempotency — one refund per label)
+ *   - Order not already SHIPPED/DELIVERED/RETURNED (Shippo declines refunds
+ *     once the carrier has scanned the label)
+ */
+export async function refundOrderLabelOnly(orderId: string, opts?: { note?: string }) {
+    await requireAdmin();
+
+    const order = await prisma.order.findUnique({
+        where: { id: orderId },
+        select: {
+            id: true,
+            shippo_transaction_id: true,
+            shippo_label_refund_id: true,
+            shipping_status: true,
+        },
+    });
+
+    if (!order) return { error: "Order not found." } as const;
+    if (!order.shippo_transaction_id) return { error: "No label to refund on this order." } as const;
+    if (order.shippo_label_refund_id) return { error: "Label already has a refund in flight or completed." } as const;
+    if (["SHIPPED", "DELIVERED", "RETURNED"].includes(order.shipping_status)) {
+        return { error: "Cannot refund a label that has already been scanned by the carrier." } as const;
+    }
+
+    try {
+        const refund = await refundShippoLabel(order.shippo_transaction_id);
+        // Shippo SDK returns { objectId, status } — status is usually "QUEUED"
+        // initially, resolved to SUCCESS/DECLINED asynchronously by the
+        // transaction_updated webhook (which already handles this Order path
+        // via /api/webhooks/shippo/route.ts).
+        const refundAny = refund as { objectId?: string; status?: string };
+        await prisma.order.update({
+            where: { id: orderId },
+            data: {
+                shippo_label_refund_id: refundAny.objectId ?? null,
+                shippo_label_refunded_at: new Date(),
+                shippo_label_refund_status: refundAny.status ?? "QUEUED",
+                ...(opts?.note ? { refund_note: opts.note } : {}),
+            },
+        });
+        revalidatePath("/admin/orders");
+        return {
+            success: true,
+            refundId: refundAny.objectId ?? null,
+            status: refundAny.status ?? "QUEUED",
+        } as const;
+    } catch (err) {
+        const message = err instanceof Error ? err.message : "Unknown Shippo error";
+        // Stamp the error on the Order so the next page refresh surfaces it
+        // in the UI without the admin having to dig through server logs.
+        // Best-effort — a failure to record the error should not mask the
+        // original refund failure.
+        await prisma.order.update({
+            where: { id: orderId },
+            data: {
+                shippo_label_refund_status: "ERROR",
+                shippo_label_refund_error: message,
+                shippo_label_refunded_at: new Date(),
+            },
+        }).catch(() => { /* ignore secondary write failure */ });
+        return { error: `Shippo refund failed: ${message}` } as const;
+    }
+}

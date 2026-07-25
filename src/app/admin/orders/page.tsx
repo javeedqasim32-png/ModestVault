@@ -56,6 +56,11 @@ export default async function AdminOrdersPage() {
             seller_email: order.purchase.listing.user.email,
             listing_title: order.purchase.listing.title,
             listing_image: order.purchase.listing.images[0]?.mediumUrl || order.purchase.listing.images[0]?.imageUrl || "/placeholder.svg",
+            // Shippo label refund state — drives the "Refund label only"
+            // button's visibility and status badge in AdminOrdersClient.
+            shippo_transaction_id: order.shippo_transaction_id,
+            shippo_label_refund_id: order.shippo_label_refund_id,
+            shippo_label_refund_status: order.shippo_label_refund_status,
         };
     });
 
