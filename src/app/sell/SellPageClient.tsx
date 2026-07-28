@@ -34,6 +34,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { getCategories, getStyles, getSubcategories, getTypes } from "@/lib/taxonomy";
 import { validateListingTaxonomy, type ListingTaxonomyErrors } from "@/lib/taxonomyValidation";
 import { SKIN_TONE_OPTIONS, DEFAULT_SKIN_TONE, isValidSkinTone, type SkinTone } from "@/lib/ai-cover-options";
+import { getListingRejectionMessage } from "@/lib/listing-rejection-reasons";
 
 type ListingItem = {
     id: string;
@@ -2619,7 +2620,7 @@ export default function SellPageClient({
                                     </div>
 
                                     {isRejected && listing.rejection_reason && (
-                                        <p className="mt-2 text-sm text-red-600 font-medium">Reason: {listing.rejection_reason}</p>
+                                        <p className="mt-2 text-sm text-red-600 font-medium">Reason: {getListingRejectionMessage(listing.rejection_reason)}</p>
                                     )}
                                 </article>
                             );
@@ -2855,7 +2856,7 @@ export default function SellPageClient({
                                                     ) : null}
                                                 </div>
                                                 {isRejected && listing.rejection_reason && (
-                                                    <p className="mt-3 text-sm text-red-600 font-medium">Rejection Reason: {listing.rejection_reason}</p>
+                                                    <p className="mt-3 text-sm text-red-600 font-medium">Rejection Reason: {getListingRejectionMessage(listing.rejection_reason)}</p>
                                                 )}
                                             </article>
                                         );

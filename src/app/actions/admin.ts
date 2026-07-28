@@ -15,6 +15,7 @@ import {
     toStripeRefundReason,
     type ModaireRefundReason,
 } from "@/lib/refund-reasons";
+import { getListingRejectionMessage } from "@/lib/listing-rejection-reasons";
 
 /**
  * Verifies the current user is an admin. Throws if not.
@@ -232,15 +233,19 @@ export async function rejectListing(listingId: string, reason?: string) {
         }
     });
 
-    if (updated.user?.email && reason) {
-        void sendListingRejectedEmail(updated.user.email, updated.title, reason);
+    // `reason` is either a preset KEY (e.g. "BETTER_PHOTOS") from the admin
+    // dropdown, an "Other" custom text, or a legacy free-text value. Resolve
+    // it to the seller-facing message before it goes into the email + notif.
+    const humanReason = getListingRejectionMessage(reason);
+    if (updated.user?.email && humanReason) {
+        void sendListingRejectedEmail(updated.user.email, updated.title, humanReason);
     }
 
     await createNotification({
         userId: updated.user.id,
         type: "LISTING_REJECTED",
         title: `Listing rejected: ${updated.title}`,
-        body: reason ? `Reason: ${reason}` : "Edit the listing and resubmit for review.",
+        body: humanReason ? `Reason: ${humanReason}` : "Edit the listing and resubmit for review.",
         linkUrl: "/sell",
     });
 

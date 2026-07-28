@@ -7,6 +7,22 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { ChevronDown, Star, Check, X, AlertCircle, ImageIcon } from "lucide-react";
+import {
+    MODAIRE_LISTING_REJECTION_REASONS,
+    DEFAULT_LISTING_REJECTION_REASON,
+    listingRejectionReasonRequiresNote,
+    getListingRejectionMessage,
+    type ListingRejectionReason,
+} from "@/lib/listing-rejection-reasons";
+
+type RejectModalState = {
+    listingId: string;
+    listingTitle: string;
+    reason: ListingRejectionReason;
+    note: string;
+    submitting: boolean;
+    error: string | null;
+};
 
 type ListingImage = {
     id: string;
@@ -47,6 +63,7 @@ export default function AdminListingsClient({ initialListings }: { initialListin
     // outside-click handler would always close the visible menu on first click.
     const mobileActionsMenuRef = useRef<HTMLDivElement | null>(null);
     const desktopActionsMenuRef = useRef<HTMLDivElement | null>(null);
+    const [rejectModal, setRejectModal] = useState<RejectModalState | null>(null);
 
     // Close the open Actions dropdown on outside click or Escape.
     useEffect(() => {
@@ -111,16 +128,54 @@ export default function AdminListingsClient({ initialListings }: { initialListin
         setProcessingId(null);
     }
 
-    async function handleReject(id: string) {
-        const reason = window.prompt("Rejection reason (optional):");
-        if (reason === null) return; // User cancelled prompt
+    function handleReject(id: string) {
+        const listing = listings.find((l) => l.id === id);
+        setRejectModal({
+            listingId: id,
+            listingTitle: listing?.title ?? "listing",
+            reason: DEFAULT_LISTING_REJECTION_REASON,
+            note: "",
+            submitting: false,
+            error: null,
+        });
+    }
 
-        setProcessingId(id);
-        const res = await rejectListing(id, reason);
-        if (res.success) {
-            setListings(prev => prev.map(l => l.id === id ? { ...l, moderation_status: "REJECTED", rejection_reason: reason } : l));
+    async function submitRejectModal() {
+        if (!rejectModal) return;
+        const requiresNote = listingRejectionReasonRequiresNote(rejectModal.reason);
+        if (requiresNote && rejectModal.note.trim().length === 0) {
+            setRejectModal({ ...rejectModal, error: "Please write the message you want the seller to see." });
+            return;
         }
-        setProcessingId(null);
+
+        // Preset picks store the KEY (e.g. "BETTER_PHOTOS"). "Other" stores
+        // the admin's raw note. Display helper resolves either back to the
+        // seller-facing message.
+        const reasonPayload = requiresNote
+            ? rejectModal.note.trim()
+            : rejectModal.reason;
+
+        setRejectModal({ ...rejectModal, submitting: true, error: null });
+        setProcessingId(rejectModal.listingId);
+        try {
+            const res = await rejectListing(rejectModal.listingId, reasonPayload);
+            if (!res.success) {
+                setRejectModal({ ...rejectModal, submitting: false, error: "Failed to reject listing. Please try again." });
+                return;
+            }
+            setListings((prev) =>
+                prev.map((l) =>
+                    l.id === rejectModal.listingId
+                        ? { ...l, moderation_status: "REJECTED", rejection_reason: reasonPayload }
+                        : l,
+                ),
+            );
+            setRejectModal(null);
+        } catch {
+            setRejectModal({ ...rejectModal, submitting: false, error: "Unexpected error. Please try again." });
+        } finally {
+            setProcessingId(null);
+        }
     }
 
     async function handleMoveImage(listingId: string, imageId: string, direction: 'left' | 'right') {
@@ -293,7 +348,7 @@ export default function AdminListingsClient({ initialListings }: { initialListin
                                     </p>
                                     <p className="mt-1 text-sm font-semibold text-foreground">${listing.price}</p>
                                     {mod === "REJECTED" && listing.rejection_reason ? (
-                                        <p className="mt-1 break-words text-[11px] text-destructive">Reason: {listing.rejection_reason}</p>
+                                        <p className="mt-1 break-words text-[11px] text-destructive">Reason: {getListingRejectionMessage(listing.rejection_reason)}</p>
                                     ) : null}
                                 </div>
                             </div>
@@ -414,7 +469,7 @@ export default function AdminListingsClient({ initialListings }: { initialListin
                                                         </div>
                                                         {listing.moderation_status === "REJECTED" && listing.rejection_reason && (
                                                             <p className="mt-1.5 text-xs text-destructive break-words">
-                                                                Reason: {listing.rejection_reason}
+                                                                Reason: {getListingRejectionMessage(listing.rejection_reason)}
                                                             </p>
                                                         )}
                                                     </div>
@@ -526,6 +581,90 @@ export default function AdminListingsClient({ initialListings }: { initialListin
             </div>
                 </>
             )}
+
+            {rejectModal ? (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+                    <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-xl">
+                        <h2 className="text-lg font-bold text-foreground">Reject Listing</h2>
+                        <p className="mt-2 text-sm text-muted-foreground">
+                            &ldquo;{rejectModal.listingTitle}&rdquo; will be marked REJECTED. The seller will receive the message below by email + in-app notification.
+                        </p>
+
+                        <label className="mt-4 block text-sm font-medium text-foreground">
+                            Reason
+                            <select
+                                value={rejectModal.reason}
+                                onChange={(e) => setRejectModal({
+                                    ...rejectModal,
+                                    reason: e.target.value as ListingRejectionReason,
+                                    error: null,
+                                })}
+                                disabled={rejectModal.submitting}
+                                className="mt-1 block w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                            >
+                                {MODAIRE_LISTING_REJECTION_REASONS.map((r) => (
+                                    <option key={r.value} value={r.value}>{r.label}</option>
+                                ))}
+                            </select>
+                        </label>
+
+                        {(() => {
+                            const requiresNote = listingRejectionReasonRequiresNote(rejectModal.reason);
+                            if (requiresNote) {
+                                return (
+                                    <label className="mt-3 block text-sm font-medium text-foreground">
+                                        Custom message <span className="text-red-600">(required)</span>
+                                        <textarea
+                                            value={rejectModal.note}
+                                            onChange={(e) => setRejectModal({ ...rejectModal, note: e.target.value, error: null })}
+                                            disabled={rejectModal.submitting}
+                                            rows={3}
+                                            maxLength={500}
+                                            placeholder="Type the message the seller will see."
+                                            className="mt-1 block w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                                            aria-required
+                                        />
+                                    </label>
+                                );
+                            }
+                            const preview = getListingRejectionMessage(rejectModal.reason);
+                            return (
+                                <div className="mt-3 rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                                    <span className="font-medium text-foreground">Seller will see:</span> {preview}
+                                </div>
+                            );
+                        })()}
+
+                        {rejectModal.error ? (
+                            <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                                {rejectModal.error}
+                            </div>
+                        ) : null}
+
+                        <div className="mt-5 flex items-center justify-end gap-2">
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setRejectModal(null)}
+                                disabled={rejectModal.submitting}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                size="sm"
+                                onClick={submitRejectModal}
+                                disabled={
+                                    rejectModal.submitting ||
+                                    (listingRejectionReasonRequiresNote(rejectModal.reason) &&
+                                        rejectModal.note.trim().length === 0)
+                                }
+                            >
+                                {rejectModal.submitting ? "Rejecting…" : "Reject Listing"}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
         </div>
     );
 }
