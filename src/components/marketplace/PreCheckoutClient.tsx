@@ -10,9 +10,10 @@ import {
 } from "@/app/actions/checkout";
 import { ShippingAddressFormData } from "./ShippingAddressForm";
 import { Input } from "@/components/ui/Input";
-import { AlertCircle, ChevronRight, Loader2, Lock, ShieldCheck, ShoppingBag, Truck } from "lucide-react";
+import { AlertCircle, ChevronRight, Loader2, Lock, ShieldCheck, ShoppingBag, Truck, Tag, X } from "lucide-react";
 import { hasCarrierPhoneLength, normalizeUsPhoneInput } from "@/lib/phone";
 import { computeProcessingFeeCents } from "@/lib/fees";
+import { validatePromoCodeForCheckout } from "@/app/actions/promotion-codes";
 
 const US_STATE_CODES = [
     "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
@@ -132,17 +133,32 @@ export function PreCheckoutClient({
     const [loadingRates, setLoadingRates] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    // Promo code state — bundle checkouts don't support codes for MVP.
+    const [promoCodeInput, setPromoCodeInput] = useState("");
+    const [appliedPromo, setAppliedPromo] = useState<{
+        code: string;
+        discountPercent: number;
+    } | null>(null);
+    const [promoError, setPromoError] = useState<string | null>(null);
+    const [applyingPromo, setApplyingPromo] = useState(false);
 
     const selectedRate = useMemo(() => rates.find((r) => r.id === selectedRateId) || null, [rates, selectedRateId]);
     const shippingCost = Number(selectedRate?.amount || 0);
     const safeShippingCost = Number.isFinite(shippingCost) ? shippingCost : 0;
-    // Processing & Handling — mirrors server-side computeProcessingFeeCents
-    // so the preview always matches what Stripe will charge. Only meaningful
-    // once a shipping rate is selected (fee is based on item + shipping).
-    const processingFee = selectedRate
-        ? computeProcessingFeeCents(Math.round((itemsSubtotal + safeShippingCost) * 100)) / 100
+    // Promo discount applied to items subtotal. Floor to match the server's
+    // floor rounding in applyPromotionCodeDiscount (buyer-facing preview
+    // and Stripe charge must match to the cent).
+    const promoDiscount = appliedPromo
+        ? +(itemsSubtotal - Math.floor(itemsSubtotal * 100 * (100 - appliedPromo.discountPercent) / 100) / 100).toFixed(2)
         : 0;
-    const total = itemsSubtotal + safeShippingCost + processingFee;
+    const discountedItemsSubtotal = Math.max(0, itemsSubtotal - promoDiscount);
+    // Processing & Handling — mirrors server-side computeProcessingFeeCents
+    // so the preview always matches what Stripe will charge. Fee is 3% of
+    // the DISCOUNTED subtotal (buyer only pays fee on what they're charged).
+    const processingFee = selectedRate
+        ? computeProcessingFeeCents(Math.round((discountedItemsSubtotal + safeShippingCost) * 100)) / 100
+        : 0;
+    const total = discountedItemsSubtotal + safeShippingCost + processingFee;
 
     const fetchRates = async () => {
         setLoadingRates(true);
@@ -170,6 +186,34 @@ export function PreCheckoutClient({
         }
     };
 
+    const handleApplyPromoCode = async () => {
+        const raw = promoCodeInput.trim();
+        if (raw.length === 0) return;
+        setApplyingPromo(true);
+        setPromoError(null);
+        try {
+            const result = await validatePromoCodeForCheckout({
+                code: raw,
+                listingId,
+            });
+            if (result.valid) {
+                setAppliedPromo({ code: result.code, discountPercent: result.discountPercent });
+                setPromoCodeInput("");
+            } else {
+                setPromoError(result.error);
+            }
+        } catch {
+            setPromoError("Couldn't validate that code. Try again.");
+        } finally {
+            setApplyingPromo(false);
+        }
+    };
+
+    const handleRemovePromoCode = () => {
+        setAppliedPromo(null);
+        setPromoError(null);
+    };
+
     const continueToPayment = async () => {
         if (!selectedRate) return;
 
@@ -192,7 +236,7 @@ export function PreCheckoutClient({
             };
             const res = (isBundle
                 ? await createBundledCheckoutSessionWithShipping(items.map((i) => i.id), normalizedAddress, rateInput)
-                : await createCheckoutSessionWithShipping(listingId, normalizedAddress, rateInput)) as CheckoutResponse;
+                : await createCheckoutSessionWithShipping(listingId, normalizedAddress, rateInput, appliedPromo?.code ?? null)) as CheckoutResponse;
 
             if (res.error) {
                 setError(res.error);
@@ -373,6 +417,60 @@ export function PreCheckoutClient({
                         </div>
                     </div>
 
+                    {/* Promo code input — only shown on single-item checkouts.
+                        Bundles reject codes on the server side (deferred). */}
+                    {!isBundle ? (
+                        <div className="rounded-[1.25rem] border border-[#e9ddd2] bg-[#fbf8f5] px-4 py-3">
+                            {appliedPromo ? (
+                                <div className="flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2 text-sm text-[#3a2a20]">
+                                        <Tag className="h-4 w-4 text-[#9a6f3f]" />
+                                        <span className="font-semibold">{appliedPromo.code}</span>
+                                        <span className="text-[#8a7667]">·</span>
+                                        <span>{appliedPromo.discountPercent}% off</span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={handleRemovePromoCode}
+                                        aria-label="Remove promo code"
+                                        className="inline-flex h-7 w-7 items-center justify-center rounded-full text-[#8a7667] hover:bg-[#efe6dd] hover:text-[#3a2a20]"
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                    <div className="flex items-center gap-2 text-sm text-[#5f4a3c] sm:min-w-0 sm:flex-1">
+                                        <Tag className="h-4 w-4 shrink-0 text-[#9a6f3f]" />
+                                        <input
+                                            type="text"
+                                            value={promoCodeInput}
+                                            onChange={(e) => {
+                                                setPromoCodeInput(e.target.value);
+                                                if (promoError) setPromoError(null);
+                                            }}
+                                            placeholder="Have a promo code?"
+                                            disabled={applyingPromo}
+                                            className="w-full min-w-0 flex-1 rounded-md border border-[#ddd3cb] bg-white px-3 py-1.5 text-sm text-[#3a2a20] placeholder:text-[#a8998a] focus:border-[#9a6f3f] focus:outline-none disabled:opacity-60"
+                                            autoCapitalize="characters"
+                                        />
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={handleApplyPromoCode}
+                                        disabled={applyingPromo || promoCodeInput.trim().length === 0}
+                                        className="inline-flex shrink-0 items-center justify-center rounded-full bg-[#5f4437] px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-[#4a3328] disabled:cursor-not-allowed disabled:bg-[#5f4437]/40"
+                                    >
+                                        {applyingPromo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Apply"}
+                                    </button>
+                                </div>
+                            )}
+                            {promoError ? (
+                                <p className="mt-2 text-xs text-[#8c3a28]">{promoError}</p>
+                            ) : null}
+                        </div>
+                    ) : null}
+
                     {/* Breakdown appears only after a shipping method is
                         selected. Processing & Handling is a flat 3% of
                         (items + shipping) — see src/lib/fees.ts. */}
@@ -382,6 +480,12 @@ export function PreCheckoutClient({
                                 <span>Items</span>
                                 <span>${itemsSubtotal.toFixed(2)}</span>
                             </div>
+                            {appliedPromo && promoDiscount > 0 ? (
+                                <div className="mt-1.5 flex items-center justify-between text-[#3f7a4f]">
+                                    <span>Promo ({appliedPromo.code})</span>
+                                    <span>&minus;${promoDiscount.toFixed(2)}</span>
+                                </div>
+                            ) : null}
                             <div className="mt-1.5 flex items-center justify-between text-[#5f4a3c]">
                                 <span>Shipping</span>
                                 <span>${safeShippingCost.toFixed(2)}</span>

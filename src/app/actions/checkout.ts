@@ -9,6 +9,7 @@ import { getEffectivePriceForListing } from "@/lib/promotions/get-effective-pric
 import { getShipmentRateById, getShipmentRates } from "@/lib/shippo";
 import { stripe } from "@/lib/stripe";
 import { computeProcessingFeeCents } from "@/lib/fees";
+import { applyPromotionCodeDiscount, validatePromotionCode } from "@/lib/promotion-codes";
 import { normalizeUsPhoneInput } from "@/lib/phone";
 import { hasCarrierPhoneLength } from "@/lib/phone";
 import { redirect } from "next/navigation";
@@ -201,7 +202,8 @@ export async function getShippingRatesForListing(listingId: string, address: Shi
 export async function createCheckoutSessionWithShipping(
     listingId: string,
     address: ShippingAddressInput,
-    selectedRate: SelectedRateInput
+    selectedRate: SelectedRateInput,
+    promotionCode?: string | null,
 ) {
     try {
         const session = await auth();
@@ -245,7 +247,35 @@ export async function createCheckoutSessionWithShipping(
         // opted this listing into. Buyer cannot manipulate the discount from
         // the browser.
         const effectivePrice = await getEffectivePriceForListing(listing.id);
-        const unitAmount = effectivePrice.effectiveCents;
+        // Buyer-facing PromotionCode (Modaire-absorbs) is validated + applied
+        // server-side. Client-provided code is NEVER trusted for money math;
+        // we re-run validatePromotionCode here so the amount on the Stripe
+        // session matches what our own rules say.
+        const buyerOriginalCents = effectivePrice.effectiveCents;
+        let unitAmount = buyerOriginalCents;
+        let appliedPromo: {
+            codeId: string;
+            code: string;
+            absorber: "MODAIRE" | "SELLER";
+            discountCents: number;
+        } | null = null;
+        if (promotionCode && promotionCode.trim().length > 0) {
+            const validated = await validatePromotionCode({
+                code: promotionCode,
+                listingId: listing.id,
+                buyerId: session.user.id,
+            });
+            if (!validated.valid) {
+                return { error: validated.error };
+            }
+            unitAmount = applyPromotionCodeDiscount(buyerOriginalCents, validated.discountPercent);
+            appliedPromo = {
+                codeId: validated.codeId,
+                code: validated.code,
+                absorber: validated.absorber,
+                discountCents: buyerOriginalCents - unitAmount,
+            };
+        }
         const processingFeeCents = computeProcessingFeeCents(unitAmount + shippingCents);
         const coverImage = getPrimaryListingImage(listing, "detail");
 
@@ -369,6 +399,20 @@ export async function createCheckoutSessionWithShipping(
                 shipPostal: normalizedAddress.postal_code,
                 shipCountry: normalizedAddress.country,
                 shipPhone: normalizedAddress.phone,
+                // Buyer-facing PromotionCode audit — only present when a
+                // Modaire-absorbs code was applied. Finalize reads these
+                // to (a) set Purchase.original_amount / .discount_amount,
+                // (b) set Order.seller_transfer_amount_cents from ORIGINAL
+                // (not discounted), (c) create PromotionCodeRedemption row.
+                ...(appliedPromo
+                    ? {
+                          promotionCodeId: appliedPromo.codeId,
+                          promotionCode: appliedPromo.code,
+                          promotionCodeAbsorber: appliedPromo.absorber,
+                          promotionDiscountCents: String(appliedPromo.discountCents),
+                          itemOriginalCents: String(buyerOriginalCents),
+                      }
+                    : {}),
                 // Promotion audit trail — only present when the listing was
                 // in an active accepted campaign at checkout time. Persisted
                 // onto Purchase.original_amount / .discount_amount /
@@ -514,6 +558,7 @@ export async function createPaymentIntentForListingByUserId(
     listingId: string,
     address: ShippingAddressInput,
     selectedRate: SelectedRateInput,
+    promotionCode?: string | null,
 ) {
     try {
         const normalizedAddress = normalizeShippingAddress(address);
@@ -553,7 +598,31 @@ export async function createPaymentIntentForListingByUserId(
         // returns in `breakdown.itemAmount` below and displays that in the
         // PaymentSheet.
         const effectivePrice = await getEffectivePriceForListing(listing.id);
-        const unitAmount = effectivePrice.effectiveCents;
+        const buyerOriginalCents = effectivePrice.effectiveCents;
+        let unitAmount = buyerOriginalCents;
+        let appliedPromo: {
+            codeId: string;
+            code: string;
+            absorber: "MODAIRE" | "SELLER";
+            discountCents: number;
+        } | null = null;
+        if (promotionCode && promotionCode.trim().length > 0) {
+            const validated = await validatePromotionCode({
+                code: promotionCode,
+                listingId: listing.id,
+                buyerId,
+            });
+            if (!validated.valid) {
+                return { error: validated.error };
+            }
+            unitAmount = applyPromotionCodeDiscount(buyerOriginalCents, validated.discountPercent);
+            appliedPromo = {
+                codeId: validated.codeId,
+                code: validated.code,
+                absorber: validated.absorber,
+                discountCents: buyerOriginalCents - unitAmount,
+            };
+        }
         const processingFeeCents = computeProcessingFeeCents(unitAmount + shippingCents);
         const totalAmount = unitAmount + shippingCents + processingFeeCents;
 
@@ -650,6 +719,17 @@ export async function createPaymentIntentForListingByUserId(
                 // route to the mobile-specific finalize path. Web continues
                 // to use checkout.session.completed.
                 channel: "mobile",
+                // Buyer-facing PromotionCode audit — see web-session path
+                // above for the finalize-side contract.
+                ...(appliedPromo
+                    ? {
+                          promotionCodeId: appliedPromo.codeId,
+                          promotionCode: appliedPromo.code,
+                          promotionCodeAbsorber: appliedPromo.absorber,
+                          promotionDiscountCents: String(appliedPromo.discountCents),
+                          itemOriginalCents: String(buyerOriginalCents),
+                      }
+                    : {}),
                 // Promotion audit — same shape as the web session path.
                 ...(effectivePrice.discountPercent > 0
                     ? {
@@ -670,8 +750,11 @@ export async function createPaymentIntentForListingByUserId(
             customerId,
             breakdown: {
                 itemAmount: unitAmount,
+                originalItemAmount: buyerOriginalCents,
                 shippingAmount: shippingCents,
                 processingFee: processingFeeCents,
+                promotionCode: appliedPromo?.code ?? null,
+                promotionDiscountCents: appliedPromo?.discountCents ?? 0,
                 totalAmount,
                 currency: "usd",
             },
@@ -726,9 +809,16 @@ export async function getShippingRatesForBundle(listingIds: string[], address: S
 export async function createBundledCheckoutSessionWithShipping(
     listingIds: string[],
     address: ShippingAddressInput,
-    selectedRate: SelectedRateInput
+    selectedRate: SelectedRateInput,
+    promotionCode?: string | null,
 ) {
     try {
+        // Bundle promo-code support is deferred (needs prorated per-item
+        // seller-basis math). Reject cleanly so the caller shows the user a
+        // useful error instead of silently ignoring the code.
+        if (promotionCode && promotionCode.trim().length > 0) {
+            return { error: "Promo codes aren't supported on bundle checkouts yet." };
+        }
         const session = await auth();
         const appUrl = await getAppUrl();
         if (!session?.user?.id) throw new Error("You must be logged in to purchase items.");
@@ -921,8 +1011,15 @@ export async function createPaymentIntentForBundleByUserId(
     listingIds: string[],
     address: ShippingAddressInput,
     selectedRate: SelectedRateInput,
+    promotionCode?: string | null,
 ) {
     try {
+        // Bundle promo-code support is deferred (needs prorated per-item
+        // seller-basis math). Reject cleanly so the caller shows the user a
+        // useful error instead of silently ignoring the code.
+        if (promotionCode && promotionCode.trim().length > 0) {
+            return { error: "Promo codes aren't supported on bundle checkouts yet." };
+        }
         const normalizedAddress = normalizeShippingAddress(address);
         assertShippingAddressIsComplete(normalizedAddress);
 

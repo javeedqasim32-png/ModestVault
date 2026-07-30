@@ -51,6 +51,27 @@ export default async function BuySuccessPage({ searchParams }: { searchParams: P
         redirect("/browse");
     }
 
+    if (result.status === "PROMO_CODE_LIMIT_REACHED") {
+        // Extreme edge case: buyer applied a limited code, another buyer
+        // used the last slot in the seconds between apply and finalize.
+        // Finalize rolled back the whole transaction — Stripe already
+        // captured payment, so we need to inform + point them to support.
+        return (
+            <div className="container mx-auto px-6 py-24 flex justify-center items-center min-h-[calc(100vh-100px)]">
+                <div className="max-w-xl w-full text-center space-y-6">
+                    <AlertCircle className="w-12 h-12 text-amber-500 mx-auto" />
+                    <h1 className="text-3xl font-black">Promo Code Just Ran Out</h1>
+                    <p className="text-muted-foreground">
+                        The promo code you applied hit its redemption limit right before we could finalize your order. Your payment is being refunded. Please try again without the code — we&apos;re sorry for the trouble.
+                    </p>
+                    <Link href="/browse">
+                        <Button>Back to Marketplace</Button>
+                    </Link>
+                </div>
+            </div>
+        );
+    }
+
     if (result.status === "ALREADY_SOLD") {
         const headline = result.isBundle ? "Items No Longer Available" : "Item No Longer Available";
         const body = result.isBundle

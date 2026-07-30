@@ -24,7 +24,8 @@ export type FinalizeResult =
     }
     | { status: "NOT_PAID"; paymentStatus: string }
     | { status: "ALREADY_SOLD"; isBundle: boolean }
-    | { status: "MISSING_LISTING" };
+    | { status: "MISSING_LISTING" }
+    | { status: "PROMO_CODE_LIMIT_REACHED" };
 
 const ORDER_WITH_DETAILS_INCLUDE = {
     purchase: { include: { listing: { include: { user: true } } } },
@@ -357,21 +358,35 @@ export async function finalizeCheckout(sessionId: string): Promise<FinalizeResul
                     data: { status: "SOLD" },
                 });
 
-                // Promotion audit: metadata carries the pre-discount original
-                // price when the buyer checked out under an active campaign.
-                // Recorded onto Purchase so refunds / support / accounting
-                // can always distinguish "what the buyer paid" from "what the
-                // listing was worth" without querying campaign state that
-                // may have since expired.
-                const originalItemCents = metadata.originalItemAmountCents
+                // Promotion audit — two paths write to the same Purchase
+                // columns (`original_amount`, `discount_amount`):
+                //   - Seller-absorbs campaign (existing): reads originalItemAmountCents
+                //     / discountAmountCents / promotionCampaignId from metadata.
+                //   - Modaire-absorbs PromotionCode (new): reads itemOriginalCents
+                //     / promotionDiscountCents. Also populates Order.promotion_code_*
+                //     columns and creates a PromotionCodeRedemption row.
+                // If BOTH somehow appear, MODAIRE code wins (validate rejects
+                // stacking, but defense in depth).
+                const promoCodeId = metadata.promotionCodeId ? String(metadata.promotionCodeId) : null;
+                const promoCodeAbsorber = metadata.promotionCodeAbsorber ? String(metadata.promotionCodeAbsorber) : null;
+                const promoCodeDiscountCents = Number(metadata.promotionDiscountCents || "0") || 0;
+                const promoCodeOriginalCents = metadata.itemOriginalCents ? Number(metadata.itemOriginalCents) : null;
+                const sellerCampaignOriginalCents = metadata.originalItemAmountCents
                     ? Number(metadata.originalItemAmountCents)
                     : null;
-                const discountCents = metadata.discountAmountCents
+                const sellerCampaignDiscountCents = metadata.discountAmountCents
                     ? Number(metadata.discountAmountCents)
                     : null;
                 const promoCampaignId = metadata.promotionCampaignId
                     ? String(metadata.promotionCampaignId)
                     : null;
+                // Unified original / discount for Purchase columns: MODAIRE-code
+                // values take precedence when present, seller-campaign values
+                // are the fallback (same shape they've always been).
+                const effectiveOriginalCents = promoCodeOriginalCents ?? sellerCampaignOriginalCents;
+                const effectiveDiscountCents = promoCodeDiscountCents > 0
+                    ? promoCodeDiscountCents
+                    : sellerCampaignDiscountCents;
 
                 const newPurchase = await tx.purchase.create({
                     data: {
@@ -382,11 +397,11 @@ export async function finalizeCheckout(sessionId: string): Promise<FinalizeResul
                             : (checkoutSession.amount_total || 0) / 100,
                         stripe_session_id: sessionId,
                         payment_intent_id: paymentIntentId,
-                        ...(originalItemCents !== null
-                            ? { original_amount: originalItemCents / 100 }
+                        ...(effectiveOriginalCents !== null
+                            ? { original_amount: effectiveOriginalCents / 100 }
                             : {}),
-                        ...(discountCents !== null
-                            ? { discount_amount: discountCents / 100 }
+                        ...(effectiveDiscountCents !== null && effectiveDiscountCents > 0
+                            ? { discount_amount: effectiveDiscountCents / 100 }
                             : {}),
                         ...(promoCampaignId
                             ? { promotion_campaign_id: promoCampaignId }
@@ -397,7 +412,16 @@ export async function finalizeCheckout(sessionId: string): Promise<FinalizeResul
                 const itemAmountCents = metadata.itemAmountCents
                     ? Number(metadata.itemAmountCents)
                     : Math.round(checkoutSession.amount_total || 0);
-                const sellerTransferAmountCents = Math.max(0, Math.round(itemAmountCents * 0.85));
+                // Seller-basis math: MODAIRE-absorbs code means seller is
+                // still owed 85% of the ORIGINAL listing price (they never
+                // agreed to the discount). Every other case (no promo,
+                // seller-absorbs campaign) → basis is the discounted item
+                // the buyer paid, existing behavior.
+                const sellerBasisCents =
+                    promoCodeAbsorber === "MODAIRE" && promoCodeOriginalCents !== null
+                        ? promoCodeOriginalCents
+                        : itemAmountCents;
+                const sellerTransferAmountCents = Math.max(0, Math.round(sellerBasisCents * 0.85));
                 const sellerTransferCurrency = (checkoutSession.currency || "usd").toLowerCase();
                 const processingFeeCents = Number(metadata.processingFeeCents || "0") || 0;
 
@@ -422,9 +446,42 @@ export async function finalizeCheckout(sessionId: string): Promise<FinalizeResul
                         seller_transfer_amount_cents: sellerTransferAmountCents,
                         seller_transfer_currency: sellerTransferCurrency,
                         processing_fee_cents: processingFeeCents,
+                        ...(promoCodeId
+                            ? {
+                                  promotion_code_id: promoCodeId,
+                                  promotion_code_absorber: promoCodeAbsorber,
+                                  promotion_discount_cents: promoCodeDiscountCents,
+                              }
+                            : {}),
                     },
                     include: ORDER_WITH_DETAILS_INCLUDE,
                 });
+
+                // Atomic redemption bookkeeping. Conditional UPDATE returns
+                // rowsAffected=0 if we've raced past max_redemptions — throw
+                // to roll back the whole finalize; buyer must retry without
+                // the code. Then insert the audit row (unique on order_id).
+                if (promoCodeId) {
+                    const rowsUpdated: number = await tx.$executeRaw`
+                        UPDATE "PromotionCode"
+                        SET "redemption_count" = "redemption_count" + 1,
+                            "updated_at" = NOW()
+                        WHERE "id" = ${promoCodeId}
+                          AND ("max_redemptions" IS NULL OR "redemption_count" < "max_redemptions")
+                    `;
+                    if (rowsUpdated === 0) {
+                        throw new Error("PROMO_CODE_LIMIT_REACHED");
+                    }
+                    await (tx as any).promotionCodeRedemption.create({
+                        data: {
+                            promotion_code_id: promoCodeId,
+                            order_id: order.id,
+                            buyer_id: buyerId!,
+                            listing_id: listingId,
+                            discount_cents: promoCodeDiscountCents,
+                        },
+                    });
+                }
 
                 if (buyerId) {
                     await tx.cartItem.deleteMany({
@@ -436,6 +493,9 @@ export async function finalizeCheckout(sessionId: string): Promise<FinalizeResul
         } catch (error: any) {
             if (error?.message === "ALREADY_SOLD") {
                 return { status: "ALREADY_SOLD", isBundle: false };
+            }
+            if (error?.message === "PROMO_CODE_LIMIT_REACHED") {
+                return { status: "PROMO_CODE_LIMIT_REACHED" };
             }
             // Concurrent caller won the race.
             if (error?.code === "P2002") {
@@ -845,20 +905,37 @@ export async function finalizeCheckoutByPaymentIntent(paymentIntentId: string): 
                 const itemAmountCents = metadata.itemAmountCents
                     ? Number(metadata.itemAmountCents)
                     : Math.round(paymentIntent.amount || 0);
-                const sellerTransferAmountCents = Math.max(0, Math.round(itemAmountCents * 0.85));
-                const sellerTransferCurrency = (paymentIntent.currency || "usd").toLowerCase();
                 const processingFeeCents = Number(metadata.processingFeeCents || "0") || 0;
+                const sellerTransferCurrency = (paymentIntent.currency || "usd").toLowerCase();
 
-                // Same audit fields as the web session single-item path.
-                const originalItemCents = metadata.originalItemAmountCents
+                // Same promo unification as the web session single-item
+                // path — see comments there for the full rationale.
+                const promoCodeId = metadata.promotionCodeId ? String(metadata.promotionCodeId) : null;
+                const promoCodeAbsorber = metadata.promotionCodeAbsorber ? String(metadata.promotionCodeAbsorber) : null;
+                const promoCodeDiscountCents = Number(metadata.promotionDiscountCents || "0") || 0;
+                const promoCodeOriginalCents = metadata.itemOriginalCents ? Number(metadata.itemOriginalCents) : null;
+                const sellerCampaignOriginalCents = metadata.originalItemAmountCents
                     ? Number(metadata.originalItemAmountCents)
                     : null;
-                const discountCents = metadata.discountAmountCents
+                const sellerCampaignDiscountCents = metadata.discountAmountCents
                     ? Number(metadata.discountAmountCents)
                     : null;
                 const promoCampaignId = metadata.promotionCampaignId
                     ? String(metadata.promotionCampaignId)
                     : null;
+                const effectiveOriginalCents = promoCodeOriginalCents ?? sellerCampaignOriginalCents;
+                const effectiveDiscountCents = promoCodeDiscountCents > 0
+                    ? promoCodeDiscountCents
+                    : sellerCampaignDiscountCents;
+
+                // MODAIRE-absorbs code → seller basis = original listing
+                // price. Otherwise (no promo, or seller-absorbs campaign) →
+                // basis = discounted item, existing behavior.
+                const sellerBasisCents =
+                    promoCodeAbsorber === "MODAIRE" && promoCodeOriginalCents !== null
+                        ? promoCodeOriginalCents
+                        : itemAmountCents;
+                const sellerTransferAmountCents = Math.max(0, Math.round(sellerBasisCents * 0.85));
 
                 const newPurchase = await tx.purchase.create({
                     data: {
@@ -870,11 +947,11 @@ export async function finalizeCheckoutByPaymentIntent(paymentIntentId: string): 
                         // idempotency.
                         stripe_session_id: null,
                         payment_intent_id: paymentIntentId,
-                        ...(originalItemCents !== null
-                            ? { original_amount: originalItemCents / 100 }
+                        ...(effectiveOriginalCents !== null
+                            ? { original_amount: effectiveOriginalCents / 100 }
                             : {}),
-                        ...(discountCents !== null
-                            ? { discount_amount: discountCents / 100 }
+                        ...(effectiveDiscountCents !== null && effectiveDiscountCents > 0
+                            ? { discount_amount: effectiveDiscountCents / 100 }
                             : {}),
                         ...(promoCampaignId
                             ? { promotion_campaign_id: promoCampaignId }
@@ -903,9 +980,40 @@ export async function finalizeCheckoutByPaymentIntent(paymentIntentId: string): 
                         seller_transfer_amount_cents: sellerTransferAmountCents,
                         seller_transfer_currency: sellerTransferCurrency,
                         processing_fee_cents: processingFeeCents,
+                        ...(promoCodeId
+                            ? {
+                                  promotion_code_id: promoCodeId,
+                                  promotion_code_absorber: promoCodeAbsorber,
+                                  promotion_discount_cents: promoCodeDiscountCents,
+                              }
+                            : {}),
                     },
                     include: ORDER_WITH_DETAILS_INCLUDE,
                 });
+
+                // Atomic redemption bookkeeping. See web-session finalize
+                // path for the full rationale.
+                if (promoCodeId) {
+                    const rowsUpdated: number = await tx.$executeRaw`
+                        UPDATE "PromotionCode"
+                        SET "redemption_count" = "redemption_count" + 1,
+                            "updated_at" = NOW()
+                        WHERE "id" = ${promoCodeId}
+                          AND ("max_redemptions" IS NULL OR "redemption_count" < "max_redemptions")
+                    `;
+                    if (rowsUpdated === 0) {
+                        throw new Error("PROMO_CODE_LIMIT_REACHED");
+                    }
+                    await (tx as any).promotionCodeRedemption.create({
+                        data: {
+                            promotion_code_id: promoCodeId,
+                            order_id: order.id,
+                            buyer_id: buyerId!,
+                            listing_id: listingId,
+                            discount_cents: promoCodeDiscountCents,
+                        },
+                    });
+                }
 
                 if (buyerId) {
                     await tx.cartItem.deleteMany({
@@ -917,6 +1025,9 @@ export async function finalizeCheckoutByPaymentIntent(paymentIntentId: string): 
         } catch (error: any) {
             if (error?.message === "ALREADY_SOLD") {
                 return { status: "ALREADY_SOLD", isBundle: false };
+            }
+            if (error?.message === "PROMO_CODE_LIMIT_REACHED") {
+                return { status: "PROMO_CODE_LIMIT_REACHED" };
             }
             // P2002 on (payment_intent_id, listing_id) — the webhook + the
             // mobile client's explicit finalize raced. Re-read and treat as

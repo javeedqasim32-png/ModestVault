@@ -53,6 +53,8 @@ export default async function AdminOrdersPage() {
                 ? Number(order.shipping_option_amount)
                 : 0,
             processing_fee_cents: order.processing_fee_cents ?? 0,
+            promotion_code_id: order.promotion_code_id ?? null,
+            promotion_discount_cents: order.promotion_discount_cents ?? 0,
             created_at: order.created_at.toISOString(),
             buyer_name: `${order.purchase.buyer.first_name} ${order.purchase.buyer.last_name}`,
             buyer_email: order.purchase.buyer.email,

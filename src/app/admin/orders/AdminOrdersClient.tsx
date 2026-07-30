@@ -26,6 +26,11 @@ type AdminOrder = {
     // Non-refundable Processing & Handling fee (cents). 0 on orders created
     // before the fee was introduced — those refund as full item + shipping.
     processing_fee_cents: number;
+    // Buyer-facing promo code state. Null on orders that didn't use one.
+    // Discount is absolute cents; refund logic doesn't touch these — buyer
+    // is refunded what they actually paid (item + shipping) regardless.
+    promotion_code_id: string | null;
+    promotion_discount_cents: number;
     created_at: string;
     buyer_name: string;
     buyer_email: string;
@@ -348,6 +353,12 @@ export default function AdminOrdersClient({ initialOrders }: { initialOrders: Ad
                                     {feeAmount > 0 ? (
                                         <p className="mt-2 text-xs text-muted-foreground">
                                             Processing fee ${feeAmount.toFixed(2)} is non-refundable — Stripe keeps it.
+                                        </p>
+                                    ) : null}
+                                    {refundModal.order.promotion_code_id && refundModal.order.promotion_discount_cents > 0 ? (
+                                        <p className="mt-1 text-xs text-muted-foreground">
+                                            Promo code applied at checkout (&minus;${(refundModal.order.promotion_discount_cents / 100).toFixed(2)}).
+                                            Seller was paid based on the ORIGINAL listing price; Modaire absorbs the discount on refund.
                                         </p>
                                     ) : null}
                                 </>

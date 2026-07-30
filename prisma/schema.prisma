@@ -245,6 +245,14 @@ model Order {
   // $0.30 per-transaction cost. Non-refundable — buyer refunds cover only
   // item + shipping. Existing rows default to 0 (grandfathered as no-fee).
   processing_fee_cents Int @default(0)
+  // Buyer-facing promo code state. When set, this order used a PromotionCode
+  // at checkout. `promotion_code_absorber` is snapshotted here so refund /
+  // audit logic doesn't have to re-read the (possibly deactivated) code row.
+  // `promotion_discount_cents` is the absolute discount the buyer received.
+  promotion_code_id        String?
+  promotion_code_absorber  String?  // MODAIRE | SELLER
+  promotion_discount_cents Int      @default(0)
+  redemption               PromotionCodeRedemption?
   unclaimed_reminder_sent_at DateTime?
   // Refund / cancel state. Populated by admin's refundOrder() / cancelOrder()
   // server actions. order_status flips to "REFUNDED" or "CANCELLED" when these
@@ -594,6 +602,57 @@ model PromotionInvitation {
 
   @@unique([promotion_campaign_id, seller_id])
   @@index([expires_at])
+}
+
+// Buyer-facing promo codes. Distinct from PromotionCampaign (seller-absorbs):
+// PromotionCode is Modaire-absorbs — the discount comes OUT of Modaire's
+// platform fee, seller still receives 85% of the ORIGINAL listing price.
+// Used for one-off courtesy discounts, growth codes, marketing pushes.
+// See src/lib/promotion-codes.ts for validation + apply logic.
+model PromotionCode {
+    id                     String    @id @default(uuid())
+    code                   String    @unique  // stored uppercase; lookups normalize input
+    discount_percent       Int       // 1-100
+    // Who absorbs the discount. MODAIRE (this MVP) = platform fee shrinks;
+    // SELLER = future — no code path exercises this yet, but the field is
+    // named so we can enable it later without a migration.
+    absorber               String    @default("MODAIRE")
+    // Optional targeting. NULL on a dimension means "no restriction on this axis."
+    applies_to_listing_id  String?
+    applies_to_buyer_id    String?
+    // Optional caps. NULL max_redemptions = unlimited. `redemption_count` is
+    // bumped atomically in the finalize transaction with a conditional
+    // updateMany so a race on a single-use code fails one caller cleanly.
+    max_redemptions        Int?
+    redemption_count       Int       @default(0)
+    starts_at              DateTime  @default(now())
+    expires_at             DateTime?
+    active                 Boolean   @default(true)
+    notes                  String?
+    created_by_id          String?
+    created_at             DateTime  @default(now())
+    updated_at             DateTime  @updatedAt
+    redemptions            PromotionCodeRedemption[]
+
+    @@index([active, starts_at, expires_at])
+}
+
+// Audit trail — one row per successful checkout redemption. Unique on order_id
+// so a single order can't record the same code twice (belt-and-suspenders with
+// the finalize transaction).
+model PromotionCodeRedemption {
+    id                 String        @id @default(uuid())
+    promotion_code_id  String
+    promotion_code     PromotionCode @relation(fields: [promotion_code_id], references: [id])
+    order_id           String        @unique
+    order              Order         @relation(fields: [order_id], references: [id])
+    buyer_id           String
+    listing_id         String
+    discount_cents     Int
+    redeemed_at        DateTime      @default(now())
+
+    @@index([buyer_id])
+    @@index([promotion_code_id, redeemed_at])
 }
 
 // One row per (user, listing) pair we've emailed about a sale discovery.
