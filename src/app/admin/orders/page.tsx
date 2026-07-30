@@ -49,6 +49,10 @@ export default async function AdminOrdersPage() {
             carrier: order.carrier,
             tracking_number: order.tracking_number,
             amount: serializedPurchase?.amount ?? 0,
+            shipping_amount: order.shipping_option_amount
+                ? Number(order.shipping_option_amount)
+                : 0,
+            processing_fee_cents: order.processing_fee_cents ?? 0,
             created_at: order.created_at.toISOString(),
             buyer_name: `${order.purchase.buyer.first_name} ${order.purchase.buyer.last_name}`,
             buyer_email: order.purchase.buyer.email,

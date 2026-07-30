@@ -347,6 +347,8 @@ type OrderRefundLoad = {
     refund_id: string | null;
     shippo_transaction_id: string | null;
     shippo_label_refund_id: string | null;
+    shipping_option_amount: string | null;
+    processing_fee_cents: number;
     purchase: {
         id: string;
         amount: number | string | { toString(): string };
@@ -380,6 +382,8 @@ async function loadOrderForRefund(orderId: string): Promise<OrderRefundLoad> {
             refund_id: true,
             shippo_transaction_id: true,
             shippo_label_refund_id: true,
+            shipping_option_amount: true,
+            processing_fee_cents: true,
             purchase: {
                 select: {
                     id: true,
@@ -497,15 +501,29 @@ async function processRefund(
     // 1. Stripe refund. We always map to `requested_by_customer` because none
     // of the Modaire taxonomy maps to `fraudulent` / `duplicate`. The richer
     // reason lives in our DB for analytics.
+    //
+    // Refund amount = item + shipping ONLY. The processing fee is
+    // non-refundable — Stripe never returns their per-transaction fee to us,
+    // so refunding it to the buyer would recreate the exact margin bleed we
+    // introduced the fee to cover. For orders created before the fee was
+    // added, processing_fee_cents defaults to 0 and this behaves as a full
+    // refund (same as before this change).
+    const itemCents = Math.round(Number(order.purchase.amount) * 100);
+    const shippingCents = order.shipping_option_amount
+        ? Math.round(Number(order.shipping_option_amount) * 100)
+        : 0;
+    const refundAmountCents = itemCents + shippingCents;
     let refund;
     try {
         refund = await refundPayment(paymentIntentId, {
             reason: toStripeRefundReason(opts.reason),
+            amount: refundAmountCents,
             metadata: {
                 orderId: order.id,
                 initiatorId: opts.initiatorId,
                 modaireReason: opts.reason,
                 note: trimmedNote,
+                processingFeeCentsNonRefundable: String(order.processing_fee_cents ?? 0),
             },
         });
     } catch (err) {

@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { getEffectivePriceForListing } from "@/lib/promotions/get-effective-price";
 import { getShipmentRateById, getShipmentRates } from "@/lib/shippo";
 import { stripe } from "@/lib/stripe";
+import { computeProcessingFeeCents } from "@/lib/fees";
 import { normalizeUsPhoneInput } from "@/lib/phone";
 import { hasCarrierPhoneLength } from "@/lib/phone";
 import { redirect } from "next/navigation";
@@ -245,6 +246,7 @@ export async function createCheckoutSessionWithShipping(
         // the browser.
         const effectivePrice = await getEffectivePriceForListing(listing.id);
         const unitAmount = effectivePrice.effectiveCents;
+        const processingFeeCents = computeProcessingFeeCents(unitAmount + shippingCents);
         const coverImage = getPrimaryListingImage(listing, "detail");
 
         // 1. Sync the address to the Stripe Customer so Tax can be calculated without second entry
@@ -333,7 +335,17 @@ export async function createCheckoutSessionWithShipping(
                         unit_amount: shippingCents,
                     },
                     quantity: 1,
-                }
+                },
+                {
+                    price_data: {
+                        currency: "usd",
+                        product_data: {
+                            name: "Processing & Handling",
+                        },
+                        unit_amount: processingFeeCents,
+                    },
+                    quantity: 1,
+                },
             ],
             mode: "payment",
             success_url: `${appUrl}/buy/success?session_id={CHECKOUT_SESSION_ID}&listingId=${listing.id}`,
@@ -343,6 +355,7 @@ export async function createCheckoutSessionWithShipping(
                 buyerId: session.user.id,
                 itemAmountCents: String(unitAmount),
                 shippingAmountCents: String(shippingCents),
+                processingFeeCents: String(processingFeeCents),
                 shippingRateId: validatedRate.id,
                 shippingCarrier: validatedRate.carrier,
                 shippingService: validatedRate.serviceLevel,
@@ -541,7 +554,8 @@ export async function createPaymentIntentForListingByUserId(
         // PaymentSheet.
         const effectivePrice = await getEffectivePriceForListing(listing.id);
         const unitAmount = effectivePrice.effectiveCents;
-        const totalAmount = unitAmount + shippingCents;
+        const processingFeeCents = computeProcessingFeeCents(unitAmount + shippingCents);
+        const totalAmount = unitAmount + shippingCents + processingFeeCents;
 
         // Get or create the buyer's Stripe Customer + sync the address so the
         // PaymentSheet shows the right shipping selector pre-filled.
@@ -618,6 +632,7 @@ export async function createPaymentIntentForListingByUserId(
                 buyerId,
                 itemAmountCents: String(unitAmount),
                 shippingAmountCents: String(shippingCents),
+                processingFeeCents: String(processingFeeCents),
                 shippingRateId: validatedRate.id,
                 shippingCarrier: validatedRate.carrier,
                 shippingService: validatedRate.serviceLevel,
@@ -656,6 +671,7 @@ export async function createPaymentIntentForListingByUserId(
             breakdown: {
                 itemAmount: unitAmount,
                 shippingAmount: shippingCents,
+                processingFee: processingFeeCents,
                 totalAmount,
                 currency: "usd",
             },
@@ -819,6 +835,11 @@ export async function createBundledCheckoutSessionWithShipping(
                 quantity: 1,
             };
         });
+        const itemAmountCentsTotal = itemLineItems.reduce(
+            (sum, li) => sum + (li.price_data.unit_amount || 0),
+            0,
+        );
+        const processingFeeCents = computeProcessingFeeCents(itemAmountCentsTotal + shippingCents);
 
         // Same kill switch as the single-item path. See createCheckoutSessionWithShipping
         // for the full reasoning. One env var controls both checkout flows.
@@ -841,6 +862,16 @@ export async function createBundledCheckoutSessionWithShipping(
                     },
                     quantity: 1,
                 },
+                {
+                    price_data: {
+                        currency: "usd",
+                        product_data: {
+                            name: "Processing & Handling",
+                        },
+                        unit_amount: processingFeeCents,
+                    },
+                    quantity: 1,
+                },
             ],
             mode: "payment",
             success_url: `${appUrl}/buy/success?session_id={CHECKOUT_SESSION_ID}&bundleId=${batchId}`,
@@ -851,8 +882,9 @@ export async function createBundledCheckoutSessionWithShipping(
                 batchId,
                 sellerId: seller.id,
                 buyerId: session.user.id,
-                itemAmountCentsTotal: String(itemLineItems.reduce((sum, li) => sum + (li.price_data.unit_amount || 0), 0)),
+                itemAmountCentsTotal: String(itemAmountCentsTotal),
                 shippingAmountCents: String(shippingCents),
+                processingFeeCents: String(processingFeeCents),
                 shippingRateId: validatedRate.id,
                 shippingCarrier: validatedRate.carrier,
                 shippingService: validatedRate.serviceLevel,
@@ -936,7 +968,8 @@ export async function createPaymentIntentForBundleByUserId(
             (sum, l) => sum + (bundleEffectivePrices.get(l.id) ?? Math.round(Number(l.price) * 100)),
             0,
         );
-        const totalAmount = itemAmountCentsTotal + shippingCents;
+        const processingFeeCents = computeProcessingFeeCents(itemAmountCentsTotal + shippingCents);
+        const totalAmount = itemAmountCentsTotal + shippingCents + processingFeeCents;
 
         const dbUser = await prisma.user.findUnique({
             where: { id: buyerId },
@@ -1016,6 +1049,7 @@ export async function createPaymentIntentForBundleByUserId(
                 buyerId,
                 itemAmountCentsTotal: String(itemAmountCentsTotal),
                 shippingAmountCents: String(shippingCents),
+                processingFeeCents: String(processingFeeCents),
                 shippingRateId: validatedRate.id,
                 shippingCarrier: validatedRate.carrier,
                 shippingService: validatedRate.serviceLevel,
@@ -1042,6 +1076,7 @@ export async function createPaymentIntentForBundleByUserId(
             breakdown: {
                 itemAmount: itemAmountCentsTotal,
                 shippingAmount: shippingCents,
+                processingFee: processingFeeCents,
                 totalAmount,
                 currency: "usd",
             },

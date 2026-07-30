@@ -240,6 +240,11 @@ model Order {
   seller_transfer_amount_cents Int?
   seller_transfer_currency String?
   seller_transfer_released_at DateTime?
+  // Buyer-facing processing & handling fee (flat 3% of item + shipping),
+  // charged on top of subtotal so Modaire recovers most of Stripe's 2.9% +
+  // $0.30 per-transaction cost. Non-refundable — buyer refunds cover only
+  // item + shipping. Existing rows default to 0 (grandfathered as no-fee).
+  processing_fee_cents Int @default(0)
   unclaimed_reminder_sent_at DateTime?
   // Refund / cancel state. Populated by admin's refundOrder() / cancelOrder()
   // server actions. order_status flips to "REFUNDED" or "CANCELLED" when these

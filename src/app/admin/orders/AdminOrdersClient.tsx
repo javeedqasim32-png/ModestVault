@@ -20,6 +20,12 @@ type AdminOrder = {
     carrier: string | null;
     tracking_number: string | null;
     amount: number;
+    // Shipping charged to buyer; 0 for legacy orders and for bundle-child
+    // orders where the parent absorbs the full shipping cost.
+    shipping_amount: number;
+    // Non-refundable Processing & Handling fee (cents). 0 on orders created
+    // before the fee was introduced — those refund as full item + shipping.
+    processing_fee_cents: number;
     created_at: string;
     buyer_name: string;
     buyer_email: string;
@@ -329,14 +335,21 @@ export default function AdminOrdersClient({ initialOrders }: { initialOrders: Ad
                     <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-xl">
                         {(() => {
                             const isPreShipment = PRE_SHIPMENT_STATUSES.has(refundModal.order.shipping_status);
+                            const refundAmount = refundModal.order.amount + refundModal.order.shipping_amount;
+                            const feeAmount = (refundModal.order.processing_fee_cents ?? 0) / 100;
                             return (
                                 <>
                                     <h2 className="text-lg font-bold text-foreground">Refund Order</h2>
                                     <p className="mt-2 text-sm text-muted-foreground">
                                         {isPreShipment
-                                            ? `"${refundModal.order.listing_title}" hasn't shipped yet, so the order will be marked CANCELLED and the listing will be put back up for sale. Buyer gets $${refundModal.order.amount.toFixed(2)} back.`
-                                            : `"${refundModal.order.listing_title}" has already shipped, so the order will be marked REFUNDED. Buyer gets $${refundModal.order.amount.toFixed(2)} back. If the seller was already paid, we'll pull the funds back from their connected account.`}
+                                            ? `"${refundModal.order.listing_title}" hasn't shipped yet, so the order will be marked CANCELLED and the listing will be put back up for sale. Buyer gets $${refundAmount.toFixed(2)} back (item + shipping).`
+                                            : `"${refundModal.order.listing_title}" has already shipped, so the order will be marked REFUNDED. Buyer gets $${refundAmount.toFixed(2)} back (item + shipping). If the seller was already paid, we'll pull the funds back from their connected account.`}
                                     </p>
+                                    {feeAmount > 0 ? (
+                                        <p className="mt-2 text-xs text-muted-foreground">
+                                            Processing fee ${feeAmount.toFixed(2)} is non-refundable — Stripe keeps it.
+                                        </p>
+                                    ) : null}
                                 </>
                             );
                         })()}

@@ -12,6 +12,7 @@ import { ShippingAddressFormData } from "./ShippingAddressForm";
 import { Input } from "@/components/ui/Input";
 import { AlertCircle, ChevronRight, Loader2, Lock, ShieldCheck, ShoppingBag, Truck } from "lucide-react";
 import { hasCarrierPhoneLength, normalizeUsPhoneInput } from "@/lib/phone";
+import { computeProcessingFeeCents } from "@/lib/fees";
 
 const US_STATE_CODES = [
     "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
@@ -134,7 +135,14 @@ export function PreCheckoutClient({
 
     const selectedRate = useMemo(() => rates.find((r) => r.id === selectedRateId) || null, [rates, selectedRateId]);
     const shippingCost = Number(selectedRate?.amount || 0);
-    const total = itemsSubtotal + (Number.isFinite(shippingCost) ? shippingCost : 0);
+    const safeShippingCost = Number.isFinite(shippingCost) ? shippingCost : 0;
+    // Processing & Handling — mirrors server-side computeProcessingFeeCents
+    // so the preview always matches what Stripe will charge. Only meaningful
+    // once a shipping rate is selected (fee is based on item + shipping).
+    const processingFee = selectedRate
+        ? computeProcessingFeeCents(Math.round((itemsSubtotal + safeShippingCost) * 100)) / 100
+        : 0;
+    const total = itemsSubtotal + safeShippingCost + processingFee;
 
     const fetchRates = async () => {
         setLoadingRates(true);
@@ -364,6 +372,30 @@ export function PreCheckoutClient({
                             })}
                         </div>
                     </div>
+
+                    {/* Breakdown appears only after a shipping method is
+                        selected. Processing & Handling is a flat 3% of
+                        (items + shipping) — see src/lib/fees.ts. */}
+                    {selectedRate ? (
+                        <div className="rounded-[1.25rem] border border-[#e9ddd2] bg-[#fbf8f5] px-4 py-3 text-sm">
+                            <div className="flex items-center justify-between text-[#5f4a3c]">
+                                <span>Items</span>
+                                <span>${itemsSubtotal.toFixed(2)}</span>
+                            </div>
+                            <div className="mt-1.5 flex items-center justify-between text-[#5f4a3c]">
+                                <span>Shipping</span>
+                                <span>${safeShippingCost.toFixed(2)}</span>
+                            </div>
+                            <div className="mt-1.5 flex items-center justify-between text-[#5f4a3c]">
+                                <span>Processing &amp; Handling</span>
+                                <span>${processingFee.toFixed(2)}</span>
+                            </div>
+                            <div className="mt-2.5 flex items-center justify-between border-t border-[#e9ddd2] pt-2.5 font-semibold text-[#3a2a20]">
+                                <span>Total</span>
+                                <span className="text-[#9a6f3f]">${total.toFixed(2)}</span>
+                            </div>
+                        </div>
+                    ) : null}
 
                     {error ? (
                         <div className="flex items-center gap-2 rounded-[1rem] border border-[#e6c5bd] bg-[#fbeae5] px-3 py-2.5 text-sm text-[#8c3a28]">

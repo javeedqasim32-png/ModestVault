@@ -135,13 +135,23 @@ export async function finalizeCheckout(sessionId: string): Promise<FinalizeResul
                 });
 
                 const totalShippingCents = Number(metadata.shippingAmountCents || "0") || 0;
+                const totalProcessingFeeCents = Number(metadata.processingFeeCents || "0") || 0;
                 const sellerTransferCurrency = (checkoutSession.currency || "usd").toLowerCase();
 
-                for (let i = 0; i < bundleListingIds.length; i++) {
-                    const lid = bundleListingIds[i];
+                // Pass 1: resolve per-listing effective prices up front so we
+                // can prorate the bundle-level Stripe processing fee across
+                // per-listing Order rows by item-price share.
+                type BundlePricing = {
+                    itemCents: number;
+                    originalCents: number;
+                    discountCents: number;
+                    promotionCampaignId: string | null;
+                };
+                const bundlePricingByListing = new Map<string, BundlePricing>();
+                let totalItemCentsForFee = 0;
+                for (const lid of bundleListingIds) {
                     const lst = currentListings.find((l) => l.id === lid)!;
                     const originalCents = Math.round(Number(lst.price) * 100);
-
                     // Promotion recompute at finalize time — one lookup per
                     // line. Campaigns run for days/weeks so the ~seconds
                     // between intent creation and finalize essentially never
@@ -151,8 +161,20 @@ export async function finalizeCheckout(sessionId: string): Promise<FinalizeResul
                     // for bundle simplicity. Single-item path uses metadata
                     // and doesn't have this race.
                     const ep = await getEffectivePriceForListing(lid);
-                    const itemCents = ep.effectiveCents;
-                    const discountCents = originalCents - itemCents;
+                    bundlePricingByListing.set(lid, {
+                        itemCents: ep.effectiveCents,
+                        originalCents,
+                        discountCents: originalCents - ep.effectiveCents,
+                        promotionCampaignId: ep.promotionCampaignId ?? null,
+                    });
+                    totalItemCentsForFee += ep.effectiveCents;
+                }
+                let feeRemainingCents = totalProcessingFeeCents;
+
+                for (let i = 0; i < bundleListingIds.length; i++) {
+                    const lid = bundleListingIds[i];
+                    const bp = bundlePricingByListing.get(lid)!;
+                    const { itemCents, originalCents, discountCents, promotionCampaignId } = bp;
 
                     const newPurchase = await tx.purchase.create({
                         data: {
@@ -165,7 +187,7 @@ export async function finalizeCheckout(sessionId: string): Promise<FinalizeResul
                                 ? {
                                       original_amount: originalCents / 100,
                                       discount_amount: discountCents / 100,
-                                      promotion_campaign_id: ep.promotionCampaignId ?? undefined,
+                                      promotion_campaign_id: promotionCampaignId ?? undefined,
                                   }
                                 : {}),
                         },
@@ -174,6 +196,18 @@ export async function finalizeCheckout(sessionId: string): Promise<FinalizeResul
                     const sellerTransferAmountCents = Math.max(0, Math.round(itemCents * 0.85));
                     const orderShippingAmount =
                         i === 0 ? (totalShippingCents / 100).toFixed(2) : "0.00";
+
+                    // Prorate the bundle-level processing fee by item-price
+                    // share; the LAST order absorbs any rounding remainder so
+                    // the sum across the bundle exactly equals the fee the
+                    // buyer paid at Stripe.
+                    const isLast = i === bundleListingIds.length - 1;
+                    const orderProcessingFeeCents = isLast
+                        ? feeRemainingCents
+                        : totalItemCentsForFee > 0
+                            ? Math.round((totalProcessingFeeCents * itemCents) / totalItemCentsForFee)
+                            : 0;
+                    feeRemainingCents -= orderProcessingFeeCents;
 
                     await (tx as any).order.create({
                         data: {
@@ -194,6 +228,7 @@ export async function finalizeCheckout(sessionId: string): Promise<FinalizeResul
                             seller_transfer_status: "PENDING_HOLD",
                             seller_transfer_amount_cents: sellerTransferAmountCents,
                             seller_transfer_currency: sellerTransferCurrency,
+                            processing_fee_cents: orderProcessingFeeCents,
                         },
                     });
                 }
@@ -364,6 +399,7 @@ export async function finalizeCheckout(sessionId: string): Promise<FinalizeResul
                     : Math.round(checkoutSession.amount_total || 0);
                 const sellerTransferAmountCents = Math.max(0, Math.round(itemAmountCents * 0.85));
                 const sellerTransferCurrency = (checkoutSession.currency || "usd").toLowerCase();
+                const processingFeeCents = Number(metadata.processingFeeCents || "0") || 0;
 
                 order = await (tx as any).order.create({
                     data: {
@@ -385,6 +421,7 @@ export async function finalizeCheckout(sessionId: string): Promise<FinalizeResul
                         seller_transfer_status: "PENDING_HOLD",
                         seller_transfer_amount_cents: sellerTransferAmountCents,
                         seller_transfer_currency: sellerTransferCurrency,
+                        processing_fee_cents: processingFeeCents,
                     },
                     include: ORDER_WITH_DETAILS_INCLUDE,
                 });
@@ -571,18 +608,40 @@ export async function finalizeCheckoutByPaymentIntent(paymentIntentId: string): 
                 });
 
                 const totalShippingCents = Number(metadata.shippingAmountCents || "0") || 0;
+                const totalProcessingFeeCents = Number(metadata.processingFeeCents || "0") || 0;
                 const sellerTransferCurrency = (paymentIntent.currency || "usd").toLowerCase();
 
-                for (let i = 0; i < bundleListingIds.length; i++) {
-                    const lid = bundleListingIds[i];
+                // Pass 1: resolve per-listing effective prices up front so we
+                // can prorate the bundle-level Stripe processing fee across
+                // per-listing Order rows by item-price share.
+                type BundlePricing = {
+                    itemCents: number;
+                    originalCents: number;
+                    discountCents: number;
+                    promotionCampaignId: string | null;
+                };
+                const bundlePricingByListing = new Map<string, BundlePricing>();
+                let totalItemCentsForFee = 0;
+                for (const lid of bundleListingIds) {
                     const lst = currentListings.find((l) => l.id === lid)!;
                     const originalCents = Math.round(Number(lst.price) * 100);
-
                     // Same recompute-at-finalize pattern as the web bundle
                     // path above. See notes there.
                     const ep = await getEffectivePriceForListing(lid);
-                    const itemCents = ep.effectiveCents;
-                    const discountCents = originalCents - itemCents;
+                    bundlePricingByListing.set(lid, {
+                        itemCents: ep.effectiveCents,
+                        originalCents,
+                        discountCents: originalCents - ep.effectiveCents,
+                        promotionCampaignId: ep.promotionCampaignId ?? null,
+                    });
+                    totalItemCentsForFee += ep.effectiveCents;
+                }
+                let feeRemainingCents = totalProcessingFeeCents;
+
+                for (let i = 0; i < bundleListingIds.length; i++) {
+                    const lid = bundleListingIds[i];
+                    const bp = bundlePricingByListing.get(lid)!;
+                    const { itemCents, originalCents, discountCents, promotionCampaignId } = bp;
 
                     const newPurchase = await tx.purchase.create({
                         data: {
@@ -595,7 +654,7 @@ export async function finalizeCheckoutByPaymentIntent(paymentIntentId: string): 
                                 ? {
                                       original_amount: originalCents / 100,
                                       discount_amount: discountCents / 100,
-                                      promotion_campaign_id: ep.promotionCampaignId ?? undefined,
+                                      promotion_campaign_id: promotionCampaignId ?? undefined,
                                   }
                                 : {}),
                         },
@@ -607,6 +666,18 @@ export async function finalizeCheckoutByPaymentIntent(paymentIntentId: string): 
                     // the cost to one row to keep per-order totals honest.
                     const orderShippingAmount =
                         i === 0 ? (totalShippingCents / 100).toFixed(2) : "0.00";
+
+                    // Prorate the bundle-level processing fee by item-price
+                    // share; the LAST order absorbs the rounding remainder so
+                    // the sum across the bundle exactly equals what Stripe
+                    // charged the buyer.
+                    const isLast = i === bundleListingIds.length - 1;
+                    const orderProcessingFeeCents = isLast
+                        ? feeRemainingCents
+                        : totalItemCentsForFee > 0
+                            ? Math.round((totalProcessingFeeCents * itemCents) / totalItemCentsForFee)
+                            : 0;
+                    feeRemainingCents -= orderProcessingFeeCents;
 
                     await (tx as any).order.create({
                         data: {
@@ -627,6 +698,7 @@ export async function finalizeCheckoutByPaymentIntent(paymentIntentId: string): 
                             seller_transfer_status: "PENDING_HOLD",
                             seller_transfer_amount_cents: sellerTransferAmountCents,
                             seller_transfer_currency: sellerTransferCurrency,
+                            processing_fee_cents: orderProcessingFeeCents,
                         },
                     });
                 }
@@ -775,6 +847,7 @@ export async function finalizeCheckoutByPaymentIntent(paymentIntentId: string): 
                     : Math.round(paymentIntent.amount || 0);
                 const sellerTransferAmountCents = Math.max(0, Math.round(itemAmountCents * 0.85));
                 const sellerTransferCurrency = (paymentIntent.currency || "usd").toLowerCase();
+                const processingFeeCents = Number(metadata.processingFeeCents || "0") || 0;
 
                 // Same audit fields as the web session single-item path.
                 const originalItemCents = metadata.originalItemAmountCents
@@ -829,6 +902,7 @@ export async function finalizeCheckoutByPaymentIntent(paymentIntentId: string): 
                         seller_transfer_status: "PENDING_HOLD",
                         seller_transfer_amount_cents: sellerTransferAmountCents,
                         seller_transfer_currency: sellerTransferCurrency,
+                        processing_fee_cents: processingFeeCents,
                     },
                     include: ORDER_WITH_DETAILS_INCLUDE,
                 });
