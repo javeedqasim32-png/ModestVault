@@ -10,6 +10,7 @@ import { getShipmentRateById, getShipmentRates } from "@/lib/shippo";
 import { stripe } from "@/lib/stripe";
 import { computeProcessingFeeCents } from "@/lib/fees";
 import { applyPromotionCodeDiscount, validatePromotionCode } from "@/lib/promotion-codes";
+import { getParcelForListing, getParcelForBundle } from "@/lib/parcel-sizes";
 import { normalizeUsPhoneInput } from "@/lib/phone";
 import { hasCarrierPhoneLength } from "@/lib/phone";
 import { redirect } from "next/navigation";
@@ -183,7 +184,11 @@ export async function getShippingRatesForListingByUserId(
             sellerAddress: sellerOrigin.sellerAddress,
             sellerName: sellerOrigin.sellerName,
             sellerEmail: sellerOrigin.sellerEmail,
-            sellerPhone: sellerOrigin.sellerPhone
+            sellerPhone: sellerOrigin.sellerPhone,
+            // Style-scaled parcel: Bridal / Formal Abayas + Dresses get a
+            // heavier box; excluded categories (Kaftans/Sarees/Suits/
+            // Accessories) always stay at the default. See parcel-sizes.ts.
+            parcel: getParcelForListing({ category: listing.category, style: listing.style }),
         });
 
         return { success: true as const, shipmentId: ratesData.shipmentId, rates: ratesData.rates };
@@ -785,6 +790,11 @@ export async function getShippingRatesForBundleByUserId(
             sellerName: sellerOrigin.sellerName,
             sellerEmail: sellerOrigin.sellerEmail,
             sellerPhone: sellerOrigin.sellerPhone,
+            // Bundle parcel: weight summed, dimensions take max-per-axis
+            // across items with a ceiling clamp. See parcel-sizes.ts.
+            parcel: getParcelForBundle(
+                listings.map((l) => ({ category: l.category, style: l.style })),
+            ),
         });
 
         return { success: true as const, shipmentId: ratesData.shipmentId, rates: ratesData.rates };

@@ -51,7 +51,8 @@ export async function getShipmentRates({
     sellerAddress,
     sellerName,
     sellerEmail,
-    sellerPhone
+    sellerPhone,
+    parcel,
 }: {
     buyerAddress: any;
     buyerName: string;
@@ -61,6 +62,10 @@ export async function getShipmentRates({
     sellerName: string;
     sellerEmail?: string;
     sellerPhone?: string;
+    // Optional per-shipment parcel. Falls back to the one-size-fits-all
+    // STANDARD_PARCEL if the caller doesn't compute a listing-specific
+    // one — keeps legacy callers (scripts, tests) working unchanged.
+    parcel?: typeof STANDARD_PARCEL;
 }) {
     const addressTo = sanitizeAddress(buyerAddress, buyerName, buyerEmail, buyerPhone);
     const addressFrom = sanitizeAddress(sellerAddress, sellerName, sellerEmail, sellerPhone);
@@ -68,7 +73,7 @@ export async function getShipmentRates({
     const shipment = await shippo.shipments.create({
         addressFrom,
         addressTo,
-        parcels: [STANDARD_PARCEL],
+        parcels: [parcel ?? STANDARD_PARCEL],
         async: false
     });
 
