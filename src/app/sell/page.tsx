@@ -5,7 +5,18 @@ import { prisma } from "@/lib/prisma";
 import { buildS3ImageUrl, getS3BucketName } from "@/lib/s3";
 import { redirect } from "next/navigation";
 import { getUnreadNotificationCountsByType } from "@/app/actions/notifications";
+import { buildPageMetadata } from "@/lib/seo/metadata";
 import SellPageClient from "./SellPageClient";
+
+// Metadata for the sell/listings page. Redirect-to-login happens
+// dynamically inside the page component; the metadata still gets
+// crawled by anyone linking to /sell externally.
+export const metadata = buildPageMetadata({
+    title: "Sell Modest Wear",
+    description:
+        "Sell your preloved abayas, kaftans, hijabs, and Pakistani bridal wear on Modaire. Reach a global community of modest fashion buyers.",
+    path: "/sell",
+});
 
 type SellAnalytics = {
     totalListings: number;

@@ -3,8 +3,10 @@ import { notFound } from "next/navigation";
 import { auth } from "@/auth";
 import { addToCartAndRedirect } from "@/app/actions/cart";
 import { getFavoriteListingIdsForSessionUser } from "@/app/actions/favorites";
-import { getOrderedListingGallery } from "@/lib/listing-images";
+import { getOrderedListingGallery, getPrimaryListingImage } from "@/lib/listing-images";
 import { getEffectivePriceForListing } from "@/lib/promotions/get-effective-price";
+import { buildPageMetadata } from "@/lib/seo/metadata";
+import { JsonLd, breadcrumbJsonLd, productJsonLd } from "@/lib/seo/json-ld";
 import { Pencil, Star, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import RecentlyViewedTracker from "@/components/marketplace/RecentlyViewedTracker";
@@ -19,6 +21,46 @@ import MessageSellerButton from "@/components/listings/MessageSellerButton";
 import { getUserSlugMap } from "@/lib/user-slugs";
 
 export const dynamic = "force-dynamic";
+
+// Per-listing metadata + OG card. Google shows title/description in
+// search results and social crawlers (Facebook, iMessage, Twitter)
+// pull the OG image + title/description for link previews. Slightly
+// slimmer prisma query than the page below — we don't need the
+// reviews tree for meta tags.
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+    const { id } = await params;
+    const listing = await prisma.listing.findUnique({
+        where: { id },
+        include: {
+            images: {
+                orderBy: { imageOrder: "asc" },
+                take: 1,
+                select: { imageUrl: true, thumbUrl: true, mediumUrl: true, imageOrder: true },
+            },
+        },
+    });
+    if (!listing) {
+        return buildPageMetadata({
+            title: "Listing not found",
+            description: "This listing is no longer available on Modaire.",
+            path: `/listings/${id}`,
+        });
+    }
+    const primaryImage = getPrimaryListingImage(listing, "detail");
+    const cleanDescription = (listing.description || "").replace(/\s+/g, " ").trim();
+    // Meta descriptions are truncated by search engines around 160
+    // chars — trim + append price so the snippet is informative even
+    // when it gets cut.
+    const trimmedDescription = cleanDescription.length > 140
+        ? cleanDescription.slice(0, 137) + "..."
+        : cleanDescription || `${listing.brand ? listing.brand + " " : ""}${listing.category}${listing.size ? ", size " + listing.size : ""} on Modaire.`;
+    return buildPageMetadata({
+        title: listing.title,
+        description: `${trimmedDescription} $${Number(listing.price).toFixed(2)} on Modaire — modest fashion marketplace.`,
+        path: `/listings/${id}`,
+        image: primaryImage || undefined,
+    });
+}
 
 const MEASUREMENTS_MARKER = "\n\nMeasurements:\n";
 
@@ -122,6 +164,28 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
 
     return (
         <div className="min-h-screen bg-[#EFE7DE]">
+            {/* Product schema — drives price + availability + condition
+                rich snippets in Google search results. Breadcrumb schema
+                shows Home > Browse > Listing above the URL in the SERP. */}
+            <JsonLd
+                data={productJsonLd({
+                    id: listing.id,
+                    title: listing.title,
+                    description: cleanDescription,
+                    price: Number(effectivePrice.effectiveCents) / 100,
+                    imageUrls: orderedImages.map((img) => img.mediumUrl || img.originalUrl),
+                    brand: listing.brand,
+                    category: listing.category,
+                    status: listing.status,
+                })}
+            />
+            <JsonLd
+                data={breadcrumbJsonLd([
+                    { name: "Home", path: "/" },
+                    { name: "Browse", path: "/browse" },
+                    { name: listing.title, path: `/listings/${listing.id}` },
+                ])}
+            />
             <RecentlyViewedTracker listingId={listing.id} viewerId={session?.user?.id ?? null} />
             <ViewContentPixel
                 listingId={listing.id}

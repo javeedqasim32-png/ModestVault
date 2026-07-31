@@ -1,7 +1,20 @@
 import Link from "next/link";
 import Image from "next/image";
 import { ArrowRight, Heart } from "lucide-react";
+import { buildPageMetadata } from "@/lib/seo/metadata";
+import { toSlug } from "@/lib/seo/landing-pages";
 import { getPrimaryListingImage } from "@/lib/listing-images";
+
+// Homepage metadata. Weaves the primary + category + cultural keywords
+// into the description so Google matches Modaire against a spread of
+// search queries — not just brand searches. Source of truth for the
+// phrases lives in src/lib/seo/keywords.ts.
+export const metadata = buildPageMetadata({
+    title: "Modest Fashion Marketplace",
+    description:
+        "Modaire is the modest fashion marketplace for preloved and new abayas, kaftans, hijabs, shalwar kameez, and Pakistani bridal wear. Shop sustainable, second-hand modest clothing from a curated South Asian community.",
+    path: "/",
+});
 import { resolveEditorialMediaUrl } from "@/lib/editorial-media";
 import { prisma } from "@/lib/prisma";
 import FavoriteButton from "@/components/marketplace/FavoriteButton";
@@ -253,12 +266,30 @@ export default async function Home() {
       <HomeBackRefresh />
       {showWelcome ? <WelcomeModal /> : null}
       <div className="mx-auto flex w-full max-w-[1360px] flex-col overflow-hidden bg-[#f6f1e8] sm:rounded-[2rem] sm:border sm:border-border/80 sm:shadow-[0_35px_80px_rgba(114,86,67,0.10)]">
+        {/* SEO hero. The H1 + intro paragraph is the highest-ranking
+            body copy on the site — it's what Google reads to decide
+            whether Modaire matches modest-wear / bridal / kaftans /
+            hijab queries. Keeps visual weight modest so it doesn't
+            disrupt the editorial category-grid design below. */}
+        <section className="border-b border-border/80 bg-transparent px-4 pt-6 pb-4 text-center sm:px-6 sm:pt-8 sm:pb-6 lg:px-10 lg:pt-10 lg:pb-8">
+          <h1 className={`${cormorantHeading.className} mx-auto max-w-3xl text-[26px] font-medium leading-[1.1] text-foreground sm:text-[32px] lg:text-[40px]`}>
+            The Modest Fashion Marketplace
+          </h1>
+          <p className="mx-auto mt-2 max-w-2xl text-[13px] leading-relaxed text-muted-foreground sm:mt-3 sm:text-[14px]">
+            Buy and sell preloved abayas, kaftans, hijabs, Pakistani bridal wear, shalwar kameez, and sustainable modest fashion from a curated community of South Asian sellers.
+          </p>
+        </section>
         <section className="bg-transparent px-4 pb-6 pt-8 sm:border-b sm:border-border/80 sm:px-6 sm:py-6 lg:px-10">
           <div className="grid grid-cols-5 gap-3 md:grid-cols-5 lg:flex lg:flex-wrap lg:justify-center lg:gap-8 xl:justify-between xl:gap-6">
             {categories.map((category) => (
               <Link
                 key={category.name}
-                href={`/browse?styles=${encodeURIComponent(category.name)}`}
+                // Point at the style landing page rather than a filtered
+                // browse URL — landing pages have a unique H1 + intro +
+                // CollectionPage schema tuned to rank on that style's
+                // target keywords. Linking here from the homepage
+                // upgrades their crawl priority in Google's eyes.
+                href={`/style/${toSlug(category.name)}`}
                 className="group text-center lg:w-[152px] xl:w-[170px]"
               >
                 {category.image && (

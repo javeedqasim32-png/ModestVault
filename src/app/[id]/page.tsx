@@ -14,6 +14,7 @@ import { getSlugToUserMap } from "@/lib/user-slugs";
 import { auth } from "@/auth";
 import FollowButton from "@/components/marketplace/FollowButton";
 import { getFollowCounts, checkIsFollowing } from "@/app/actions/follows";
+import { buildPageMetadata } from "@/lib/seo/metadata";
 
 export const dynamic = "force-dynamic";
 
@@ -74,6 +75,47 @@ const sellerSelect = {
     },
   },
 };
+
+// Per-seller metadata + OG card. Uses the URL slug (or raw id) as the
+// path so canonical + og:url match how buyers actually reached the
+// page. Falls back to a generic title if the seller doesn't exist —
+// notFound() below will 404 for the human, but the meta still needs
+// to return SOMETHING to Next.js.
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+    const { id } = await params;
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const slugToUserMap = await getSlugToUserMap();
+    const userId = slugToUserMap.get(id.toLowerCase()) || (uuidRegex.test(id) ? id : null);
+    const seller = userId
+        ? await prisma.user.findUnique({
+              where: { id: userId },
+              select: {
+                  first_name: true,
+                  last_name: true,
+                  profile_image: true,
+                  _count: { select: { listings: { where: { status: "AVAILABLE" } } } },
+              },
+          })
+        : null;
+    if (!seller) {
+        return buildPageMetadata({
+            title: "Seller not found",
+            description: "This seller profile is not available on Modaire.",
+            path: `/${id}`,
+        });
+    }
+    const sellerFullName = `${seller.first_name} ${seller.last_name}`.trim() || "Modaire Seller";
+    const activeCount = seller._count.listings;
+    return buildPageMetadata({
+        title: `${sellerFullName}'s Shop`,
+        description:
+            activeCount > 0
+                ? `Browse ${activeCount} modest fashion listing${activeCount === 1 ? "" : "s"} from ${sellerFullName} on Modaire — preloved abayas, kaftans, hijabs, and more.`
+                : `${sellerFullName}'s shop on Modaire — the modest fashion marketplace.`,
+        path: `/${id}`,
+        image: seller.profile_image || undefined,
+    });
+}
 
 export default async function SellerProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

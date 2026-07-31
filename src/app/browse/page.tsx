@@ -4,6 +4,17 @@ import Image from "next/image";
 import { Package } from "lucide-react";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { buildPageMetadata } from "@/lib/seo/metadata";
+import { JsonLd, breadcrumbJsonLd } from "@/lib/seo/json-ld";
+
+// Browse page metadata. Category-heavy phrasing since this is where
+// people who searched for a specific garment type land.
+export const metadata = buildPageMetadata({
+    title: "Browse Modest Wear",
+    description:
+        "Browse preloved and new modest fashion — kaftans, abayas, hijabs, shalwar kameez, dresses, and Pakistani bridal wear from the Modaire community.",
+    path: "/browse",
+});
 import { serializeListing } from "@/lib/serialization";
 import { getEffectivePricesForListings } from "@/lib/promotions/get-effective-price";
 import { getUserSlugMap } from "@/lib/user-slugs";
@@ -170,6 +181,12 @@ export default async function BrowsePage({
 
     return (
         <>
+            <JsonLd
+                data={breadcrumbJsonLd([
+                    { name: "Home", path: "/" },
+                    { name: "Browse", path: "/browse" },
+                ])}
+            />
             <div className="min-h-screen bg-[#f4efea] px-4 pb-28 pt-3 sm:hidden">
                 <BrowseFiltersClient appliedFilters={filters} availableOptions={availableOptions} />
 

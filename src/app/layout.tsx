@@ -1,4 +1,4 @@
-import type { Metadata, Viewport } from "next";
+import type { Viewport } from "next";
 import { Inter, Playfair_Display } from "next/font/google";
 import localFont from "next/font/local";
 import Script from "next/script";
@@ -9,6 +9,9 @@ import ScrollToTopOnPathChange from "@/components/layout/ScrollToTopOnPathChange
 import UnpaidEarningsBanner from "@/components/sell/UnpaidEarningsBanner";
 import { MetaPixelRouteTracker } from "@/components/analytics/MetaPixelRouteTracker";
 import { getCachedSession } from "@/lib/session";
+import { buildPageMetadata } from "@/lib/seo/metadata";
+import { SITE_CONFIG, SITE_URL } from "@/lib/seo/site";
+import { JsonLd, organizationJsonLd, webSiteJsonLd } from "@/lib/seo/json-ld";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const playfair = Playfair_Display({ subsets: ["latin"], variable: "--font-playfair" });
@@ -30,37 +33,24 @@ const cormorantLocal = localFont({
   display: "swap",
 });
 
-export const metadata: Metadata = {
-  title: "Modaire Modest Fashion Marketplace",
-  description: "Shop the latest modest fashion — curated collections, premium quality, and global community.",
+export const metadata = {
+  // metadataBase resolves all relative URLs (og:image from
+  // opengraph-image.tsx, canonicals, etc.) against the production
+  // origin so social crawlers don't get accidental localhost links.
+  metadataBase: new URL(SITE_URL),
+  ...buildPageMetadata({
+    title: null, // root layout — use the fullName ("Modaire — Modest Fashion Marketplace")
+    description: SITE_CONFIG.defaultDescription,
+    path: "/",
+    // No explicit image → Next.js's file-based opengraph-image.tsx wins.
+  }),
   appleWebApp: {
     capable: true,
-    statusBarStyle: "default",
-    title: "Modaire",
+    statusBarStyle: "default" as const,
+    title: SITE_CONFIG.name,
   },
   icons: {
     apple: "/apple-touch-icon.png",
-  },
-  openGraph: {
-    title: "Modaire Modest Fashion Marketplace",
-    description: "Shop the latest modest fashion — curated collections, premium quality, and global community.",
-    url: "https://shopmodaire.com",
-    siteName: "Modaire",
-    images: [
-      {
-        url: "https://shopmodaire.com/og-image.png",
-        width: 1200,
-        height: 630,
-        alt: "Modaire",
-      },
-    ],
-    type: "website",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Modaire Modest Fashion marketplace",
-    description: "Shop the latest modest fashion — curated collections, premium quality, and global community.",
-    images: ["https://shopmodaire.com/og-image.png"],
   },
 };
 
@@ -88,6 +78,11 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.variable} ${playfair.variable} ${jostLocal.variable} ${cormorantLocal.variable} font-sans antialiased bg-background text-foreground min-h-screen flex flex-col`}>
+        {/* Site-wide structured data. Google uses these to associate every
+            page under this domain with the Modaire entity + enable the
+            sitelinks searchbox on brand SERPs. */}
+        <JsonLd data={organizationJsonLd()} />
+        <JsonLd data={webSiteJsonLd()} />
         {metaPixelId && (
           <>
             <Script id="meta-pixel-base" strategy="afterInteractive">
