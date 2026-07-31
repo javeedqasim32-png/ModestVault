@@ -155,8 +155,15 @@ export default async function ReviewsPage({
                 <div className="mx-auto w-full max-w-3xl space-y-8">
                     {/* Hero. Rating shown even on 1 review — copy is
                         transparent about the sample size. */}
-                    <header className="text-center">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#8a7667]">
+                    <header className="flex flex-col items-center text-center">
+                        {/* Explicit indent-left equal to the letter-spacing
+                            so the wide-tracked "COMMUNITY" text is visually
+                            centered — otherwise the trailing 0.24em after
+                            the last Y shifts the whole word left of center. */}
+                        <p
+                            className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#8a7667]"
+                            style={{ paddingLeft: "0.24em" }}
+                        >
                             Community
                         </p>
                         <h1 className={`${cormorantHeading.className} mt-3 text-[30px] font-medium leading-[1.1] text-[#2f2925] sm:text-[42px]`}>
@@ -164,7 +171,7 @@ export default async function ReviewsPage({
                         </h1>
                         {/* Two lines with explicit break so the copy
                             matches the mockup regardless of viewport. */}
-                        <p className="mx-auto mt-3 max-w-md text-[14px] leading-relaxed text-[#8a7667]">
+                        <p className="mt-3 max-w-md text-[14px] leading-relaxed text-[#8a7667]">
                             Real stories. Trusted styles.
                             <br />
                             Thank you for being part of the Modaire family.
@@ -264,7 +271,7 @@ export default async function ReviewsPage({
                         param. No client-side JS needed. */}
                     <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
                         <h2 className={`${cormorantHeading.className} text-[22px] font-medium text-[#2f2925]`}>
-                            Voices from our Community
+                            Verified Reviews
                         </h2>
                         {hasReviews ? (
                             <div className="flex items-center gap-1 rounded-full border border-[#e9ddd2] bg-white p-1 text-[12px]">
