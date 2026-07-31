@@ -35,9 +35,17 @@ export function JsonLd({ data }: { data: JsonLdData }) {
  * Site-wide OnlineStore schema. Rendered once in layout.tsx so Google
  * knows Modaire is a marketplace, learns the logo/social handles, and
  * can associate every page under this domain with the same entity.
+ *
+ * When `aggregateRating` is provided (from getReviewAggregate() +
+ * AGGREGATE_MIN_COUNT gate), Google can render star ratings next to
+ * Modaire in the SERP. Omit the field entirely when below threshold
+ * so we don't emit `null`/zero into schema — Google flags missing
+ * required nested fields as errors.
  */
-export function organizationJsonLd(): Record<string, unknown> {
-    return {
+export function organizationJsonLd(opts?: {
+    aggregateRating?: { average: number; count: number };
+}): Record<string, unknown> {
+    const base: Record<string, unknown> = {
         "@context": "https://schema.org",
         "@type": "OnlineStore",
         name: SITE_CONFIG.name,
@@ -51,6 +59,16 @@ export function organizationJsonLd(): Record<string, unknown> {
             // "https://tiktok.com/@shopmodaire",
         ],
     };
+    if (opts?.aggregateRating && opts.aggregateRating.count > 0) {
+        base.aggregateRating = {
+            "@type": "AggregateRating",
+            ratingValue: opts.aggregateRating.average,
+            reviewCount: opts.aggregateRating.count,
+            bestRating: 5,
+            worstRating: 1,
+        };
+    }
+    return base;
 }
 
 /**

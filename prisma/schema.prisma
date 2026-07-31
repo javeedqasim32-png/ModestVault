@@ -60,6 +60,7 @@ model User {
   // signup-form checkbox. Flipped false permanently by /unsubscribe/[token].
   marketing_email_opt_in Boolean @default(true)
   marketingEmailDeliveries MarketingEmailDelivery[]
+  siteReview               SiteReview?
   deleted_at         DateTime?
   deletion_scheduled_purge_at DateTime?
 }
@@ -750,4 +751,30 @@ model MarketingEmailDelivery {
 
   @@unique([broadcast_slug, user_id])
   @@index([broadcast_slug])
+}
+
+// Site-level reviews: anyone with an account can leave one review of
+// the Modaire marketplace itself (distinct from seller reviews and
+// per-listing reviews, which are separate concerns). Reviews are
+// public + auto-published; admins can HIDE any review from the
+// /admin/reviews page with an audit trail.
+//
+// One review per user (enforced via unique constraint on user_id) —
+// users can update or delete their own review at any time. Displays
+// on /reviews and, once count >= 5, feeds AggregateRating schema on
+// the homepage so Google can show star ratings in SERPs.
+model SiteReview {
+    id             String   @id @default(uuid())
+    user_id        String   @unique
+    user           User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+    rating         Int      // 1-5
+    body           String?  // optional free-text; max 500 chars enforced server-side
+    status         String   @default("PUBLISHED") // PUBLISHED | HIDDEN
+    hidden_at      DateTime?
+    hidden_by_id   String?
+    hidden_reason  String?
+    created_at     DateTime @default(now())
+    updated_at     DateTime @updatedAt
+
+    @@index([status, created_at])
 }

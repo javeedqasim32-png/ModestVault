@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { ChevronRight, CircleHelp, CreditCard, FileText, MessageCircle, Package, ShieldCheck, ShoppingBag, Tag, TrendingUp, UserRound, Wallet } from "lucide-react";
+import { ChevronRight, CircleHelp, CreditCard, FileText, MessageCircle, Package, ShieldCheck, ShoppingBag, Star, Tag, TrendingUp, UserRound, Wallet } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -49,6 +49,7 @@ export default async function ProfileDashboard() {
         { label: "Sales", value: "Sold items", icon: TrendingUp, href: "/dashboard/sales", guestIntent: "account" },
         { label: "Earnings", value: "Payout overview", icon: Wallet, href: "/dashboard/earnings", guestIntent: "account" },
         ...(isSeller ? [] : [{ label: "Payouts", value: "Set up payout", icon: CreditCard, href: "/sell/setup", guestIntent: "sell" as const }]),
+        { label: "Reviews", value: "Write a Review", icon: Star, href: "/reviews" },
     ];
 
     return (

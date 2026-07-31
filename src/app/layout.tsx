@@ -12,6 +12,7 @@ import { getCachedSession } from "@/lib/session";
 import { buildPageMetadata } from "@/lib/seo/metadata";
 import { SITE_CONFIG, SITE_URL } from "@/lib/seo/site";
 import { JsonLd, organizationJsonLd, webSiteJsonLd } from "@/lib/seo/json-ld";
+import { getReviewAggregate, AGGREGATE_MIN_COUNT } from "@/lib/site-reviews";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const playfair = Playfair_Display({ subsets: ["latin"], variable: "--font-playfair" });
@@ -74,6 +75,12 @@ export default async function RootLayout({
   const session = await getCachedSession();
   const isAuthed = !!session?.user?.id;
   const metaPixelId = process.env.NEXT_PUBLIC_META_PIXEL_ID;
+  // Site review aggregate — fed into the Organization schema so
+  // Google can render star ratings next to Modaire in SERPs once we
+  // have enough reviews. Below AGGREGATE_MIN_COUNT we omit the
+  // rating entirely to avoid a "1 review" schema flag.
+  const reviewAggregate = await getReviewAggregate();
+  const includeAggregate = reviewAggregate.count >= AGGREGATE_MIN_COUNT;
 
   return (
     <html lang="en">
@@ -81,7 +88,13 @@ export default async function RootLayout({
         {/* Site-wide structured data. Google uses these to associate every
             page under this domain with the Modaire entity + enable the
             sitelinks searchbox on brand SERPs. */}
-        <JsonLd data={organizationJsonLd()} />
+        <JsonLd
+          data={organizationJsonLd(
+            includeAggregate
+              ? { aggregateRating: reviewAggregate }
+              : undefined,
+          )}
+        />
         <JsonLd data={webSiteJsonLd()} />
         {metaPixelId && (
           <>
