@@ -266,16 +266,16 @@ export default async function Home() {
       <HomeBackRefresh />
       {showWelcome ? <WelcomeModal /> : null}
       <div className="mx-auto flex w-full max-w-[1360px] flex-col overflow-hidden bg-[#f6f1e8] sm:rounded-[2rem] sm:border sm:border-border/80 sm:shadow-[0_35px_80px_rgba(114,86,67,0.10)]">
-        {/* SEO hero. The H1 + intro paragraph is the highest-ranking
-            body copy on the site — it's what Google reads to decide
-            whether Modaire matches modest-wear / bridal / kaftans /
-            hijab queries. Keeps visual weight modest so it doesn't
-            disrupt the editorial category-grid design below. */}
-        <section className="border-b border-border/80 bg-transparent px-4 pt-6 pb-4 text-center sm:px-6 sm:pt-8 sm:pb-6 lg:px-10 lg:pt-10 lg:pb-8">
-          <h1 className={`${cormorantHeading.className} mx-auto max-w-3xl text-[26px] font-medium leading-[1.1] text-foreground sm:text-[32px] lg:text-[40px]`}>
-            The Modest Fashion Marketplace
-          </h1>
-          <p className="mx-auto mt-2 max-w-2xl text-[13px] leading-relaxed text-muted-foreground sm:mt-3 sm:text-[14px]">
+        {/* SEO hero — visually hidden via `sr-only` but present in the
+            DOM. Google's crawler + screen readers still read this H1 +
+            intro paragraph (so the rankings win on modest wear / bridal
+            / kaftans / hijab queries stays intact), but sighted buyers
+            see the editorial category grid immediately with no extra
+            text block above it. Legitimate accessibility-first pattern —
+            not the deprecated "hidden text" spam of old SEO. */}
+        <section className="sr-only">
+          <h1>The Modest Fashion Marketplace</h1>
+          <p>
             Buy and sell preloved abayas, kaftans, hijabs, Pakistani bridal wear, shalwar kameez, and sustainable modest fashion from a curated community of South Asian sellers.
           </p>
         </section>
