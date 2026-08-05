@@ -113,14 +113,32 @@ export async function POST(req: Request) {
             newStatus = "RETURNED";
         }
 
+        // 2a. Dedupe: Shippo fires track_updated on every carrier scan (and
+        // re-polls periodically), so without this guard the buyer receives
+        // one email per scan — 10+ per order in the wild. If every order for
+        // this tracking number already had its buyer emailed for this exact
+        // status, bail out entirely: no DB writes, no email fan-out.
+        const alreadyEmailedAllSiblings = orders.every(
+            (o) => (o as { last_tracking_email_status?: string | null }).last_tracking_email_status === status,
+        );
+        if (alreadyEmailedAllSiblings) {
+            console.log(
+                `⏭️ Shippo Webhook: Skipping duplicate ${status} for ${trackingNumber} (already emailed)`,
+            );
+            return NextResponse.json({ received: true, skipped: "duplicate_status" });
+        }
+
         // 3. Update every matching order (bundle siblings share the same
         // tracking number, so updateMany covers them all in one query).
+        // last_tracking_email_status is written here too so the dedupe above
+        // catches the next duplicate webhook for this same status.
         await prisma.order.updateMany({
             where: { tracking_number: trackingNumber },
             data: {
                 shipping_status: newStatus,
                 delivered_at: deliveredAt || undefined,
                 hold_until: holdUntil || undefined,
+                last_tracking_email_status: status,
                 updated_at: new Date()
             }
         });

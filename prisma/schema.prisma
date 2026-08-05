@@ -281,6 +281,14 @@ model Order {
   // and one tracking number — the seller buys the label once and all sibling
   // Orders inherit the label_url / tracking_number / shipping_status.
   batch_id              String?
+  // Last Shippo tracking status we emailed the buyer about. Shippo fires a
+  // `track_updated` webhook on every carrier scan (and on its own periodic
+  // re-polls), so without this guard the buyer gets one email per scan —
+  // easily 10+ per order. The webhook now skips the email + notification
+  // fan-out when the incoming status matches this value. Set on the same
+  // updateMany that writes shipping_status so all bundle siblings stay
+  // aligned. NULL = never emailed (first webhook hit will send + set).
+  last_tracking_email_status  String?
   created_at            DateTime  @default(now())
   updated_at            DateTime  @updatedAt
 
