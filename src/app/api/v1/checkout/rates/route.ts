@@ -62,8 +62,26 @@ export async function POST(req: NextRequest) {
         return apiError("UNAVAILABLE", "No rates returned.");
     }
 
+    // Shippo helper returns each rate as `{id, carrier, serviceLevel, ...}`
+    // (Shippo's native shape). The Flutter client expects `rateId` — remap
+    // here so ShippingRate.fromJson doesn't crash on `null as String`.
+    // Web checkout does its own field mapping in PreCheckoutClient.tsx.
     return NextResponse.json({
         shipmentId: result.shipmentId,
-        rates: result.rates,
+        rates: (result.rates as Array<{
+            id: string;
+            carrier: string;
+            serviceLevel: string;
+            amount: string;
+            currency: string;
+            estimatedDays?: number;
+        }>).map((r) => ({
+            rateId: r.id,
+            carrier: r.carrier,
+            serviceLevel: r.serviceLevel,
+            amount: r.amount,
+            currency: r.currency,
+            estimatedDays: r.estimatedDays,
+        })),
     });
 }
