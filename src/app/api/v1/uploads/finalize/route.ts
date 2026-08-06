@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 const Body = z.object({
     key: z.string().min(1).max(512),
-    purpose: z.enum(["draft", "profile", "message"]),
+    purpose: z.enum(["draft", "profile", "message", "listing"]),
 });
 
 /**
@@ -47,7 +47,13 @@ export async function POST(req: NextRequest) {
     const bucket = getS3BucketName();
     if (!bucket) return apiError("UNAVAILABLE", "S3 bucket is not configured.");
 
-    const expectedPrefix = `${parsed.purpose === "draft" ? "drafts" : parsed.purpose === "profile" ? "profiles" : "messages"}/${principal.id}/`;
+    const prefixForPurpose: Record<typeof parsed.purpose, string> = {
+        draft: "drafts",
+        profile: "profiles",
+        message: "messages",
+        listing: "listings",
+    };
+    const expectedPrefix = `${prefixForPurpose[parsed.purpose]}/${principal.id}/`;
     if (!parsed.key.startsWith(expectedPrefix)) {
         return apiError("FORBIDDEN", "Cannot finalize this upload.");
     }
@@ -79,6 +85,56 @@ export async function POST(req: NextRequest) {
             data: { profile_image: thumbUrl },
         });
         return NextResponse.json({ imageUrl: thumbUrl });
+    }
+
+    // purpose === "listing" — same thumb/medium pipeline as drafts, but
+    // doesn't touch any DB rows. The caller persists the final ordered
+    // image set via PUT /api/v1/seller/listings/[id]/images, which
+    // creates the listingImage rows from these URLs.
+    if (parsed.purpose === "listing") {
+        // listings/<userId>/<listingId>/<file>
+        const listingId = parsed.key.split("/")[2];
+        if (!listingId) {
+            return apiError("INVALID_INPUT", "Malformed listing key.");
+        }
+        const listing = await prisma.listing.findUnique({
+            where: { id: listingId },
+            select: { user_id: true },
+        });
+        if (!listing || listing.user_id !== principal.id) {
+            return apiError("NOT_FOUND", "Listing not found.");
+        }
+
+        const baseKey = parsed.key.replace(/\.[a-z0-9]+$/i, "");
+        const thumbKey = `${baseKey}-thumb.webp`;
+        const mediumKey = `${baseKey}-medium.webp`;
+
+        let thumbUrl: string | null = null;
+        let mediumUrl: string | null = null;
+        try {
+            const thumbBuffer = await sharp(buffer)
+                .rotate()
+                .resize({ width: 300, withoutEnlargement: true })
+                .webp({ quality: 78, effort: 4 })
+                .toBuffer();
+            await uploadFile(thumbBuffer, thumbKey, "image/webp", bucket);
+            thumbUrl = buildS3ImageUrl(thumbKey, bucket);
+        } catch (err) {
+            console.warn("[uploads/finalize] listing thumb failed", err);
+        }
+        try {
+            const mediumBuffer = await sharp(buffer)
+                .rotate()
+                .resize({ width: 800, withoutEnlargement: true })
+                .webp({ quality: 82, effort: 4 })
+                .toBuffer();
+            await uploadFile(mediumBuffer, mediumKey, "image/webp", bucket);
+            mediumUrl = buildS3ImageUrl(mediumKey, bucket);
+        } catch (err) {
+            console.warn("[uploads/finalize] listing medium failed", err);
+        }
+
+        return NextResponse.json({ imageUrl, thumbUrl, mediumUrl });
     }
 
     // purpose === "draft" — mirrors the variants the legacy uploadImagesForListing

@@ -19,10 +19,12 @@ const EXT_FOR_CONTENT_TYPE: Record<string, string> = {
 };
 
 const Body = z.object({
-    purpose: z.enum(["draft", "ai-ref", "profile", "message"]),
+    purpose: z.enum(["draft", "ai-ref", "profile", "message", "listing"]),
     contentType: z.enum(ALLOWED_CONTENT_TYPES),
     /** Only for purpose=draft — owning draft id (must belong to caller). */
     draftId: z.string().min(1).max(64).optional(),
+    /** Only for purpose=listing — owning listing id (must belong to caller). */
+    listingId: z.string().min(1).max(64).optional(),
     /** Only for purpose=ai-ref — slot label (fullOutfit/top/bottom/dupatta/closeup). */
     slot: z.enum(["fullOutfit", "top", "bottom", "dupatta", "closeup"]).optional(),
     /** Optional client hint about the source filename — used only for logging. */
@@ -93,6 +95,25 @@ export async function POST(req: NextRequest) {
         }
         case "message": {
             key = `messages/${userId}/${randomUUID()}.${ext}`;
+            break;
+        }
+        case "listing": {
+            if (!parsed.listingId) {
+                return apiError(
+                    "INVALID_INPUT",
+                    "listingId is required for purpose=listing.",
+                    { listingId: "Required" },
+                );
+            }
+            // Ownership gate — same shape as the draft branch above.
+            const listing = await prisma.listing.findUnique({
+                where: { id: parsed.listingId },
+                select: { user_id: true },
+            });
+            if (!listing || listing.user_id !== userId) {
+                return apiError("NOT_FOUND", "Listing not found.");
+            }
+            key = `listings/${userId}/${parsed.listingId}/${randomUUID()}.${ext}`;
             break;
         }
     }

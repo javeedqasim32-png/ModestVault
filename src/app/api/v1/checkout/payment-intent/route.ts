@@ -3,7 +3,10 @@ import { z } from "zod";
 import { apiError } from "@/lib/api/errors";
 import { parseJsonBody } from "@/lib/api/validate";
 import { requireBearer } from "@/lib/api/bearer-auth";
-import { createPaymentIntentForListingByUserId } from "@/app/actions/checkout";
+import {
+    createPaymentIntentForListingByUserId,
+    createPaymentIntentForBundleByUserId,
+} from "@/app/actions/checkout";
 
 export const dynamic = "force-dynamic";
 
@@ -28,29 +31,32 @@ const SelectedRateSchema = z.object({
     shipmentId: z.string().optional(),
 });
 
-const Body = z.object({
-    listingId: z.string().min(1),
-    address: AddressSchema,
-    selectedRate: SelectedRateSchema,
-});
+const Body = z.union([
+    z.object({
+        listingId: z.string().min(1),
+        address: AddressSchema,
+        selectedRate: SelectedRateSchema,
+    }),
+    z.object({
+        listingIds: z.array(z.string().min(1)).min(2).max(20),
+        address: AddressSchema,
+        selectedRate: SelectedRateSchema,
+    }),
+]);
 
 /**
  * POST /api/v1/checkout/payment-intent
  *
  * Creates a Stripe PaymentIntent + EphemeralKey for the mobile PaymentSheet
- * flow. Returns everything the Flutter `flutter_stripe` SDK needs to
- * present the sheet locally:
+ * flow. Accepts either a single listing or a same-seller bundle:
  *
- *   { paymentIntentId, clientSecret, ephemeralKey, customerId, breakdown }
+ *   Single:  { listingId, address, selectedRate }
+ *   Bundle:  { listingIds: [...], address, selectedRate }
  *
- * The PaymentIntent carries the same metadata Hosted Checkout uses today, so
- * the existing finalize logic in src/lib/checkout-finalize.ts can be lifted
- * to a payment_intent.succeeded webhook + a /api/v1/checkout/finalize
- * confirmation endpoint in a follow-up commit.
- *
- * Single-listing only at the moment; bundle support follows the same shape
- * and ships when the matching createPaymentIntentForBundleByUserId variant
- * lands.
+ * Bundle response also includes `batchId` so the client can correlate the
+ * payment with the N Orders created at finalize-time. Both shapes return
+ * the same PaymentSheet-ready envelope so the Flutter client picks one
+ * code path.
  */
 export async function POST(req: NextRequest) {
     const principal = await requireBearer(req);
@@ -61,12 +67,19 @@ export async function POST(req: NextRequest) {
 
     const address = { ...parsed.address, line2: parsed.address.line2 ?? "" };
 
-    const result = await createPaymentIntentForListingByUserId(
-        principal.id,
-        parsed.listingId,
-        address,
-        parsed.selectedRate,
-    );
+    const result = "listingIds" in parsed
+        ? await createPaymentIntentForBundleByUserId(
+              principal.id,
+              parsed.listingIds,
+              address,
+              parsed.selectedRate,
+          )
+        : await createPaymentIntentForListingByUserId(
+              principal.id,
+              parsed.listingId,
+              address,
+              parsed.selectedRate,
+          );
 
     if ("error" in result && result.error) {
         return apiError("INVALID_INPUT", result.error);
@@ -78,5 +91,6 @@ export async function POST(req: NextRequest) {
         ephemeralKey: result.ephemeralKey,
         customerId: result.customerId,
         breakdown: result.breakdown,
+        batchId: "batchId" in result ? result.batchId : null,
     });
 }

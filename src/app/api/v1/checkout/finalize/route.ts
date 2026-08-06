@@ -40,16 +40,33 @@ export async function POST(req: NextRequest) {
 
     switch (result.status) {
         case "FINALIZED":
-        case "ALREADY_FINALIZED":
-            // Cross-check ownership before returning order details.
+        case "ALREADY_FINALIZED": {
+            // Bundle path — N Orders sharing a batch_id. Cross-check ownership
+            // on the first row (all rows in a bundle share the same buyer).
+            if (result.isBundle && result.bundleOrders && result.bundleOrders.length > 0) {
+                const firstBuyerId = result.bundleOrders[0]?.purchase?.buyer_id;
+                if (firstBuyerId && firstBuyerId !== principal.id) {
+                    return apiError("FORBIDDEN", "This payment doesn't belong to you.");
+                }
+                return NextResponse.json({
+                    status: result.status,
+                    isBundle: true,
+                    batchId: result.batchId ?? null,
+                    orders: result.bundleOrders.map(serializeOrderForMobile),
+                    autoLabelError: result.bundleAutoLabelError ?? null,
+                });
+            }
+            // Single-item path.
             if (result.order?.purchase?.buyer_id && result.order.purchase.buyer_id !== principal.id) {
                 return apiError("FORBIDDEN", "This payment doesn't belong to you.");
             }
             return NextResponse.json({
                 status: result.status,
+                isBundle: false,
                 order: serializeOrderForMobile(result.order),
                 autoLabelError: result.autoLabelError ?? null,
             });
+        }
         case "NOT_PAID":
             return NextResponse.json({ status: result.status, paymentStatus: result.paymentStatus });
         case "ALREADY_SOLD":
