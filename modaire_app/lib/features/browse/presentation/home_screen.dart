@@ -270,7 +270,11 @@ class _CategoriesRow extends StatelessWidget {
     // device width. Each cell flexes to a fair share of the
     // remaining space.
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      // Top padding is larger than the bottom: scale-1.5 makes the artwork
+      // overflow its box upward by ~17px, so the visible head sits ~6px
+      // ABOVE the layout box. At 8px the heads nearly touched the app bar.
+      // The website gives this section pt-8 (32px) for the same reason.
+      padding: const EdgeInsets.fromLTRB(12, 20, 12, 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: categories
@@ -331,8 +335,6 @@ class _CategoryCell extends ConsumerWidget {
                   // against that colour reproduces it. Near-identity on a
                   // cream page — it exists to keep any off-white in the
                   // artwork from reading brighter than the page.
-                  color: ModaireColors.browsePageBg,
-                  colorBlendMode: BlendMode.multiply,
                   placeholder: (_, __) => const SizedBox.shrink(),
                   errorWidget: (_, __, ___) => const Icon(
                     LucideIcons.imageOff,
@@ -348,12 +350,13 @@ class _CategoryCell extends ConsumerWidget {
               textAlign: TextAlign.center,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              // text-[10px] font-semibold tracking-[0.09em] on the website;
-              // 0.09em at 10px is 0.9px of letter spacing.
+              // 9px, not the website's 10px: these cells are ~69px wide
+              // (screen / 5) versus the web's fixed 80px box, so 10px clips
+              // "WESTERN" and "FORMALS". Letter spacing scaled to match.
               style: GoogleFonts.jost(
-                fontSize: 10,
+                fontSize: 9,
                 fontWeight: FontWeight.w600,
-                letterSpacing: 0.9,
+                letterSpacing: 0.8,
                 color: const Color(0xFF5C4A3C),
                 height: 1.2,
               ),

@@ -65,7 +65,16 @@ class ModaireAppBar extends StatelessWidget implements PreferredSizeWidget {
       leadingWidth: canPop ? 44 : 16,
       centerTitle: false,
       titleSpacing: canPop ? 0 : 16,
-      title: const ModaireBrandMark(),
+      // Optical, not geometric, centring. The logo asset is a dense wordmark
+      // over a thin decorative swoosh, so its ink sits ~10% of the canvas
+      // above the image's midpoint — 3.3px at a 32px render height. AppBar
+      // centres the box, which left the wordmark reading noticeably higher
+      // than the action icons beside it. Nudge it back down by that amount.
+      // Transform rather than Padding so the AppBar's height is unaffected.
+      title: Transform.translate(
+        offset: const Offset(0, 3),
+        child: const ModaireBrandMark(),
+      ),
       actions: [
         ...extraActions,
         const TopNavActions(),
