@@ -97,45 +97,92 @@ class _SellerListingPhotosScreenState
   }
 
   Future<void> _addPhoto() async {
-    if (_slots == null || _slots!.length >= _kMaxListingPhotos) return;
+    if (_slots == null) return;
+    final remaining = _kMaxListingPhotos - _slots!.length;
+    if (remaining <= 0) return;
+
+    List<XFile> picked;
     try {
-      final picked = await _picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 88,
-        maxWidth: 2048,
-      );
-      if (picked == null) return;
-      final bytes = await picked.readAsBytes();
-      final contentType = _contentTypeFor(picked.path) ?? 'image/jpeg';
-      final slot = _slots!.length;
-      setState(() => _uploadingSlots.add(slot));
-      final result = await ref.read(uploadRepositoryProvider).uploadListingPhoto(
-            listingId: widget.listingId,
-            bytes: bytes,
-            contentType: contentType,
-          );
+      if (remaining == 1) {
+        // Only one space left — a multi-select sheet would just invite the
+        // user to choose photos we'd have to throw away.
+        final one = await _picker.pickImage(
+          source: ImageSource.gallery,
+          imageQuality: 88,
+          maxWidth: 2048,
+        );
+        picked = one == null ? const [] : [one];
+      } else {
+        picked = await _picker.pickMultiImage(
+          imageQuality: 88,
+          maxWidth: 2048,
+          limit: remaining,
+        );
+      }
+    } catch (_) {
       if (!mounted) return;
-      setState(() {
-        _slots!.add(_UploadedSlot(
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Couldn\'t open your photos')),
+      );
+      return;
+    }
+
+    // `limit` is advisory on some platforms, so trim rather than trust it.
+    final files = picked.take(remaining).toList();
+    if (files.isEmpty || !mounted) return;
+
+    final base = _slots!.length;
+    setState(() => _uploadingSlots
+        .addAll(List.generate(files.length, (i) => base + i)));
+    try {
+      // Future.wait resolves in argument order regardless of which upload
+      // finishes first, so the photos land in the order the seller picked
+      // them. That matters here: slot 0 is the listing's cover image.
+      //
+      // All-or-nothing by design. Appending only the successes would
+      // silently reorder the rest, and on a screen whose whole purpose is
+      // arranging photos that's worse than asking the seller to retry.
+      final uploaded = await Future.wait(files.map((f) async {
+        final bytes = await f.readAsBytes();
+        final contentType = _contentTypeFor(f.path) ?? 'image/jpeg';
+        final result =
+            await ref.read(uploadRepositoryProvider).uploadListingPhoto(
+                  listingId: widget.listingId,
+                  bytes: bytes,
+                  contentType: contentType,
+                );
+        return _UploadedSlot(
           imageUrl: result.publicUrl,
           thumbUrl: result.thumbUrl,
           mediumUrl: result.mediumUrl,
-        ));
-        _uploadingSlots.remove(slot);
+        );
+      }));
+      if (!mounted) return;
+      setState(() {
+        _slots!.addAll(uploaded);
         _dirty = true;
       });
     } on ApiException catch (e) {
       if (!mounted) return;
-      setState(() => _uploadingSlots.clear());
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.message)),
       );
     } catch (_) {
       if (!mounted) return;
-      setState(() => _uploadingSlots.clear());
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Couldn\'t upload that photo')),
+        SnackBar(
+          content: Text(
+            files.length == 1
+                ? 'Couldn\'t upload that photo'
+                : 'Couldn\'t upload those photos',
+          ),
+        ),
       );
+    } finally {
+      if (mounted) {
+        setState(() => _uploadingSlots
+            .removeAll(List.generate(files.length, (i) => base + i)));
+      }
     }
   }
 

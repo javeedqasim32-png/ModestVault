@@ -342,37 +342,70 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
     }
   }
 
+  /// Slots a selection should fill, starting at [slot].
+  ///
+  /// Tapping an OCCUPIED slot means "replace this one", so it returns just
+  /// that slot and the picker stays single-select. Tapping an EMPTY slot
+  /// means "add photos", so it returns that slot plus every other free one
+  /// in order — letting the user pick several at once instead of repeating
+  /// the whole gallery round-trip per photo.
+  List<int> _targetSlotsFrom(int slot) {
+    if (_photos[slot] != null) return [slot];
+    return [
+      slot,
+      for (var i = 0; i < _kMaxPhotos; i++)
+        if (i != slot && _photos[i] == null && !_uploadingSlots.contains(i)) i,
+    ];
+  }
+
   Future<void> _addPhoto(int slot) async {
     debugPrint('[create-listing] _addPhoto tap slot=$slot');
     if (_uploadingSlots.contains(slot)) return;
+
+    final targets = _targetSlotsFrom(slot);
+    List<XFile> picked;
     try {
-      final picked = await _picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 88,
-        maxWidth: 2048,
-      );
-      debugPrint(
-        '[create-listing] picker returned picked=${picked?.path ?? "null"}',
-      );
-      if (picked == null) return;
-      final bytes = await picked.readAsBytes();
-      debugPrint('[create-listing] bytes read len=${bytes.length}');
-      final contentType = _contentTypeFor(picked.path) ?? 'image/jpeg';
-      debugPrint('[create-listing] contentType=$contentType');
-      setState(() => _uploadingSlots.add(slot));
-      // Server-side presign rejects unknown draft ids; ensure the row
-      // exists before the very first upload in a fresh session.
+      if (targets.length == 1) {
+        // Replacing a single photo — don't offer multi-select for it.
+        final one = await _picker.pickImage(
+          source: ImageSource.gallery,
+          imageQuality: 88,
+          maxWidth: 2048,
+        );
+        picked = one == null ? const [] : [one];
+      } else {
+        picked = await _picker.pickMultiImage(
+          imageQuality: 88,
+          maxWidth: 2048,
+          // Cap at the free slots so the picker itself stops the user rather
+          // than us silently discarding extras after they've chosen them.
+          limit: targets.length,
+        );
+      }
+    } catch (e) {
+      debugPrint('[create-listing] picker threw: $e');
+      _setError('Couldn\'t open your photos: $e');
+      return;
+    }
+
+    debugPrint('[create-listing] picker returned ${picked.length} file(s)');
+    if (picked.isEmpty) return;
+
+    // Trim defensively: `limit` is advisory on some platforms.
+    final pairs = <({int slot, XFile file})>[
+      for (var i = 0; i < picked.length && i < targets.length; i++)
+        (slot: targets[i], file: picked[i]),
+    ];
+
+    if (!mounted) return;
+    setState(() => _uploadingSlots.addAll(pairs.map((p) => p.slot)));
+    try {
+      // The draft row must exist before ANY presign, and creating it is not
+      // safe to race — do it once up front rather than inside each upload.
       await _ensureDraftExists();
-      final result = await ref.read(uploadRepositoryProvider).uploadDraftPhoto(
-            draftId: _draftId,
-            bytes: bytes,
-            contentType: contentType,
-          );
-      if (!mounted) return;
-      debugPrint(
-        '[create-listing] upload OK slot=$slot publicUrl=${result.publicUrl} resolved=${resolveAssetUrl(result.publicUrl)}',
-      );
-      setState(() => _photos[slot] = result.publicUrl);
+      // Upload concurrently: four sequential round-trips to S3 is the slow
+      // part of adding photos, and each slot reports its own spinner.
+      await Future.wait(pairs.map(_uploadInto));
     } on ApiException catch (e) {
       debugPrint('[create-listing] ApiException: ${e.code} ${e.message}');
       _setError(e.message);
@@ -380,7 +413,34 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
       debugPrint('[create-listing] upload threw: $e\n$st');
       _setError('Couldn\'t upload that photo: $e');
     } finally {
-      if (mounted) setState(() => _uploadingSlots.remove(slot));
+      if (mounted) {
+        setState(() => _uploadingSlots.removeAll(pairs.map((p) => p.slot)));
+      }
+    }
+  }
+
+  /// Upload one picked file into one slot. Failures are reported but don't
+  /// abort siblings — one bad photo shouldn't discard the rest of a batch.
+  Future<void> _uploadInto(({int slot, XFile file}) pair) async {
+    try {
+      final bytes = await pair.file.readAsBytes();
+      final contentType = _contentTypeFor(pair.file.path) ?? 'image/jpeg';
+      final result = await ref.read(uploadRepositoryProvider).uploadDraftPhoto(
+            draftId: _draftId,
+            bytes: bytes,
+            contentType: contentType,
+          );
+      if (!mounted) return;
+      debugPrint(
+        '[create-listing] upload OK slot=${pair.slot} publicUrl=${result.publicUrl}',
+      );
+      setState(() => _photos[pair.slot] = result.publicUrl);
+    } on ApiException catch (e) {
+      debugPrint('[create-listing] slot ${pair.slot} failed: ${e.message}');
+      _setError(e.message);
+    } catch (e) {
+      debugPrint('[create-listing] slot ${pair.slot} threw: $e');
+      _setError('Couldn\'t upload one of those photos.');
     }
   }
 
