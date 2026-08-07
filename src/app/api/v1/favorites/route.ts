@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/api/errors";
 import { requireBearer } from "@/lib/api/bearer-auth";
 import { serializeListingSummaryForMobile } from "@/lib/api/mobile-serializers";
+import { getEffectivePricesForListings } from "@/lib/promotions/get-effective-price";
 
 export const dynamic = "force-dynamic";
 
@@ -41,9 +42,19 @@ export async function GET(req: NextRequest) {
         },
     });
 
+    const priceMap = await getEffectivePricesForListings(
+        rows.map((row) => ({
+            id: row.listing.id,
+            price: row.listing.price,
+            status: row.listing.status,
+        })),
+    );
+
     return NextResponse.json({
         favorites: rows.map((row) =>
-            serializeListingSummaryForMobile(row.listing),
+            serializeListingSummaryForMobile(row.listing, {
+                effectivePrice: priceMap.get(row.listing.id),
+            }),
         ),
     });
 }

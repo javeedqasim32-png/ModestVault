@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/api/errors";
 import { serializeListingDetailForMobile } from "@/lib/api/mobile-serializers";
+import { getEffectivePriceForListing } from "@/lib/promotions/get-effective-price";
 
 export const dynamic = "force-dynamic";
 
@@ -57,7 +58,11 @@ export async function GET(
         .update({ where: { id }, data: { view_count: { increment: 1 } } })
         .catch(() => {});
 
+    const effectivePrice = await getEffectivePriceForListing(listing.id);
+
     return NextResponse.json({
-        listing: serializeListingDetailForMobile(listing, seller),
+        listing: serializeListingDetailForMobile(listing, seller, {
+            effectivePrice,
+        }),
     });
 }

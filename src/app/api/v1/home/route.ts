@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeListingSummaryForMobile } from "@/lib/api/mobile-serializers";
+import { getEffectivePricesForListings } from "@/lib/promotions/get-effective-price";
 
 export const dynamic = "force-dynamic";
 
@@ -100,6 +101,14 @@ export async function GET() {
               },
           })
         : [];
+    // Trending and featured overlap, so resolve both rails in one bulk call
+    // and dedupe by id — getEffectivePricesForListings keys off listing id.
+    const homePriceMap = await getEffectivePricesForListings(
+        [...new Map([...trendingRows, ...featuredRows].map((l) => [l.id, l])).values()].map(
+            (l) => ({ id: l.id, price: l.price, status: l.status }),
+        ),
+    );
+
     const topSellerById = new Map(topSellerUsers.map((u) => [u.id, u]));
     const featuredSellers = topSellerStats
         .map((stat) => {
@@ -122,8 +131,12 @@ export async function GET() {
             label: c.name,
             imageUrl: c.image,
         })),
-        trending: trendingRows.map(serializeListingSummaryForMobile),
-        featured: featuredRows.map(serializeListingSummaryForMobile),
+        trending: trendingRows.map((l) =>
+            serializeListingSummaryForMobile(l, { effectivePrice: homePriceMap.get(l.id) }),
+        ),
+        featured: featuredRows.map((l) =>
+            serializeListingSummaryForMobile(l, { effectivePrice: homePriceMap.get(l.id) }),
+        ),
         featuredSellers,
     });
 }

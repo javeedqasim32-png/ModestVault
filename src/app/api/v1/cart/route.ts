@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/api/errors";
 import { requireBearer } from "@/lib/api/bearer-auth";
 import { serializeListingSummaryForMobile } from "@/lib/api/mobile-serializers";
+import { getEffectivePricesForListings } from "@/lib/promotions/get-effective-price";
 
 export const dynamic = "force-dynamic";
 
@@ -50,9 +51,19 @@ export async function GET(req: NextRequest) {
         },
     });
 
+    const priceMap = await getEffectivePricesForListings(
+        rows.map((row) => ({
+            id: row.listing.id,
+            price: row.listing.price,
+            status: row.listing.status,
+        })),
+    );
+
     const items = rows.map((row) => ({
         cartItemId: row.id,
-        listing: serializeListingSummaryForMobile(row.listing),
+        listing: serializeListingSummaryForMobile(row.listing, {
+            effectivePrice: priceMap.get(row.listing.id),
+        }),
         // Mobile cart UI groups by seller and renders one section per
         // seller (with a "Ships from <Seller>" subtitle), so we attach
         // the seller summary inline rather than making the client do a
@@ -66,9 +77,16 @@ export async function GET(req: NextRequest) {
         addedAt: row.created_at.toISOString(),
     }));
 
+    // Sum the discounted price where a campaign applies, so the cart
+    // subtotal reconciles with what the PaymentIntent actually charges
+    // (createPaymentIntentFor*ByUserId resolves the same effective price).
     const subtotalCents = items.reduce((sum, it) => {
         if (it.listing.status !== "AVAILABLE") return sum;
-        return sum + Math.round(it.listing.price * 100);
+        return (
+            sum +
+            (it.listing.effectivePrice?.effectiveCents ??
+                Math.round(it.listing.price * 100))
+        );
     }, 0);
 
     return NextResponse.json({

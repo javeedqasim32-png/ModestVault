@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/api/errors";
 import { parseJsonBody } from "@/lib/api/validate";
 import { serializeListingSummaryForMobile } from "@/lib/api/mobile-serializers";
+import { getEffectivePricesForListings } from "@/lib/promotions/get-effective-price";
 
 export const dynamic = "force-dynamic";
 
@@ -49,11 +50,19 @@ export async function POST(req: NextRequest) {
         },
     });
 
+    const priceMap = await getEffectivePricesForListings(
+        rows.map((r) => ({ id: r.id, price: r.price, status: r.status })),
+    );
+
     const byId = new Map(rows.map((r) => [r.id, r]));
     const ordered = parsed.ids
         .map((id) => byId.get(id))
         .filter((r): r is NonNullable<typeof r> => r != null)
-        .map(serializeListingSummaryForMobile);
+        .map((r) =>
+            serializeListingSummaryForMobile(r, {
+                effectivePrice: priceMap.get(r.id),
+            }),
+        );
 
     return NextResponse.json({ listings: ordered });
 }

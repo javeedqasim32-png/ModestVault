@@ -13,6 +13,7 @@
 
 import type { Prisma } from "@prisma/client";
 import { getListingRejectionMessage } from "@/lib/listing-rejection-reasons";
+import type { EffectivePrice } from "@/lib/promotions/get-effective-price";
 
 type ListingImageRow = {
     /** Only present when the caller includes `id: true` in its image select.
@@ -444,8 +445,18 @@ function primaryImageOf(listing: ListingWithImages) {
     };
 }
 
-/** Lightweight summary used on browse/search grids. */
-export function serializeListingSummaryForMobile(listing: ListingWithImages) {
+/** Lightweight summary used on browse/search grids.
+ *
+ * `opts.effectivePrice` comes from getEffectivePricesForListings — the same
+ * helper checkout uses, so the tile price and the charged amount can't drift.
+ * Emitted only when a discount actually applies; otherwise null, and the
+ * client renders the bare `price`. Callers that don't resolve promotions get
+ * null too, which is why every grid-feeding route below passes it.
+ */
+export function serializeListingSummaryForMobile(
+    listing: ListingWithImages,
+    opts?: { effectivePrice?: EffectivePrice | null },
+) {
     const img = primaryImageOf(listing);
     return {
         id: listing.id,
@@ -461,13 +472,27 @@ export function serializeListingSummaryForMobile(listing: ListingWithImages) {
         thumbUrl: img.thumbUrl ?? img.imageUrl,
         mediumUrl: img.mediumUrl ?? img.imageUrl,
         createdAt: listing.created_at.toISOString(),
+        effectivePrice:
+            opts?.effectivePrice && opts.effectivePrice.discountPercent > 0
+                ? {
+                      originalCents: opts.effectivePrice.originalCents,
+                      effectiveCents: opts.effectivePrice.effectiveCents,
+                      discountPercent: opts.effectivePrice.discountPercent,
+                  }
+                : null,
     };
 }
 
-/** Full payload for the listing detail screen. */
+/** Full payload for the listing detail screen.
+ *
+ * Carries the same `effectivePrice` contract as the summary serializer —
+ * without it, tapping a discounted tile would land on a detail page quoting
+ * the undiscounted price.
+ */
 export function serializeListingDetailForMobile(
     listing: ListingWithImages,
     seller: SellerRow | null,
+    opts?: { effectivePrice?: EffectivePrice | null },
 ) {
     const sortedImages = [...listing.images].sort(
         (a, b) => a.imageOrder - b.imageOrder,
@@ -488,6 +513,14 @@ export function serializeListingDetailForMobile(
         isFeatured: listing.is_featured,
         viewCount: listing.view_count,
         createdAt: listing.created_at.toISOString(),
+        effectivePrice:
+            opts?.effectivePrice && opts.effectivePrice.discountPercent > 0
+                ? {
+                      originalCents: opts.effectivePrice.originalCents,
+                      effectiveCents: opts.effectivePrice.effectiveCents,
+                      discountPercent: opts.effectivePrice.discountPercent,
+                  }
+                : null,
         images: sortedImages.map((img) => ({
             id: img.id,
             imageUrl: img.imageUrl,

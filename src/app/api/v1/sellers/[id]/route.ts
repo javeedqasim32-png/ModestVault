@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/api/errors";
 import { getSlugToUserMap } from "@/lib/user-slugs";
 import { serializeListingSummaryForMobile } from "@/lib/api/mobile-serializers";
+import { getEffectivePricesForListings } from "@/lib/promotions/get-effective-price";
 import { requireBearer } from "@/lib/api/bearer-auth";
 
 export const dynamic = "force-dynamic";
@@ -97,6 +98,10 @@ export async function GET(
         (l) => l.status === "AVAILABLE",
     );
 
+    const sellerPriceMap = await getEffectivePricesForListings(
+        liveListings.map((l) => ({ id: l.id, price: l.price, status: l.status })),
+    );
+
     const ratingAvg = seller.reviewsReceived.length
         ? Number(
               (
@@ -120,7 +125,11 @@ export async function GET(
             rating: ratingAvg,
             reviewCount: allReviewCount,
         },
-        listings: liveListings.map(serializeListingSummaryForMobile),
+        listings: liveListings.map((l) =>
+            serializeListingSummaryForMobile(l, {
+                effectivePrice: sellerPriceMap.get(l.id),
+            }),
+        ),
         reviews: seller.reviewsReceived.map((r) => ({
             id: r.id,
             rating: r.rating,
