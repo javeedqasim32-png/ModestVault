@@ -303,21 +303,41 @@ class _CategoryCell extends ConsumerWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Mirrors src/app/page.tsx: `object-contain mix-blend-multiply
+            // scale-[1.5]` in a plain square box. Deliberately NOT clipped to
+            // an oval — the category PNGs are RGBA with the blush circle
+            // already baked in, so the website draws no circle of its own.
+            // Clipping and cropping to `cover` was cutting into artwork that
+            // is meant to sit whole inside the frame, which is most of why
+            // the two looked different.
             AspectRatio(
               aspectRatio: 1,
-              child: ClipOval(
+              // NOT clipped. The website's box carries no overflow-hidden, so
+              // its scaled image spills past the frame into the surrounding
+              // whitespace and stays fully visible. Clipping here cropped the
+              // models' heads, because scale-1.5 genuinely overflows: the
+              // artwork's subject is 613x705 inside a 975 square, so the
+              // height-limited ceiling is 975/705 = 1.38x, not 1.5. The web
+              // renders that overflow rather than hiding it, and the ~4% that
+              // spills top and bottom is absorbed by the row padding and the
+              // gap above the label.
+              child: Transform.scale(
+                scale: 1.5,
                 child: CachedNetworkImage(
                   imageUrl: resolveAssetUrl(category.imageUrl),
-                  fit: BoxFit.cover,
-                  placeholder: (_, __) =>
-                      Container(color: ModaireColors.tileImageBg),
-                  errorWidget: (_, __, ___) => Container(
-                    color: ModaireColors.tileImageBg,
-                    child: const Icon(
-                      LucideIcons.imageOff,
-                      color: ModaireColors.tileTextSubtle,
-                      size: 22,
-                    ),
+                  fit: BoxFit.contain,
+                  // CSS mix-blend-multiply blends with the backdrop; the
+                  // backdrop here is the flat page background, so multiplying
+                  // against that colour reproduces it. Near-identity on a
+                  // cream page — it exists to keep any off-white in the
+                  // artwork from reading brighter than the page.
+                  color: ModaireColors.browsePageBg,
+                  colorBlendMode: BlendMode.multiply,
+                  placeholder: (_, __) => const SizedBox.shrink(),
+                  errorWidget: (_, __, ___) => const Icon(
+                    LucideIcons.imageOff,
+                    color: ModaireColors.tileTextSubtle,
+                    size: 22,
                   ),
                 ),
               ),
@@ -328,10 +348,12 @@ class _CategoryCell extends ConsumerWidget {
               textAlign: TextAlign.center,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
+              // text-[10px] font-semibold tracking-[0.09em] on the website;
+              // 0.09em at 10px is 0.9px of letter spacing.
               style: GoogleFonts.jost(
-                fontSize: 9,
+                fontSize: 10,
                 fontWeight: FontWeight.w600,
-                letterSpacing: 0.8,
+                letterSpacing: 0.9,
                 color: const Color(0xFF5C4A3C),
                 height: 1.2,
               ),

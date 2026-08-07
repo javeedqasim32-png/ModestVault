@@ -140,6 +140,12 @@ class _CheckoutFormState extends ConsumerState<_CheckoutForm> {
   final _country = TextEditingController(text: 'US');
   final _phone = TextEditingController();
 
+  /// Anchors the shipping-method card so we can bring it into view once rates
+  /// arrive — it renders below the address form, i.e. off-screen, so without
+  /// this the page looks unchanged after "Continue to Shipping Options".
+  final _shippingSectionKey = GlobalKey();
+  final _scrollController = ScrollController();
+
   List<ShippingRate>? _rates;
   ShippingRate? _selectedRate;
   bool _fetchingRates = false;
@@ -182,7 +188,25 @@ class _CheckoutFormState extends ConsumerState<_CheckoutForm> {
     _postal.dispose();
     _country.dispose();
     _phone.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  /// Scroll the freshly-rendered shipping card into view. Runs after the
+  /// frame so the card actually exists in the tree and has a size to
+  /// measure. Aligned near the top of the viewport rather than merely
+  /// "visible", so the options read as the new focus of the page.
+  void _revealShippingSection() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final target = _shippingSectionKey.currentContext;
+      if (target == null || !mounted) return;
+      Scrollable.ensureVisible(
+        target,
+        alignment: 0.05,
+        duration: const Duration(milliseconds: 450),
+        curve: Curves.easeOutCubic,
+      );
+    });
   }
 
   ShippingAddress _addressFromForm() => ShippingAddress(
@@ -221,6 +245,9 @@ class _CheckoutFormState extends ConsumerState<_CheckoutForm> {
         _rates = rates;
         _selectedRate = rates.isEmpty ? null : rates.first;
       });
+      // The rates render below the fold; carry the user down to them rather
+      // than leaving the page looking like nothing happened.
+      _revealShippingSection();
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = e.toString());
@@ -311,6 +338,7 @@ class _CheckoutFormState extends ConsumerState<_CheckoutForm> {
     return Form(
       key: _formKey,
       child: ListView(
+        controller: _scrollController,
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
         children: [
           _heroCard(),
@@ -318,7 +346,10 @@ class _CheckoutFormState extends ConsumerState<_CheckoutForm> {
           _addressCard(),
           if (_rates != null) ...[
             const SizedBox(height: 14),
-            _shippingMethodCard(),
+            KeyedSubtree(
+              key: _shippingSectionKey,
+              child: _shippingMethodCard(),
+            ),
             const SizedBox(height: 14),
             _payCard(),
           ],
@@ -625,6 +656,22 @@ class _CheckoutFormState extends ConsumerState<_CheckoutForm> {
     );
   }
 
+  /// Mirror of computeProcessingFeeCents in src/lib/fees.ts — a flat 3% of
+  /// (items + shipping), rounded up, so the quote matches the charge to the
+  /// cent.
+  ///
+  /// Deliberately uses the same floating-point expression as the server
+  /// rather than "safer" integer arithmetic like (n * 3 + 99) ~/ 100. 0.03
+  /// isn't representable in binary, so the product can land a hair above or
+  /// below the exact value and change which way ceil() rounds. Dart and JS
+  /// both use IEEE-754 doubles, so copying the expression verbatim keeps the
+  /// quote and the charge in lockstep whatever the input; reimplementing it
+  /// differently risks a one-cent divergence from Stripe.
+  int _processingFeeCents(int subtotalCents) {
+    if (subtotalCents <= 0) return 0;
+    return (subtotalCents * 0.03).ceil();
+  }
+
   Widget _payCard() {
     // Must be displayPrice: the PaymentIntent is built server-side from the
     // same effective price, so summing the raw price here would quote the
@@ -634,7 +681,16 @@ class _CheckoutFormState extends ConsumerState<_CheckoutForm> {
       (sum, it) => sum + it.listing.displayPrice,
     );
     final ship = _selectedRate?.amountDouble ?? 0;
-    final total = itemsTotal + ship;
+    // Buyer-facing Processing & Handling. The server adds this to every
+    // PaymentIntent (computeProcessingFeeCents in src/lib/fees.ts, called from
+    // createPaymentIntentFor*ByUserId), so omitting it here quoted a total
+    // lower than Stripe actually charged. Only shown once a rate is picked,
+    // matching PreCheckoutClient.tsx.
+    final feeCents = _selectedRate == null
+        ? 0
+        : _processingFeeCents(((itemsTotal + ship) * 100).round());
+    final fee = feeCents / 100;
+    final total = itemsTotal + ship + fee;
     return _Card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -650,6 +706,13 @@ class _CheckoutFormState extends ConsumerState<_CheckoutForm> {
                 : 'Shipping (${_selectedRate!.carrier})',
             '\$${ship.toStringAsFixed(2)}',
           ),
+          if (_selectedRate != null) ...[
+            const SizedBox(height: 6),
+            _summary(
+              'Processing & Handling',
+              '\$${fee.toStringAsFixed(2)}',
+            ),
+          ],
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 10),
             child: Divider(height: 1, color: Color(0xFFE3D9D1)),

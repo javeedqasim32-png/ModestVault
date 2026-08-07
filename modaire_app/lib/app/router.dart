@@ -167,33 +167,27 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                       itemsCsv: state.uri.queryParameters['items'],
                     ),
                   ),
+                  // These three stay INSIDE the home branch. Hoisting them to
+                  // the root navigator looks tempting — they're linked from
+                  // ModaireAppBar, which appears on screens in every branch —
+                  // but it breaks anything they push onward. A root-level
+                  // seller profile pushing '/listings/:id' forces GoRouter to
+                  // rebuild the shell page that is already sitting under it on
+                  // the root navigator, and the duplicate page key trips
+                  // `!keyReservation.contains(key)` in navigator.dart.
                   GoRoute(
                     path: 'notifications',
                     name: 'notifications',
-                    // Root navigator — the bell is part of ModaireAppBar, so
-                    // "See all" is reachable from every branch.
-                    parentNavigatorKey: _rootNavigatorKey,
                     builder: (context, state) => const NotificationsScreen(),
                   ),
                   GoRoute(
                     path: 'messages',
                     name: 'messages',
-                    // Root navigator — same reason as seller-profile below.
-                    // The message icon lives in ModaireAppBar, which is on
-                    // ~27 screens across every branch, and threads are opened
-                    // from listing detail, orders, account and seller
-                    // profiles. Registered only on the home branch it would
-                    // silently do nothing from any other tab.
-                    parentNavigatorKey: _rootNavigatorKey,
                     builder: (context, state) => const MessagesInboxScreen(),
                     routes: [
                       GoRoute(
                         path: ':id',
                         name: 'message-thread',
-                        // Set explicitly: a child does not inherit its
-                        // parent's parentNavigatorKey, and this is the route
-                        // most callers push directly.
-                        parentNavigatorKey: _rootNavigatorKey,
                         builder: (context, state) => MessageThreadScreen(
                           conversationId: state.pathParameters['id']!,
                         ),
@@ -203,17 +197,6 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                   GoRoute(
                     path: 'sellers/:id',
                     name: 'seller-profile',
-                    // Pushed on the ROOT navigator, not the home branch's.
-                    // Seller profiles are linked from listing detail (which
-                    // renders in the home, explore AND favorites branches),
-                    // from cart, and from account. Without this the push
-                    // resolves to a route the home branch owns, so tapping a
-                    // seller anywhere outside that branch lands on a
-                    // navigator that isn't on screen and nothing appears.
-                    // Root-level means one definition works from every tab;
-                    // the trade-off is the bottom nav is covered while
-                    // viewing a profile, which is normal for a drill-in.
-                    parentNavigatorKey: _rootNavigatorKey,
                     builder: (context, state) => SellerProfileScreen(
                       sellerId: state.pathParameters['id']!,
                     ),

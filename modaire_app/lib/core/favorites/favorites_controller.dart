@@ -33,6 +33,10 @@ class FavoriteIdsController extends AsyncNotifier<Set<String>> {
       } else {
         await repo.remove(listingId);
       }
+      // Refetch the list only now that the server has applied the change —
+      // see the note on favoritesListProvider for why watching the id set
+      // raced this request.
+      ref.invalidate(favoritesListProvider);
     } catch (_) {
       // Roll back so the heart icon matches what the backend actually has.
       // Caller handles the exception (SnackBar etc.).
@@ -47,9 +51,13 @@ final favoriteIdsProvider =
         FavoriteIdsController.new);
 
 final favoritesListProvider = FutureProvider.autoDispose((ref) {
-  // Watch the IDs so that when the user un-favorites something the list
-  // refetches and stays in sync without a manual invalidate from every
-  // caller that mutated.
-  ref.watch(favoriteIdsProvider);
+  // Deliberately does NOT watch favoriteIdsProvider — setFavorite writes its
+  // optimistic id change BEFORE the add/remove request completes, so watching
+  // it fired a list fetch that raced the mutation. If the server answered the
+  // fetch first, the response still contained the un-favorited listing and
+  // nothing refetched afterwards, leaving it on screen until relaunch.
+  //
+  // setFavorite is the only mutation path and invalidates this once the
+  // change is durable.
   return ref.read(favoritesRepositoryProvider).list();
 });

@@ -70,13 +70,17 @@ class _MainShellState extends State<MainShell> {
 
   // Layout knobs — Sell circle floats above the pill.
   //
-  // The icon slots are a fixed 45px tall (8 + 20 icon + 3 + 12 label + 2)
+  // The icon slots are a fixed 49px tall (8 + 24 icon + 3 + 12 label + 2)
   // and the Row centers them, so _pillHeight controls how much air sits
-  // above and below the icons. At 46 they had 1px of slack and read as
-  // jammed against the bottom edge; 58 splits ~6.5px to each side.
+  // above and below the icons. 62 splits ~6.5px to each side.
   // Raising this does not move the Sell FAB — the pill is bottom-anchored
   // and the FAB is offset from the pill's top by _sellOverflow.
-  static const double _pillHeight = 58;
+  static const double _pillHeight = 62;
+
+  /// Matches the website's `h-6 w-6` (24px) in MobileBottomNav.tsx. The app
+  /// previously drew these at 20px, which read noticeably smaller than the
+  /// mobile web nav side by side.
+  static const double _navIconSize = 24;
   static const double _sellSize = 44;
   static const double _sellOverflow = 24; // px the Sell circle peeks above pill
 
@@ -198,7 +202,7 @@ class _MainShellState extends State<MainShell> {
         const SizedBox(height: 8),
         Icon(
           active ? item.activeIcon : item.icon,
-          size: 20,
+          size: _navIconSize,
           color: active ? ModaireColors.navActive : ModaireColors.navInactive,
         ),
         const SizedBox(height: 3),
@@ -230,9 +234,9 @@ class _MainShellState extends State<MainShell> {
       mainAxisSize: MainAxisSize.min,
       children: [
         const SizedBox(height: 8),
-        // Empty 20px spacer matches the icon size on other slots so the
-        // label baseline aligns visually across the row.
-        const SizedBox(height: 20),
+        // Empty spacer matches the icon size on other slots so the label
+        // baseline aligns visually across the row.
+        const SizedBox(height: _navIconSize),
         const SizedBox(height: 3),
         Text(
           'Sell',

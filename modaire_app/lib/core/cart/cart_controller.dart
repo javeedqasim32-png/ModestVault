@@ -31,6 +31,10 @@ class CartIdsController extends AsyncNotifier<Set<String>> {
       } else {
         await repo.remove(listingId);
       }
+      // Refetch the full cart only now that the server has actually applied
+      // the change. Doing it off the optimistic state write above raced this
+      // request — see the note on cartProvider.
+      ref.invalidate(cartProvider);
     } catch (_) {
       state = AsyncData(prior);
       rethrow;
@@ -43,8 +47,17 @@ final cartIdsProvider =
         CartIdsController.new);
 
 final cartProvider = FutureProvider.autoDispose((ref) {
-  // Re-fetch the full cart whenever the ID set changes so subtotal +
-  // line items stay in sync after Add to Bag / remove.
-  ref.watch(cartIdsProvider);
+  // Deliberately does NOT watch cartIdsProvider.
+  //
+  // It used to, so an optimistic id change refetched the cart. But the
+  // optimistic write in setInCart happens BEFORE the add/remove request
+  // completes, so that GET raced the mutation. When the server answered the
+  // GET first it returned the pre-delete contents — and because the id set was
+  // never written again, nothing ever refetched. The removed item stayed on
+  // screen until the app was relaunched. Intermittent, because it came down to
+  // which request the server handled first.
+  //
+  // setInCart is the only path that mutates the cart, and it invalidates this
+  // provider once the mutation is durable.
   return ref.read(cartRepositoryProvider).get();
 });
