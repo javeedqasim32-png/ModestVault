@@ -19,12 +19,15 @@ export const dynamic = "force-dynamic";
 // File names on disk include a -v2 suffix; the website's home page
 // references the un-suffixed names, which 404 — we use the real
 // filenames here so mobile actually loads them.
+// Must stay in sync with the `categories` array in src/app/page.tsx — the
+// app and the website render the same rail and had drifted onto two
+// different photo sets (these were the "-v2" variants). Same files now.
 const CATEGORIES = [
-    { name: "Western", image: "/category-everyday-blend-v2.png" },
-    { name: "Festive Pret", image: "/category-luxury-pret-v2.png" },
-    { name: "Formals", image: "/category-formal-wear-v2.png" },
-    { name: "Modest Wear", image: "/category-abayas-v2.png" },
-    { name: "Bridals", image: "/category-wedding-v2.png" },
+    { name: "Western", image: "/category-everyday-blend.png" },
+    { name: "Festive Pret", image: "/category-luxury-pret.png" },
+    { name: "Formals", image: "/category-formal-wear.png" },
+    { name: "Modest Wear", image: "/category-abayas.png" },
+    { name: "Bridals", image: "/category-wedding.png" },
 ];
 
 const TRENDING_LIMIT = 3;
