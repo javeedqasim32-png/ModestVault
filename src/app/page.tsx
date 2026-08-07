@@ -2,7 +2,6 @@ import Link from "next/link";
 import Image from "next/image";
 import { ArrowRight, Heart } from "lucide-react";
 import { buildPageMetadata } from "@/lib/seo/metadata";
-import { toSlug } from "@/lib/seo/landing-pages";
 import { getPrimaryListingImage } from "@/lib/listing-images";
 
 // Homepage metadata. Weaves the primary + category + cultural keywords
@@ -284,12 +283,15 @@ export default async function Home() {
             {categories.map((category) => (
               <Link
                 key={category.name}
-                // Point at the style landing page rather than a filtered
-                // browse URL — landing pages have a unique H1 + intro +
-                // CollectionPage schema tuned to rank on that style's
-                // target keywords. Linking here from the homepage
-                // upgrades their crawl priority in Google's eyes.
-                href={`/style/${toSlug(category.name)}`}
+                // Filtered browse, NOT the /style/<slug> landing page.
+                // dffdaff repointed these at the landing pages for crawl
+                // priority, which changed what buyers get: a different card
+                // component and an editorial layout instead of the browse
+                // grid they expect from a category tap. The landing pages
+                // still exist and are still in the sitemap, so they can rank
+                // on their own — they're just not the customer-facing entry
+                // point from this rail.
+                href={`/browse?styles=${encodeURIComponent(category.name)}`}
                 className="group text-center lg:w-[152px] xl:w-[170px]"
               >
                 {category.image && (
