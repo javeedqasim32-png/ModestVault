@@ -25,8 +25,12 @@ const RefreshBody = z.object({
  * access-token TTL).
  *
  * Response:
- *   200 { accessToken, refreshToken, refreshExpiresAt }
+ *   200 { accessToken, refreshToken, refreshExpiresAt, user }
  *   401 UNAUTHORIZED on unknown / revoked / expired tokens.
+ *
+ * `user` matches the object returned by /auth/login and /auth/verify. The
+ * mobile client rebuilds its whole session from this response, so dropping
+ * the field breaks every refresh — see the comment on the return below.
  */
 export async function POST(req: NextRequest) {
     const parsed = await parseJsonBody(req, RefreshBody);
@@ -39,7 +43,17 @@ export async function POST(req: NextRequest) {
 
     const user = await prisma.user.findUnique({
         where: { id: consumed.userId },
-        select: { id: true, is_admin: true, seller_enabled: true, is_disabled: true, deleted_at: true },
+        select: {
+            id: true,
+            email: true,
+            first_name: true,
+            last_name: true,
+            profile_image: true,
+            is_admin: true,
+            seller_enabled: true,
+            is_disabled: true,
+            deleted_at: true,
+        },
     });
     if (!user || user.is_disabled || user.deleted_at) {
         return apiError("UNAUTHORIZED", "Account is no longer active.");
@@ -52,9 +66,24 @@ export async function POST(req: NextRequest) {
     });
     const refresh = await issueRefreshToken(user.id, consumed.deviceId);
 
+    // `user` must be present and shaped exactly like /auth/login's. The mobile
+    // client deserializes this response with AuthSession.fromJson, which treats
+    // `user` as required and non-nullable — omitting it threw a TypeError AFTER
+    // the refresh token above had already been consumed, so the rotated token
+    // was lost and the session was wedged onto a revoked one. Keep this in sync
+    // with login/route.ts and verify/route.ts.
     return NextResponse.json({
         accessToken,
         refreshToken: refresh.token,
         refreshExpiresAt: refresh.expiresAt.toISOString(),
+        user: {
+            id: user.id,
+            email: user.email,
+            firstName: user.first_name,
+            lastName: user.last_name,
+            isAdmin: user.is_admin,
+            sellerEnabled: user.seller_enabled,
+            profileImage: user.profile_image,
+        },
     });
 }
