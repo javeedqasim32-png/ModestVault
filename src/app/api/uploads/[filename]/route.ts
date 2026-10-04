@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readFile } from "fs/promises";
-import { join } from "path";
+import { join, basename, resolve, sep } from "path";
 import { existsSync } from "fs";
 
 export async function GET(
@@ -9,9 +9,21 @@ export async function GET(
 ) {
     try {
         const resolvedParams = await context.params;
-        const filename = resolvedParams.filename;
 
-        const filePath = join(process.cwd(), "public/uploads", filename);
+        // SECURITY: the raw param is attacker-controlled and may contain path
+        // traversal (e.g. `..%2f..%2f.env`, which Next.js decodes to
+        // `../../.env`). Collapse it to a bare filename so it can never
+        // reference anything outside public/uploads.
+        const filename = basename(resolvedParams.filename);
+
+        const uploadsDir = resolve(process.cwd(), "public/uploads");
+        const filePath = join(uploadsDir, filename);
+
+        // Defence in depth: confirm the resolved path is still inside the
+        // uploads directory before touching the filesystem.
+        if (filePath !== uploadsDir && !filePath.startsWith(uploadsDir + sep)) {
+            return new NextResponse("Not Found", { status: 404 });
+        }
 
         if (!existsSync(filePath)) {
             return new NextResponse("Not Found", { status: 404 });
