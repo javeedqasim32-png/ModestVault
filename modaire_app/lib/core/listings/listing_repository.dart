@@ -20,6 +20,7 @@ class ListingRepository {
     Set<String>? conditions,
     double? minPrice,
     double? maxPrice,
+    ListingSort sort = ListingSort.recommended,
   }) async {
     try {
       final res = await _dio.get<Map<String, dynamic>>(
@@ -37,6 +38,9 @@ class ListingRepository {
             'conditions': conditions.join(','),
           if (minPrice != null) 'minPrice': minPrice,
           if (maxPrice != null) 'maxPrice': maxPrice,
+          // Omitted at the default so older servers (which reject unknown
+          // enum values) keep working against a client that has this.
+          if (sort != ListingSort.recommended) 'sort': sort.wire,
         },
       );
       final body = res.data!;
@@ -83,6 +87,7 @@ class ExploreFilters {
     this.conditions = const {},
     this.minPrice,
     this.maxPrice,
+    this.sort = ListingSort.recommended,
   });
 
   final String search;
@@ -92,6 +97,10 @@ class ExploreFilters {
   final Set<String> conditions;
   final double? minPrice;
   final double? maxPrice;
+
+  /// Result ordering. Explore leaves this at the default; the search screen
+  /// exposes a control for it.
+  final ListingSort sort;
 
   bool get hasAny =>
       search.trim().isNotEmpty ||
@@ -117,6 +126,7 @@ class ExploreFilters {
     Set<String>? conditions,
     Object? minPrice = _sentinel,
     Object? maxPrice = _sentinel,
+    ListingSort? sort,
   }) {
     return ExploreFilters(
       search: search ?? this.search,
@@ -126,8 +136,29 @@ class ExploreFilters {
       conditions: conditions ?? this.conditions,
       minPrice: identical(minPrice, _sentinel) ? this.minPrice : minPrice as double?,
       maxPrice: identical(maxPrice, _sentinel) ? this.maxPrice : maxPrice as double?,
+      sort: sort ?? this.sort,
     );
   }
+}
+
+/// Result ordering offered by GET /api/v1/listings.
+///
+/// [recommended] is the server's featured-overflow/newest tiering — the house
+/// default. The explicit orderings bypass tiering entirely, so a featured
+/// listing can't jump the queue when someone asks for cheapest-first.
+enum ListingSort {
+  recommended('recommended', 'Recommended'),
+  newest('newest', 'Newest'),
+  priceAsc('price_asc', 'Price: Low to High'),
+  priceDesc('price_desc', 'Price: High to Low');
+
+  const ListingSort(this.wire, this.label);
+
+  /// Value the API expects.
+  final String wire;
+
+  /// Human label for the sort control.
+  final String label;
 }
 
 // Distinguishes "leave as-is" from "set to null" in copyWith.

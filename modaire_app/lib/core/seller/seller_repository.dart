@@ -34,6 +34,12 @@ class SellerRepository {
 
   /// Upsert a draft. The client generates [id] up-front so it can upload
   /// photos under `drafts/<userId>/<draftId>/` before the row exists.
+  ///
+  /// [photoUrls] and [generatedImageUrls] persist the seller's photo
+  /// ORDER and REMOVALS. They can only reorder or drop URLs the draft
+  /// already holds — uploading is /uploads/finalize's job, and the server
+  /// filters anything else out. Pass null (the default) for metadata-only
+  /// saves to leave the stored photos untouched.
   Future<SellerDraft> saveDraft({
     required String id,
     String? title,
@@ -47,6 +53,8 @@ class SellerRepository {
     String? condition,
     String? size,
     String? measurements,
+    List<String>? photoUrls,
+    List<String>? generatedImageUrls,
   }) async {
     try {
       final res = await _dio.put<Map<String, dynamic>>(
@@ -64,6 +72,9 @@ class SellerRepository {
           if (condition != null) 'condition': condition,
           if (size != null) 'size': size,
           if (measurements != null) 'measurements': measurements,
+          if (photoUrls != null) 'photoUrls': photoUrls,
+          if (generatedImageUrls != null)
+            'generatedImageUrls': generatedImageUrls,
         },
       );
       return SellerDraft.fromJson(res.data!['draft'] as Map<String, dynamic>);

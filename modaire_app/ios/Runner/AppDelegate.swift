@@ -12,5 +12,9 @@ import UIKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    // App-local channel, so it isn't part of GeneratedPluginRegistrant.
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "OrderedImagePicker") {
+      OrderedImagePicker.register(with: registrar)
+    }
   }
 }

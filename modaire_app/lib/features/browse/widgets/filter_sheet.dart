@@ -1,26 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../app/theme.dart';
 import '../../../core/listings/listing_repository.dart';
+import '../../../core/listings/taxonomy.dart';
 
-// Same taxonomy as the seller wizard / website BrowseFiltersClient.
-const _kStyles = <String>[
-  'Bridals', 'Festive Pret', 'Formals', 'Modest Wear', 'Western',
-];
-const _kCategories = <String>[
-  'Abayas', 'Accessories', 'Dresses', 'Kaftans', 'Sarees', 'Suits',
-];
-const _kSizes = <String>[
-  'XS', 'Small', 'Medium', 'Large', 'XLarge', 'XXLarge',
-];
-const _kConditions = <String>[
-  'New with tags', 'Like new', 'Good', 'Fair',
-];
-const double _kPriceMin = 0;
-const double _kPriceMax = 2000;
+const _kStyles = ModaireTaxonomy.styles;
+const _kCategories = ModaireTaxonomy.categories;
+const _kSizes = ModaireTaxonomy.sizes;
+const _kConditions = ModaireTaxonomy.conditions;
+const double _kPriceMin = ModaireTaxonomy.priceMin;
+const double _kPriceMax = ModaireTaxonomy.priceMax;
 
 /// Bottom-sheet filter panel. Mirrors BrowseFiltersClient.tsx:
 ///  - "Refine Results" header + X close
@@ -30,28 +21,42 @@ const double _kPriceMax = 2000;
 ///  - Price range section in a rounded cream panel with min/max pill
 ///    labels and a two-thumb range slider
 ///  - Apply pill at the bottom, Reset link in header
-class FilterSheet extends ConsumerStatefulWidget {
-  const FilterSheet({super.key});
+class FilterSheet extends StatefulWidget {
+  const FilterSheet({super.key, required this.initial});
 
-  static Future<void> show(BuildContext context) {
-    return showModalBottomSheet<void>(
+  /// Filters to open with. The sheet edits a private copy and hands the
+  /// result back; it never writes provider state itself.
+  final ExploreFilters initial;
+
+  /// Returns the edited filters, or null if dismissed without applying.
+  ///
+  /// The caller owns the write. This used to read and write
+  /// [exploreFiltersProvider] directly, which meant any surface that mounted
+  /// it would silently reorder the Explore grid — so search needs the caller
+  /// to decide where the result lands. Callers must treat null ("cancelled")
+  /// as distinct from an empty [ExploreFilters] ("cleared everything").
+  static Future<ExploreFilters?> show(
+    BuildContext context, {
+    required ExploreFilters initial,
+  }) {
+    return showModalBottomSheet<ExploreFilters>(
       context: context,
       isScrollControlled: true,
       backgroundColor: ModaireColors.browsePageBg,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => const FilterSheet(),
+      builder: (_) => FilterSheet(initial: initial),
     );
   }
 
   @override
-  ConsumerState<FilterSheet> createState() => _FilterSheetState();
+  State<FilterSheet> createState() => _FilterSheetState();
 }
 
 enum _Facet { style, category, size, condition }
 
-class _FilterSheetState extends ConsumerState<FilterSheet> {
+class _FilterSheetState extends State<FilterSheet> {
   late ExploreFilters _draft;
   late RangeValues _priceRange;
   _Facet? _openFacet;
@@ -59,7 +64,7 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
   @override
   void initState() {
     super.initState();
-    _draft = ref.read(exploreFiltersProvider);
+    _draft = widget.initial;
     _priceRange = RangeValues(
       _draft.minPrice ?? _kPriceMin,
       _draft.maxPrice ?? _kPriceMax,
@@ -82,13 +87,16 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
   }
 
   void _apply() {
+    // An untouched slider means "no price filter", not "0 to 2000" — sending
+    // the bounds would exclude anything priced above the slider's ceiling.
     final usePrice =
         _priceRange.start > _kPriceMin || _priceRange.end < _kPriceMax;
-    ref.read(exploreFiltersProvider.notifier).state = _draft.copyWith(
-      minPrice: usePrice ? _priceRange.start : null,
-      maxPrice: usePrice ? _priceRange.end : null,
+    Navigator.of(context).pop(
+      _draft.copyWith(
+        minPrice: usePrice ? _priceRange.start : null,
+        maxPrice: usePrice ? _priceRange.end : null,
+      ),
     );
-    Navigator.of(context).pop();
   }
 
   void _reset() {

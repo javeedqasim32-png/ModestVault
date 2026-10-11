@@ -9,23 +9,35 @@ import { getS3BucketName } from "@/lib/s3";
 
 export const dynamic = "force-dynamic";
 
-const Body = z.object({
-    draftId: z.string().uuid(),
-    modelSkinTone: z
-        .enum(["light", "medium-light", "medium", "medium-dark", "dark"])
-        .optional()
-        .default("medium"),
-    hijabRequired: z.boolean().optional().default(false),
-});
+const Body = z
+    .object({
+        draftId: z.string().uuid().optional(),
+        // Alternative source: an already-published listing being edited.
+        // Exactly one of draftId/listingId is required.
+        listingId: z.string().uuid().optional(),
+        modelSkinTone: z
+            .enum(["light", "medium-light", "medium", "medium-dark", "dark"])
+            .optional()
+            .default("medium"),
+        hijabRequired: z.boolean().optional().default(false),
+    })
+    .refine((v) => !!v.draftId !== !!v.listingId, {
+        message: "Provide exactly one of draftId or listingId.",
+        path: ["draftId"],
+    });
 
 /**
  * POST /api/v1/ai/jobs
  *
  * Mobile-side parallel of /api/ai/jobs. Instead of uploading reference
  * photos in this request, we reuse the photos already attached to the
- * draft (via the uploads/finalize endpoint). The draft must have all
- * required taxonomy fields populated; otherwise we'd be guessing at
- * the prompt content.
+ * source — which is either a DRAFT (the create wizard) or a published
+ * LISTING (the seller editing its photos). Either way the source must have
+ * the taxonomy fields populated; otherwise we'd be guessing at the prompt.
+ *
+ * The job row stores a full snapshot of its inputs and `draft_id` is
+ * nullable, so a listing-sourced job needs no schema change — the worker
+ * never reads back through the link.
  *
  * Concurrency: same one-in-flight-per-user rule as the web flow — a
  * second submit while a job is QUEUED/PROCESSING returns 409 with the
@@ -49,25 +61,70 @@ export async function POST(req: NextRequest) {
     const parsed = await parseJsonBody(req, Body);
     if (parsed instanceof NextResponse) return parsed;
 
-    const draft = await (prisma as any).draft.findUnique({
-        where: { id: parsed.draftId },
-    });
-    if (!draft || draft.user_id !== principal.id) {
-        return apiError("NOT_FOUND", "Draft not found.");
+    // Normalise both sources into the same prompt snapshot so everything
+    // downstream — validation, the job row, the worker — is source-agnostic.
+    let source: {
+        title: string | null;
+        category: string | null;
+        subcategory: string | null;
+        style: string | null;
+        size: string | null;
+        description: string | null;
+        photoUrls: string[];
+    };
+
+    if (parsed.draftId) {
+        const draft = await (prisma as any).draft.findUnique({
+            where: { id: parsed.draftId },
+        });
+        if (!draft || draft.user_id !== principal.id) {
+            return apiError("NOT_FOUND", "Draft not found.");
+        }
+        source = {
+            title: draft.title,
+            category: draft.category,
+            subcategory: draft.subcategory ?? null,
+            style: draft.style,
+            size: draft.size ?? null,
+            description: draft.description,
+            photoUrls: draft.photo_urls ?? [],
+        };
+    } else {
+        const listing = await prisma.listing.findUnique({
+            where: { id: parsed.listingId },
+            include: { images: { orderBy: { imageOrder: "asc" } } },
+        });
+        if (!listing || listing.user_id !== principal.id) {
+            return apiError("NOT_FOUND", "Listing not found.");
+        }
+        source = {
+            title: listing.title,
+            category: listing.category,
+            subcategory: listing.subcategory,
+            style: listing.style,
+            size: listing.size,
+            description: listing.description,
+            // image_url is the legacy single-cover column, used only when a
+            // listing predates the ListingImage rows.
+            photoUrls:
+                listing.images.length > 0
+                    ? listing.images.map((i) => i.imageUrl)
+                    : [listing.image_url],
+        };
     }
 
     const missing: string[] = [];
-    if (!draft.title?.trim()) missing.push("title");
-    if (!draft.category?.trim()) missing.push("category");
-    if (!draft.style?.trim()) missing.push("style");
-    if (!draft.description?.trim()) missing.push("description");
+    if (!source.title?.trim()) missing.push("title");
+    if (!source.category?.trim()) missing.push("category");
+    if (!source.style?.trim()) missing.push("style");
+    if (!source.description?.trim()) missing.push("description");
     if (missing.length > 0) {
         return apiError(
             "INVALID_INPUT",
             `Add ${missing.join(", ")} before generating a cover.`,
         );
     }
-    const referencePhotoUrls: string[] = draft.photo_urls ?? [];
+    const referencePhotoUrls = source.photoUrls.filter(Boolean);
     if (referencePhotoUrls.length === 0) {
         return apiError(
             "INVALID_INPUT",
@@ -101,14 +158,16 @@ export async function POST(req: NextRequest) {
     const job = await aiDelegate.create({
         data: {
             user_id: principal.id,
-            draft_id: parsed.draftId,
+            // Null for listing-sourced jobs — the column is a soft link the
+            // worker never follows, so there's nothing to point at.
+            draft_id: parsed.draftId ?? null,
             status: "QUEUED",
-            title: draft.title!,
-            category: draft.category!,
-            subcategory: draft.subcategory ?? null,
-            style: draft.style!,
-            size: draft.size ?? null,
-            description: draft.description!,
+            title: source.title!,
+            category: source.category!,
+            subcategory: source.subcategory,
+            style: source.style!,
+            size: source.size,
+            description: source.description!,
             hijab_required: parsed.hijabRequired,
             model_skin_tone: parsed.modelSkinTone,
             reference_image_keys: referenceKeys,

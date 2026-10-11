@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/api_exception.dart';
 import '../api/dio_client.dart';
+import '../notifications/push_service.dart';
 import 'auth_models.dart';
 import 'auth_repository.dart';
 import 'auth_storage.dart';
@@ -95,6 +96,9 @@ class AuthController extends Notifier<AuthState> {
       final session = await _repo.login(email: email, password: password);
       await _storage.writeSession(session);
       state = AuthAuthenticated(session);
+      // Start receiving push for this user. Fire-and-forget — a failed token
+      // registration must never block sign-in.
+      unawaited(ref.read(pushServiceProvider).registerForCurrentUser());
     } on ApiException catch (e) {
       state = AuthUnauthenticated(message: e.message);
       rethrow;
@@ -104,6 +108,9 @@ class AuthController extends Notifier<AuthState> {
   Future<void> signOut() async {
     final current = state;
     if (current is AuthAuthenticated) {
+      // Revoke this device's push token while the access token is still
+      // valid, so the next account on this phone doesn't inherit alerts.
+      await ref.read(pushServiceProvider).unregisterCurrentDevice();
       // Best-effort server revoke. We sign out locally regardless.
       await _repo.logout(refreshToken: current.session.refreshToken);
     }
@@ -117,6 +124,9 @@ class AuthController extends Notifier<AuthState> {
   /// the router redirect picks up the new user.
   void setSession(AuthSession session) {
     state = AuthAuthenticated(session);
+    // Same as the signIn path — a session adopted after signup OTP should
+    // also register for push.
+    unawaited(ref.read(pushServiceProvider).registerForCurrentUser());
   }
 }
 

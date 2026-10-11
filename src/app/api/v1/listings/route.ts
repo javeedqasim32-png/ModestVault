@@ -23,11 +23,13 @@ export const dynamic = "force-dynamic";
  * Query params:
  *   cursor       opaque pagination token from a prior nextCursor
  *   limit        1..50, default 24
- *   search       case-insensitive ILIKE across title/description/brand
+ *   search       case-insensitive ILIKE across title/description/brand/
+ *                style/category/subcategory/type (same seven fields as web)
  *   styles       CSV (single or multiple)  — e.g. "Western,Bridals"
  *   categories   CSV (single or multiple)  — e.g. "Suits,Dresses"
  *   sizes        CSV — e.g. "Small,Medium"
  *   conditions   CSV — e.g. "Like new,Good"
+ *   sort         recommended (default) | newest | price_asc | price_desc
  *   minPrice     number (USD)
  *   maxPrice     number (USD)
  */
@@ -62,6 +64,14 @@ const QuerySchema = z.object({
     conditions: csv.optional(),
     minPrice: z.coerce.number().min(0).optional(),
     maxPrice: z.coerce.number().min(0).optional(),
+    // "recommended" is the featured/newest tiering described below — the
+    // default the feed has always used, now nameable so the client can offer
+    // alternatives. The explicit sorts bypass tiering entirely: someone who
+    // asked for "price, low to high" does not want featured listings jumping
+    // the queue.
+    sort: z
+        .enum(["recommended", "newest", "price_asc", "price_desc"])
+        .default("recommended"),
 });
 
 export async function GET(req: NextRequest) {
@@ -90,6 +100,7 @@ export async function GET(req: NextRequest) {
         conditions,
         minPrice,
         maxPrice,
+        sort,
     } = parsed.data;
 
     const categories = multiCategories ?? (singleCategory ? [singleCategory] : null);
@@ -113,12 +124,28 @@ export async function GET(req: NextRequest) {
                   },
               }
             : {}),
+        // Same seven fields as the website's buildListingBrowseWhere
+        // (src/lib/listingFilters.ts). This used to cover title/description/
+        // brand only, so taxonomy words found nothing on mobile — searching
+        // "Bridals" returned zero while the style existed, and the app's own
+        // empty state suggested exactly those words. subcategory and type are
+        // nullable; NULL rows simply don't match.
+        //
+        // Purely additive to the OR, so no query returns fewer rows than
+        // before. Note this is an unindexed ILIKE — taxonomy FILTERS should
+        // still go through styles/categories below, which hit
+        // @@index([style, category, subcategory, type]) and won't match a
+        // word buried mid-description.
         ...(search
             ? {
                   OR: [
                       { title: { contains: search, mode: "insensitive" as const } },
                       { description: { contains: search, mode: "insensitive" as const } },
                       { brand: { contains: search, mode: "insensitive" as const } },
+                      { style: { contains: search, mode: "insensitive" as const } },
+                      { category: { contains: search, mode: "insensitive" as const } },
+                      { subcategory: { contains: search, mode: "insensitive" as const } },
+                      { type: { contains: search, mode: "insensitive" as const } },
                   ],
               }
             : {}),
@@ -136,34 +163,55 @@ export async function GET(req: NextRequest) {
     // over the Home top-8 set, and orderBy has no CASE. So we partition in
     // memory over an id-only projection (the website does the same over full
     // rows), then hydrate just the page the client asked for.
+    // The tiering above only applies to "recommended". An explicit sort is the
+    // user overriding the house ordering, so it's honoured literally — id as
+    // the tiebreak keeps paging stable when prices or timestamps collide.
+    const orderBy =
+        sort === "price_asc"
+            ? ([{ price: "asc" }, { id: "asc" }] as const)
+            : sort === "price_desc"
+              ? ([{ price: "desc" }, { id: "asc" }] as const)
+              : ([{ created_at: "desc" }, { id: "asc" }] as const);
+
     const [idRows, homeTopFeatured] = await Promise.all([
         prisma.listing.findMany({
             where,
-            orderBy: [{ created_at: "desc" }, { id: "asc" }],
+            orderBy: [...orderBy],
             select: { id: true, is_featured: true, moderation_status: true },
         }),
-        prisma.listing.findMany({
-            where: {
-                is_featured: true,
-                moderation_status: "APPROVED",
-                status: "AVAILABLE",
-            },
-            orderBy: [
-                { featured_order: { sort: "asc", nulls: "last" } },
-                { created_at: "desc" },
-            ],
-            take: HOME_FEATURED_LIMIT,
-            select: { id: true },
-        }),
+        // Only needed to compute the featured-overflow tier; skip the query
+        // entirely when the sort doesn't use it.
+        sort === "recommended"
+            ? prisma.listing.findMany({
+                  where: {
+                      is_featured: true,
+                      moderation_status: "APPROVED",
+                      status: "AVAILABLE",
+                  },
+                  orderBy: [
+                      { featured_order: { sort: "asc", nulls: "last" } },
+                      { created_at: "desc" },
+                  ],
+                  take: HOME_FEATURED_LIMIT,
+                  select: { id: true },
+              })
+            : Promise.resolve([] as { id: string }[]),
     ]);
 
-    const homeTopIds = new Set(homeTopFeatured.map((r) => r.id));
-    const approved = idRows.filter((r) => r.moderation_status === "APPROVED");
-    const orderedIds = [
-        ...approved.filter((r) => r.is_featured && !homeTopIds.has(r.id)),
-        ...approved.filter((r) => !r.is_featured || homeTopIds.has(r.id)),
-        ...idRows.filter((r) => r.moderation_status === "PARTIAL_APPROVED"),
-    ].map((r) => r.id);
+    let orderedIds: string[];
+    if (sort === "recommended") {
+        const homeTopIds = new Set(homeTopFeatured.map((r) => r.id));
+        const approved = idRows.filter(
+            (r) => r.moderation_status === "APPROVED",
+        );
+        orderedIds = [
+            ...approved.filter((r) => r.is_featured && !homeTopIds.has(r.id)),
+            ...approved.filter((r) => !r.is_featured || homeTopIds.has(r.id)),
+            ...idRows.filter((r) => r.moderation_status === "PARTIAL_APPROVED"),
+        ].map((r) => r.id);
+    } else {
+        orderedIds = idRows.map((r) => r.id);
+    }
 
     // Offset tokens are what we hand out now. A listing id means an older
     // install is paginating against the previous keyset contract — resolve it

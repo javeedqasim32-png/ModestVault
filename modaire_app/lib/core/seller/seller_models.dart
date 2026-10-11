@@ -42,6 +42,16 @@ class SellerListing {
   final String? rejectionReason;
   final SellerBucket bucket;
   final String? shippingStatus;
+
+  /// Whether the buyer-facing listing page can actually render this.
+  ///
+  /// Mirrors the gate in GET /api/v1/listings/[id], which 404s anything
+  /// that isn't APPROVED or PARTIAL_APPROVED — for everyone, the owner
+  /// included. Linking a seller's own PENDING listing there produced a
+  /// "listing not found" error that looked like a load failure but was
+  /// the moderation gate working as designed.
+  bool get isPubliclyVisible =>
+      moderationStatus == 'APPROVED' || moderationStatus == 'PARTIAL_APPROVED';
   final String thumbUrl;
   final String mediumUrl;
   final DateTime createdAt;
@@ -217,8 +227,19 @@ class SellerDraft {
   final List<String> generatedImageUrls;
   final DateTime updatedAt;
 
+  /// What fronts this draft: the AI cover if there is one, else the seller's
+  /// first photo. Mirrors the editor's grid (AI tile first, then photo 0
+  /// badged "Cover") and the publish route, which builds the listing's
+  /// image_url from generated images ahead of uploaded ones.
+  ///
+  /// `.last`, not `.first`: attach-ai-cover APPENDS, so regenerating leaves
+  /// the superseded covers behind and the newest is the one the seller
+  /// chose. The editor resolves it the same way — picking `.first` here made
+  /// this row show a stale cover the editor no longer displayed. Saving
+  /// prunes the array to the single cover, after which the two agree
+  /// trivially.
   String? get coverImage {
-    if (generatedImageUrls.isNotEmpty) return generatedImageUrls.first;
+    if (generatedImageUrls.isNotEmpty) return generatedImageUrls.last;
     if (photoUrls.isNotEmpty) return photoUrls.first;
     return null;
   }
@@ -238,9 +259,16 @@ class SellerDraft {
         condition: (json['condition'] ?? '') as String,
         size: (json['size'] ?? '') as String,
         measurements: (json['measurements'] ?? '') as String,
-        photoUrls: (json['photoUrls'] as List<dynamic>).cast<String>(),
-        generatedImageUrls:
-            (json['generatedImageUrls'] as List<dynamic>).cast<String>(),
+        // Null-guarded: the columns are nullable and a draft row created
+        // before its first save has photo_urls = NULL, which the serializer
+        // passes through as-is. An unguarded cast threw there, and because
+        // drafts() maps over the whole list one such row took out the entire
+        // Drafts tab rather than just itself.
+        photoUrls:
+            ((json['photoUrls'] ?? const []) as List<dynamic>).cast<String>(),
+        generatedImageUrls: ((json['generatedImageUrls'] ?? const [])
+                as List<dynamic>)
+            .cast<String>(),
         updatedAt: DateTime.parse(json['updatedAt'] as String),
       );
 }

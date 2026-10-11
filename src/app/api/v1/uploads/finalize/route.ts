@@ -20,9 +20,10 @@ const Body = z.object({
  * Called by the mobile client after a successful PUT to the presigned URL.
  * Responsibilities by purpose:
  *
- *   draft   – generate -thumb.webp (300px) + -medium.webp (800px) variants,
- *             add the original URL to the seller's draft.photo_urls array,
- *             return all three URLs.
+ *   draft   – generate -thumb.webp (300px) + -medium.webp (800px) variants
+ *             and return all three URLs. Does NOT touch draft.photo_urls:
+ *             the client holds the ordered set and commits it via
+ *             PUT /api/v1/seller/drafts, so there is exactly one writer.
  *   profile – generate a 512px square thumb, set user.profile_image to the
  *             thumb URL, return it.
  *   message – no normalization (messages already display original-quality
@@ -144,7 +145,7 @@ export async function POST(req: NextRequest) {
 
     const draft = await prisma.draft.findUnique({
         where: { id: draftId },
-        select: { user_id: true, photo_urls: true },
+        select: { user_id: true },
     });
     if (!draft || draft.user_id !== principal.id) {
         return apiError("NOT_FOUND", "Draft not found.");
@@ -179,19 +180,17 @@ export async function POST(req: NextRequest) {
         console.warn("[uploads/finalize] draft medium failed", err);
     }
 
-    // Append to the draft's photo_urls so the existing publish-from-draft flow
-    // (createListing → keptDraftPhotoUrls handling) picks the image up
-    // unchanged.
-    const existing = Array.isArray(draft.photo_urls) ? draft.photo_urls : [];
-    if (!existing.includes(imageUrl)) {
-        await prisma.draft.update({
-            where: { id: draftId },
-            data: {
-                photo_urls: { set: [...existing, imageUrl] },
-                updated_at: new Date(),
-            },
-        });
-    }
-
+    // Deliberately does NOT write draft.photo_urls — same as purpose=listing
+    // above. The client owns the ordered set and commits it via
+    // PUT /api/v1/seller/drafts.
+    //
+    // This used to read photo_urls and write back [...existing, imageUrl].
+    // Multi-photo uploads run concurrently, so N finalize requests all read
+    // the array before any of them wrote, and each stored a one-element
+    // array — last writer won and the rest of the batch was silently lost.
+    // Uploading 3 photos reliably persisted 1, picked at random by whichever
+    // request finished last. No lock or transaction fixes that shape
+    // properly; the fix is to have a single writer, which the client already
+    // is (it holds the order the seller sees).
     return NextResponse.json({ imageUrl, thumbUrl, mediumUrl });
 }

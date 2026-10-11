@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -12,6 +13,7 @@ import 'dart:async';
 import '../../../app/theme.dart';
 import '../../../core/ai/ai_cover_repository.dart';
 import '../../../core/api/api_exception.dart';
+import '../../../core/media/ordered_image_picker.dart';
 import '../../../core/seller/seller_repository.dart';
 import '../../../core/uploads/upload_repository.dart';
 import '../../../shared/utils/asset_url.dart';
@@ -116,7 +118,17 @@ const List<_SkinToneOption> _kSkinTones = [
       thumbnail: '$_kModaireBucketUrl/5.2.png'),
 ];
 
-const _kMaxPhotos = 4;
+// A listing holds at most MAX_LISTING_IMAGES (6) images server-side. Of
+// those the seller uploads 5; the AI cover is the sixth. Mirrors
+// PHOTO_LIMIT in src/app/sell/SellPageClient.tsx.
+const _kMaxUserPhotos = 5;
+
+/// Photos required before a listing can be published. Mirrors
+/// MIN_PHOTOS_TO_PUBLISH in src/app/sell/SellPageClient.tsx. The app used to
+/// require only one, so the same item could be published from the phone that
+/// the website refused — while the label above the grid claimed three were
+/// required. Counts the AI cover, as the website does.
+const _kMinPhotosToPublish = 3;
 
 class CreateListingScreen extends ConsumerStatefulWidget {
   const CreateListingScreen({super.key, this.resumeDraftId});
@@ -133,13 +145,23 @@ class CreateListingScreen extends ConsumerStatefulWidget {
 
 class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
   late final String _draftId = widget.resumeDraftId ?? const Uuid().v4();
-  final _picker = ImagePicker();
+  final _picker = OrderedImagePicker();
   final _formKey = GlobalKey<FormState>();
 
   // Photo URLs uploaded so far (server-normalized public URLs). Slot
   // index in the grid maps 1:1 to this list's index.
-  final List<String?> _photos = List.filled(_kMaxPhotos, null);
-  final Set<int> _uploadingSlots = {};
+  /// Seller-uploaded photos in display order. Compact — no empty slots —
+  /// so the UI can mirror the website, which shows a dropzone until there
+  /// are photos and then only as many tiles as exist.
+  final List<String> _userPhotos = [];
+
+  /// The AI-generated cover, kept separate because the server stores it in
+  /// its own column (draft.generated_image_urls) and publishes it ahead of
+  /// the seller's photos.
+  String? _aiCover;
+
+  /// How many uploads are in flight; drives the trailing spinner tiles.
+  int _uploadsInFlight = 0;
 
   final _title = TextEditingController();
   final _brand = TextEditingController();
@@ -202,7 +224,11 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
     super.dispose();
   }
 
-  bool get _hasAnyPhoto => _photos.any((p) => p != null);
+  bool get _hasAnyPhoto => _photoCount > 0;
+
+  /// Everything that will be published, AI cover included — the same total
+  /// the website counts against its minimum.
+  int get _photoCount => _userPhotos.length + (_aiCover == null ? 0 : 1);
   bool get _aiInFlight =>
       _aiJobId != null && _aiStatus != 'COMPLETED' && _aiStatus != 'FAILED';
 
@@ -283,16 +309,8 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
               imageUrl: job.resultImageUrl!,
             );
         if (!mounted) return;
-        // Slot the AI cover into the first empty slot.
-        final emptyIdx = _photos.indexWhere((p) => p == null);
-        setState(() {
-          if (emptyIdx >= 0) {
-            _photos[emptyIdx] = job.resultImageUrl;
-          } else {
-            // All slots full — replace the last one.
-            _photos[_kMaxPhotos - 1] = job.resultImageUrl;
-          }
-        });
+        // Held separately from _userPhotos so it can never displace one.
+        setState(() => _aiCover = job.resultImageUrl);
       } else if (job.status == 'FAILED') {
         _setError(job.errorMessage ?? 'AI cover generation failed.');
       }
@@ -328,12 +346,15 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
         _size = draft.size.isEmpty ? null : draft.size;
         // Backfill photo slots from whatever the draft already has
         // attached (uploaded user shots first, then AI-generated covers).
-        final urls = [...draft.photoUrls, ...draft.generatedImageUrls]
-            .take(_kMaxPhotos)
-            .toList();
-        for (var i = 0; i < urls.length; i++) {
-          _photos[i] = urls[i];
-        }
+        _userPhotos
+          ..clear()
+          ..addAll(draft.photoUrls.take(_kMaxUserPhotos));
+        // Last, not first: attach-ai-cover APPENDS, so regenerating leaves
+        // the superseded covers in place. The newest is the one the seller
+        // was looking at. Saving prunes the rest (we send just this one).
+        _aiCover = draft.generatedImageUrls.isEmpty
+            ? null
+            : draft.generatedImageUrls.last;
       });
     } on ApiException catch (e) {
       _setError(e.message);
@@ -342,114 +363,99 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
     }
   }
 
-  /// Slots a selection should fill, starting at [slot].
-  ///
-  /// Tapping an OCCUPIED slot means "replace this one", so it returns just
-  /// that slot and the picker stays single-select. Tapping an EMPTY slot
-  /// means "add photos", so it returns that slot plus every other free one
-  /// in order — letting the user pick several at once instead of repeating
-  /// the whole gallery round-trip per photo.
-  List<int> _targetSlotsFrom(int slot) {
-    if (_photos[slot] != null) return [slot];
-    return [
-      slot,
-      for (var i = 0; i < _kMaxPhotos; i++)
-        if (i != slot && _photos[i] == null && !_uploadingSlots.contains(i)) i,
-    ];
-  }
+  /// Pick photos and append them. Multi-select is capped at the free
+  /// capacity so iOS stops the seller itself, rather than us discarding
+  /// choices they've already made.
+  Future<void> _addPhotos() async {
+    final remaining = _kMaxUserPhotos - _userPhotos.length - _uploadsInFlight;
+    if (remaining <= 0) return;
 
-  Future<void> _addPhoto(int slot) async {
-    debugPrint('[create-listing] _addPhoto tap slot=$slot');
-    if (_uploadingSlots.contains(slot)) return;
-
-    final targets = _targetSlotsFrom(slot);
     List<XFile> picked;
     try {
-      if (targets.length == 1) {
-        // Replacing a single photo — don't offer multi-select for it.
-        final one = await _picker.pickImage(
-          source: ImageSource.gallery,
-          imageQuality: 88,
-          maxWidth: 2048,
-        );
-        picked = one == null ? const [] : [one];
-      } else {
-        picked = await _picker.pickMultiImage(
-          imageQuality: 88,
-          maxWidth: 2048,
-          // Cap at the free slots so the picker itself stops the user rather
-          // than us silently discarding extras after they've chosen them.
-          limit: targets.length,
-        );
-      }
+      // Returns photos in the order they were TAPPED. The plugin's own
+      // multi-pick returns iOS library order instead, which quietly made the
+      // cover a different photo than the one the seller chose first.
+      picked = await _picker.pickMultiple(limit: remaining);
     } catch (e) {
       debugPrint('[create-listing] picker threw: $e');
       _setError('Couldn\'t open your photos: $e');
       return;
     }
 
-    debugPrint('[create-listing] picker returned ${picked.length} file(s)');
-    if (picked.isEmpty) return;
+    // `limit` is advisory on some platforms — trim rather than trust it.
+    final files = picked.take(remaining).toList();
+    if (files.isEmpty || !mounted) return;
 
-    // Trim defensively: `limit` is advisory on some platforms.
-    final pairs = <({int slot, XFile file})>[
-      for (var i = 0; i < picked.length && i < targets.length; i++)
-        (slot: targets[i], file: picked[i]),
-    ];
-
-    if (!mounted) return;
-    setState(() => _uploadingSlots.addAll(pairs.map((p) => p.slot)));
+    setState(() => _uploadsInFlight += files.length);
     try {
-      // The draft row must exist before ANY presign, and creating it is not
-      // safe to race — do it once up front rather than inside each upload.
+      // The draft row must exist before any presign, and creating it isn't
+      // safe to race — do it once up front rather than per upload.
       await _ensureDraftExists();
-      // Upload concurrently: four sequential round-trips to S3 is the slow
-      // part of adding photos, and each slot reports its own spinner.
-      await Future.wait(pairs.map(_uploadInto));
+      // Future.wait keeps argument order regardless of which upload finishes
+      // first, so photos land in the order the seller picked them. Order is
+      // meaningful: the first photo fronts the listing when there's no AI
+      // cover.
+      final urls = await Future.wait(files.map(_uploadOne));
+      if (!mounted) return;
+      setState(() => _userPhotos.addAll(urls.whereType<String>()));
+      if (urls.any((u) => u == null)) {
+        _setError('Some photos couldn\'t be uploaded.');
+      }
     } on ApiException catch (e) {
-      debugPrint('[create-listing] ApiException: ${e.code} ${e.message}');
       _setError(e.message);
     } catch (e, st) {
       debugPrint('[create-listing] upload threw: $e\n$st');
-      _setError('Couldn\'t upload that photo: $e');
+      _setError('Couldn\'t upload those photos.');
     } finally {
-      if (mounted) {
-        setState(() => _uploadingSlots.removeAll(pairs.map((p) => p.slot)));
-      }
+      if (mounted) setState(() => _uploadsInFlight -= files.length);
     }
   }
 
-  /// Upload one picked file into one slot. Failures are reported but don't
-  /// abort siblings — one bad photo shouldn't discard the rest of a batch.
-  Future<void> _uploadInto(({int slot, XFile file}) pair) async {
+  /// Upload a single file, returning its URL or null if it failed. Null
+  /// rather than throwing so one bad photo doesn't discard a whole batch.
+  Future<String?> _uploadOne(XFile file) async {
     try {
-      final bytes = await pair.file.readAsBytes();
-      final contentType = _contentTypeFor(pair.file.path) ?? 'image/jpeg';
+      final bytes = await file.readAsBytes();
+      final contentType = _contentTypeFor(file.path) ?? 'image/jpeg';
       final result = await ref.read(uploadRepositoryProvider).uploadDraftPhoto(
             draftId: _draftId,
             bytes: bytes,
             contentType: contentType,
           );
-      if (!mounted) return;
-      debugPrint(
-        '[create-listing] upload OK slot=${pair.slot} publicUrl=${result.publicUrl}',
-      );
-      setState(() => _photos[pair.slot] = result.publicUrl);
-    } on ApiException catch (e) {
-      debugPrint('[create-listing] slot ${pair.slot} failed: ${e.message}');
-      _setError(e.message);
+      return result.publicUrl;
     } catch (e) {
-      debugPrint('[create-listing] slot ${pair.slot} threw: $e');
-      _setError('Couldn\'t upload one of those photos.');
+      debugPrint('[create-listing] upload failed for ${file.path}: $e');
+      return null;
     }
   }
 
-  void _removePhoto(int slot) {
-    setState(() => _photos[slot] = null);
-    // Server still has the URL in draft.photo_urls; the next saveDraft
-    // payload doesn't try to remove server-side state (mobile v1 just
-    // hides the slot locally). A "true delete" pass arrives with the
-    // edit flow that needs to mutate listing.photo_urls in place.
+  /// Removes locally; the server's photo_urls is reconciled on the next
+  /// save or publish, which sends the surviving list (see [_persistDraft]).
+  /// The S3 object itself is left behind — orphan cleanup is a separate
+  /// concern from what the draft points at.
+  void _removePhoto(int index) {
+    setState(() => _userPhotos.removeAt(index));
+  }
+
+  void _removeAiCover() => setState(() => _aiCover = null);
+
+  /// Reorder handler for the thumbnail grid. Mirrors the website's
+  /// drag-to-rearrange, which is how sellers choose which shot leads.
+  /// Move the photo at [from] to the position [to] currently occupies.
+  ///
+  /// No index adjustment here: [to] is the target TILE's index, not an
+  /// insertion point. After removeAt the later elements shift down by one,
+  /// which is exactly what makes a plain insert(to) land the photo where the
+  /// seller dropped it. (ReorderableListView's `newIndex > oldIndex` fudge
+  /// applies to its insertion-index convention and is wrong here — it made
+  /// every rightward drag stop one tile short.)
+  void _reorderPhoto(int from, int to) {
+    if (from == to) return;
+    setState(() {
+      final moved = _userPhotos.removeAt(from);
+      _userPhotos.insert(to.clamp(0, _userPhotos.length), moved);
+    });
+    HapticFeedback.selectionClick();
   }
 
   String? _contentTypeFor(String path) {
@@ -481,10 +487,28 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
 
   Future<void> _persistDraft({required bool thenPublish}) async {
     if (_saving || _publishing) return;
+    // A save now WRITES photo_urls, so it must not run against a photo
+    // list that's still filling in: /uploads/finalize appends the in-flight
+    // photo server-side, and whichever of the two lands second wins. The
+    // buttons are disabled meanwhile; this is the belt-and-braces check.
+    if (_uploadsInFlight > 0) {
+      _setError('Hang on — still uploading your photos.');
+      return;
+    }
     if (thenPublish) {
       if (!(_formKey.currentState?.validate() ?? false)) return;
-      if (_photos.every((p) => p == null)) {
-        _setError('Add at least one photo before publishing.');
+      if (_photoCount < _kMinPhotosToPublish) {
+        final needed = _kMinPhotosToPublish - _photoCount;
+        // Same two-message split as the website: a bare requirement when
+        // they haven't started, a countdown once they have.
+        _setError(
+          _photoCount == 0
+              ? 'Please add at least $_kMinPhotosToPublish photos before '
+                  'publishing your listing.'
+              : 'Please add $needed more photo${needed == 1 ? '' : 's'}. '
+                  'Listings need at least $_kMinPhotosToPublish photos to '
+                  'publish.',
+        );
         return;
       }
     }
@@ -508,6 +532,11 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
         condition: _condition,
         size: _size,
         measurements: _measurements.text.trim(),
+        // The grid's order and removals live in Flutter state until this
+        // point — without these the seller's arrangement was silently
+        // dropped and deleted photos came back (and got published).
+        photoUrls: _userPhotos,
+        generatedImageUrls: _aiCover == null ? const [] : [_aiCover!],
       );
       _draftCreatedOnServer = true;
       if (thenPublish) {
@@ -542,22 +571,10 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: ModaireColors.browsePageBg,
-      appBar: ModaireAppBar(
-        extraActions: [
-          TextButton(
-            onPressed: (_saving || _publishing)
-                ? null
-                : () => _persistDraft(thenPublish: false),
-            child: Text(
-              _saving ? 'Saving…' : 'Save draft',
-              style: GoogleFonts.jost(
-                fontSize: 13,
-                color: ModaireColors.espresso,
-              ),
-            ),
-          ),
-        ],
-      ),
+      // Save draft lives in the bottom bar next to Submit for review, not
+      // up here — the two are the same kind of decision ("what do I do
+      // with this listing?") and belong together at thumb height.
+      appBar: const ModaireAppBar(),
       body: SafeArea(
         child: _loading
             ? const Center(
@@ -789,12 +806,33 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
         16,
         12 + MediaQuery.viewPaddingOf(context).bottom,
       ),
-      child: SizedBox(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _submitButton(),
+          const SizedBox(height: 8),
+          _saveDraftButton(),
+        ],
+      ),
+    );
+  }
+
+  Widget _submitButton() {
+    return SizedBox(
         height: 48,
+        width: double.infinity,
         child: ElevatedButton(
-          onPressed: (_saving || _publishing)
-              ? null
-              : () => _persistDraft(thenPublish: true),
+          // Blocked while an AI cover is generating, matching the website
+          // (`disabled={... || isGenerating || !!aiJobId || ...}` in
+          // SellPageClient.tsx). It matters more here: publishing DELETES the
+          // draft server-side, so a cover that finishes afterwards has
+          // nothing left to attach to and is silently lost. Uploads block it
+          // too — the save that precedes publish writes photo_urls, and a
+          // photo still in flight isn't in that list yet.
+          onPressed:
+              (_saving || _publishing || _aiInFlight || _uploadsInFlight > 0)
+                  ? null
+                  : () => _persistDraft(thenPublish: true),
           style: ElevatedButton.styleFrom(
             backgroundColor: ModaireColors.espresso,
             disabledBackgroundColor:
@@ -803,7 +841,16 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
               borderRadius: BorderRadius.circular(99),
             ),
           ),
-          child: _publishing
+          child: _aiInFlight
+              ? Text(
+                  'Generating cover…',
+                  style: GoogleFonts.jost(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: ModaireColors.cream,
+                  ),
+                )
+              : _publishing
               ? const SizedBox(
                   width: 18,
                   height: 18,
@@ -821,133 +868,304 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
                   ),
                 ),
         ),
-      ),
-    );
+      );
   }
 
-  Widget _photoGrid() {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: _kMaxPhotos,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 4,
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 8,
-        childAspectRatio: 0.85,
-      ),
-      itemBuilder: (context, slot) => _photoSlot(slot),
-    );
-  }
-
-  Widget _photoSlot(int slot) {
-    final url = _photos[slot];
-    final uploading = _uploadingSlots.contains(slot);
-    return GestureDetector(
-      onTap: uploading ? null : () => _addPhoto(slot),
-      child: Container(
-        decoration: BoxDecoration(
-          color: ModaireColors.tileImageBg,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: ModaireColors.tileBorder,
-            style: url == null ? BorderStyle.solid : BorderStyle.solid,
-            width: 1,
+  /// Secondary action under Submit for review. Outlined rather than filled
+  /// so Submit stays the obvious primary — saving is the way out for a
+  /// listing that isn't ready yet, not the goal.
+  Widget _saveDraftButton() {
+    // Same gates as Submit: a save writes photo_urls, so it must not race
+    // an in-flight upload or an AI cover that hasn't attached yet.
+    final blocked =
+        _saving || _publishing || _aiInFlight || _uploadsInFlight > 0;
+    return SizedBox(
+      height: 48,
+      width: double.infinity,
+      child: OutlinedButton(
+        onPressed: blocked ? null : () => _persistDraft(thenPublish: false),
+        style: OutlinedButton.styleFrom(
+          backgroundColor: ModaireColors.tileBg,
+          side: const BorderSide(color: ModaireColors.pillBorder),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(99),
           ),
         ),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (url != null)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: CachedNetworkImage(
-                  imageUrl: resolveAssetUrl(url),
-                  fit: BoxFit.cover,
-                  placeholder: (_, __) =>
-                      Container(color: ModaireColors.tileImageBg),
-                  // Surface load failures instead of falling back to the
-                  // empty placeholder — when the URL is unreachable the
-                  // slot reads as "no upload" and the user can't tell.
-                  errorWidget: (_, failingUrl, err) {
-                    debugPrint(
-                      '[create-listing] image load failed url=$failingUrl err=$err',
-                    );
-                    return Container(
-                      color: const Color(0xFFFEF2F2),
-                      alignment: Alignment.center,
-                      padding: const EdgeInsets.all(6),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            LucideIcons.imageOff,
-                            color: Color(0xFFB91C1C),
-                            size: 18,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Load failed',
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.jost(
-                              fontSize: 10,
-                              color: const Color(0xFFB91C1C),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
+        child: _saving
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: ModaireColors.espresso,
                 ),
               )
-            else
-              Center(
-                child: Icon(
-                  LucideIcons.plus,
-                  size: 22,
-                  color: ModaireColors.tileTextSubtle,
+            : Text(
+                'Save as draft',
+                style: GoogleFonts.jost(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: blocked
+                      ? ModaireColors.tileTextSubtle
+                      : ModaireColors.espresso,
                 ),
               ),
-            if (uploading)
-              Container(
-                color: Colors.black.withValues(alpha: 0.3),
-                child: const Center(
-                  child: SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: ModaireColors.cream,
-                    ),
-                  ),
-                ),
+      ),
+    );
+  }
+
+  /// Photo section. Mirrors the website's uploader: a single dropzone while
+  /// there are no photos, then a grid of only the tiles that exist — no
+  /// permanently-empty placeholder boxes.
+  Widget _photoGrid() {
+    if (!_hasAnyPhoto && _uploadsInFlight == 0) return _dropzone();
+
+    final canAddMore =
+        _userPhotos.length + _uploadsInFlight < _kMaxUserPhotos;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            if (_aiCover != null) _aiCoverTile(),
+            for (var i = 0; i < _userPhotos.length; i++) _draggableTile(i),
+            for (var i = 0; i < _uploadsInFlight; i++) _uploadingTile(),
+            if (canAddMore) _addTile(),
+          ],
+        ),
+        const SizedBox(height: 8),
+        // Surfaces the minimum while they're still adding photos, rather
+        // than letting them fill the whole form and get refused at Submit.
+        Text(
+          _photoCount < _kMinPhotosToPublish
+              ? '${_kMinPhotosToPublish - _photoCount} more '
+                  '${_kMinPhotosToPublish - _photoCount == 1 ? 'photo' : 'photos'}'
+                  ' needed to publish.'
+              : _userPhotos.length > 1
+                  ? 'Press and hold a photo to change the order.'
+                  : 'Add up to $_kMaxUserPhotos photos.',
+          style: GoogleFonts.jost(
+            fontSize: 11,
+            color: _photoCount < _kMinPhotosToPublish
+                ? const Color(0xFFB91C1C)
+                : ModaireColors.tileTextSubtle,
+          ),
+        ),
+      ],
+    );
+  }
+
+  static const double _kTile = 96;
+
+  /// Empty state — the website's full-width dashed dropzone.
+  Widget _dropzone() {
+    return GestureDetector(
+      onTap: _addPhotos,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFBF9F6),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(
+            color: const Color(0xFFCFB79F),
+            style: BorderStyle.solid,
+          ),
+        ),
+        child: Column(
+          children: [
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                border: Border.all(color: const Color(0xFFF2E7DE)),
               ),
-            if (url != null && !uploading)
-              Positioned(
-                top: 4,
-                right: 4,
-                child: GestureDetector(
-                  onTap: () => _removePhoto(slot),
-                  child: Container(
-                    width: 22,
-                    height: 22,
-                    decoration: const BoxDecoration(
-                      color: Color(0xCC000000),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      LucideIcons.x,
-                      size: 14,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
+              child: const Icon(
+                LucideIcons.cloudUpload,
+                size: 24,
+                color: Color(0xFF7A6050),
               ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Upload Photos',
+              style: GoogleFonts.jost(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: ModaireColors.tileTextPrimary,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Select up to $_kMaxUserPhotos photos of your item. '
+              'Press and hold to rearrange their order.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.jost(
+                fontSize: 12,
+                height: 1.4,
+                color: ModaireColors.tileTextSubtle,
+              ),
+            ),
           ],
         ),
       ),
     );
   }
+
+  Widget _tileFrame({required Widget child}) => ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: SizedBox(width: _kTile, height: _kTile, child: child),
+      );
+
+  /// A seller photo. LongPressDraggable + DragTarget rather than a package:
+  /// at most five tiles, so this is cheaper than a new dependency.
+  Widget _draggableTile(int index) {
+    final tile = _photoTile(
+      url: _userPhotos[index],
+      onRemove: () => _removePhoto(index),
+      badge: (_aiCover == null && index == 0) ? 'Cover' : null,
+    );
+    return DragTarget<int>(
+      onWillAcceptWithDetails: (d) => d.data != index,
+      onAcceptWithDetails: (d) => _reorderPhoto(d.data, index),
+      builder: (context, candidate, __) => Opacity(
+        opacity: candidate.isNotEmpty ? 0.6 : 1,
+        child: LongPressDraggable<int>(
+          data: index,
+          // Shorter than the 500ms default: sellers were pressing and
+          // giving up before the drag engaged.
+          delay: const Duration(milliseconds: 220),
+          onDragStarted: HapticFeedback.mediumImpact,
+          feedback: Material(
+            color: Colors.transparent,
+            child: Opacity(opacity: 0.85, child: tile),
+          ),
+          childWhenDragging: Opacity(opacity: 0.3, child: tile),
+          child: tile,
+        ),
+      ),
+    );
+  }
+
+  /// The AI cover. Not draggable — the server always publishes it first
+  /// (see the ordering note in drafts/[id]/publish), so its position isn't
+  /// the seller's to change.
+  Widget _aiCoverTile() => _photoTile(
+        url: _aiCover!,
+        onRemove: _removeAiCover,
+        badge: 'Cover Photo',
+      );
+
+  Widget _photoTile({
+    required String url,
+    required VoidCallback onRemove,
+    String? badge,
+  }) {
+    return SizedBox(
+      width: _kTile,
+      height: _kTile,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          _tileFrame(
+            child: CachedNetworkImage(
+              imageUrl: resolveAssetUrl(url),
+              fit: BoxFit.cover,
+              placeholder: (_, __) =>
+                  Container(color: ModaireColors.tileImageBg),
+              errorWidget: (_, failingUrl, err) {
+                debugPrint('[create-listing] image failed $failingUrl: $err');
+                return Container(
+                  color: const Color(0xFFFEF2F2),
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    LucideIcons.imageOff,
+                    color: Color(0xFFB91C1C),
+                    size: 18,
+                  ),
+                );
+              },
+            ),
+          ),
+          if (badge != null)
+            Positioned(
+              left: 4,
+              bottom: 4,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xCC4A3328),
+                  borderRadius: BorderRadius.circular(100),
+                ),
+                child: Text(
+                  badge,
+                  style: GoogleFonts.jost(
+                    fontSize: 8,
+                    fontWeight: FontWeight.w600,
+                    color: ModaireColors.cream,
+                  ),
+                ),
+              ),
+            ),
+          Positioned(
+            top: 4,
+            right: 4,
+            child: GestureDetector(
+              onTap: onRemove,
+              child: Container(
+                width: 22,
+                height: 22,
+                decoration: const BoxDecoration(
+                  color: Color(0xCC000000),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(LucideIcons.x, size: 14, color: Colors.white),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _uploadingTile() => _tileFrame(
+        child: Container(
+          color: ModaireColors.tileImageBg,
+          alignment: Alignment.center,
+          child: const SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: ModaireColors.espresso,
+            ),
+          ),
+        ),
+      );
+
+  Widget _addTile() => GestureDetector(
+        onTap: _addPhotos,
+        child: Container(
+          width: _kTile,
+          height: _kTile,
+          decoration: BoxDecoration(
+            color: const Color(0xFFFBF9F6),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFCFB79F)),
+          ),
+          child: const Icon(
+            LucideIcons.plus,
+            size: 22,
+            color: ModaireColors.tileTextSubtle,
+          ),
+        ),
+      );
+
 
   Widget _modelPicker() {
     return SizedBox(

@@ -34,19 +34,29 @@ class AiCoverRepository {
   AiCoverRepository(this._dio);
   final Dio _dio;
 
+  /// Starts a cover generation from either a draft (create wizard) or a
+  /// published listing (editing its photos). Exactly one of [draftId] and
+  /// [listingId] must be supplied — the server rejects both or neither.
+  ///
   /// Returns the new job id. Re-throws ApiException with code "CONFLICT"
-  /// for the one-in-flight gate (the wizard treats that as "resume the
-  /// existing job" rather than an error).
+  /// for the one-in-flight gate (callers treat that as "resume the existing
+  /// job" rather than an error).
   Future<String> startJob({
-    required String draftId,
+    String? draftId,
+    String? listingId,
     String modelSkinTone = 'medium',
     bool hijabRequired = false,
   }) async {
+    assert(
+      (draftId == null) != (listingId == null),
+      'Pass exactly one of draftId or listingId.',
+    );
     try {
       final res = await _dio.post<Map<String, dynamic>>(
         '/api/v1/ai/jobs',
         data: {
-          'draftId': draftId,
+          if (draftId != null) 'draftId': draftId,
+          if (listingId != null) 'listingId': listingId,
           'modelSkinTone': modelSkinTone,
           'hijabRequired': hijabRequired,
         },

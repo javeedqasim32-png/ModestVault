@@ -54,9 +54,16 @@ export async function POST(
         const v = fields[key];
         if (!v || !v.trim()) missing.push(label);
     }
+    // AI cover FIRST, then the seller's own photos — same ordering as the
+    // website's createListing (src/app/actions/listings.ts, `aiCoverOffset`),
+    // whose comment explains why: "the polished AI cover is the first thing
+    // they see in browse/Home rails". This route used to append generated
+    // images last, so the identical item got a different cover depending on
+    // whether it was published from the app or the web. allPhotos[0] below
+    // becomes Listing.image_url, so this decides the cover.
     const allPhotos = [
-        ...(draft.photo_urls ?? []),
         ...(draft.generated_image_urls ?? []),
+        ...(draft.photo_urls ?? []),
     ];
     if (allPhotos.length === 0) missing.push("Photos");
 

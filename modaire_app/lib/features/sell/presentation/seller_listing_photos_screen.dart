@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../app/theme.dart';
+import '../../../core/ai/ai_cover_repository.dart';
 import '../../../core/api/api_exception.dart';
 import '../../../core/seller/seller_models.dart';
 import '../../../core/seller/seller_repository.dart';
@@ -67,10 +70,25 @@ class _SellerListingPhotosScreenState
   final ImagePicker _picker = ImagePicker();
   final Set<int> _uploadingSlots = <int>{};
 
+  // AI cover generation. The job runs server-side, so we poll rather than
+  // hold a connection open; _aiStatus drives the button's label.
+  String? _aiJobId;
+  String _aiStatus = '';
+  Timer? _aiPollTimer;
+
+  bool get _aiInFlight =>
+      _aiJobId != null && _aiStatus != 'COMPLETED' && _aiStatus != 'FAILED';
+
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _aiPollTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -396,6 +414,125 @@ class _SellerListingPhotosScreenState
     );
   }
 
+  /// Kicks off a cover generation from this listing's own photos.
+  ///
+  /// The server builds the prompt from the listing row (title/category/
+  /// style/description) and uses its existing images as references, so
+  /// there's nothing to upload here — unlike the create wizard, which
+  /// generates from an unsaved draft.
+  Future<void> _generateAiCover() async {
+    if (_aiInFlight || _slots == null) return;
+    if (_slots!.length >= _kMaxListingPhotos) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Remove a photo first — the cover needs a free slot.',
+          ),
+        ),
+      );
+      return;
+    }
+    setState(() => _aiStatus = 'STARTING');
+    try {
+      final jobId = await ref.read(aiCoverRepositoryProvider).startJob(
+            listingId: widget.listingId,
+            modelSkinTone: 'medium',
+          );
+      if (!mounted) return;
+      setState(() {
+        _aiJobId = jobId;
+        _aiStatus = 'QUEUED';
+      });
+      _aiPollTimer?.cancel();
+      _aiPollTimer =
+          Timer.periodic(const Duration(seconds: 5), (_) => _pollAiJob());
+      _pollAiJob();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _aiStatus = '');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    }
+  }
+
+  Future<void> _pollAiJob() async {
+    final jobId = _aiJobId;
+    if (jobId == null) return;
+    try {
+      final job = await ref.read(aiCoverRepositoryProvider).getJob(jobId);
+      if (!mounted) return;
+      setState(() => _aiStatus = job.status);
+      if (!job.isTerminal) return;
+      _aiPollTimer?.cancel();
+      if (job.status == 'COMPLETED' && job.resultImageUrl != null) {
+        setState(() {
+          // Slot 0 — the cover. Matches the publish route, which puts the
+          // generated image ahead of the seller's own photos so an item
+          // gets the same cover from the app or the web.
+          _slots!.insert(
+            0,
+            _UploadedSlot(imageUrl: job.resultImageUrl!),
+          );
+          _dirty = true;
+          _aiJobId = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Cover added — Save to apply it.'),
+          ),
+        );
+      } else {
+        setState(() => _aiJobId = null);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(job.errorMessage ?? 'Cover generation failed.'),
+          ),
+        );
+      }
+    } on ApiException catch (_) {
+      // Transient — let the next tick retry rather than killing the poll.
+    }
+  }
+
+  Widget _aiCoverButton(int count) {
+    final atCap = count >= _kMaxListingPhotos;
+    final busy = _aiInFlight || _aiStatus == 'STARTING';
+    final blocked = busy || atCap || _saving || _uploadingSlots.isNotEmpty;
+    return SizedBox(
+      height: 48,
+      child: OutlinedButton.icon(
+        onPressed: blocked ? null : _generateAiCover,
+        icon: busy
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  color: Color(0xFF4A3328),
+                  strokeWidth: 2,
+                ),
+              )
+            : const Icon(LucideIcons.sparkles,
+                size: 18, color: Color(0xFF4A3328)),
+        label: Text(
+          busy ? 'Creating cover…' : 'Create AI cover',
+          style: GoogleFonts.jost(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: const Color(0xFF4A3328),
+          ),
+        ),
+        style: OutlinedButton.styleFrom(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(999),
+          ),
+          side: const BorderSide(color: Color(0xFFD9CFC7)),
+        ),
+      ),
+    );
+  }
+
   Widget _addBar(int count) {
     final atCap = count >= _kMaxListingPhotos;
     return Container(
@@ -408,7 +545,12 @@ class _SellerListingPhotosScreenState
         16,
         12 + MediaQuery.viewPaddingOf(context).bottom,
       ),
-      child: SizedBox(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _aiCoverButton(count),
+          const SizedBox(height: 8),
+          SizedBox(
         height: 48,
         child: OutlinedButton.icon(
           onPressed: atCap || _uploadingSlots.isNotEmpty ? null : _addPhoto,
@@ -443,6 +585,8 @@ class _SellerListingPhotosScreenState
             side: const BorderSide(color: Color(0xFFD9CFC7)),
           ),
         ),
+      ),
+        ],
       ),
     );
   }

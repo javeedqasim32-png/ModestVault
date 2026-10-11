@@ -50,6 +50,9 @@ dependencies:
   photo_view: ^0.15.0
   url_launcher: ^6.3.1
   share_plus: ^10.1.4
+  firebase_core: ^4.15.0
+  firebase_messaging: ^16.7.0
+  flutter_local_notifications: ^22.3.1
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -116,6 +119,12 @@ flutter:
     # own src/fonts/. Jost 600/700 and Cormorant 500 are static instances cut
     # from the upstream variable fonts (the website synthesizes those weights,
     # Google's CDN only serves heavily subset versions of them).
+    #
+    # Jost-Italic and CormorantGaramond-Italic have no counterpart in the
+    # site's src/fonts/ — a browser just obliques the upright face, but
+    # google_fonts resolves a distinct file per style and THROWS when it's
+    # missing (allowRuntimeFetching is false in main.dart). Three screens ask
+    # for italic, so without these the app crashes on reaching them.
     - assets/google_fonts/
 
   # To add assets to your application, add an assets section, like this:

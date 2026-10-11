@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { serializeListingSummaryForMobile } from "@/lib/api/mobile-serializers";
 import { getEffectivePricesForListings } from "@/lib/promotions/get-effective-price";
+import { STYLE_TILES } from "@/lib/browse-tiles";
 
 export const dynamic = "force-dynamic";
 
@@ -22,13 +23,8 @@ export const dynamic = "force-dynamic";
 // Must stay in sync with the `categories` array in src/app/page.tsx — the
 // app and the website render the same rail and had drifted onto two
 // different photo sets (these were the "-v2" variants). Same files now.
-const CATEGORIES = [
-    { name: "Western", image: "/category-everyday-blend.png" },
-    { name: "Festive Pret", image: "/category-luxury-pret.png" },
-    { name: "Formals", image: "/category-formal-wear.png" },
-    { name: "Modest Wear", image: "/category-abayas.png" },
-    { name: "Bridals", image: "/category-wedding.png" },
-];
+// Shared with the search landing's style row — see src/lib/browse-tiles.ts.
+const CATEGORIES = STYLE_TILES;
 
 const TRENDING_LIMIT = 3;
 const FEATURED_LIMIT = 8;

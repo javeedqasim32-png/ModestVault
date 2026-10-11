@@ -433,7 +433,14 @@ class _BucketView extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
           itemCount: filtered.length,
           separatorBuilder: (_, __) => const SizedBox(height: 10),
-          itemBuilder: (context, i) => _ListingRow(listing: filtered[i]),
+          // Keyed by id: the row holds _deleting in its State, and without
+          // a key Flutter matches children by position, so deleting a row
+          // hands its "Deleting…" state to whichever row shifts up into
+          // that index. See the matching note in _DraftsView.
+          itemBuilder: (context, i) => _ListingRow(
+            key: ValueKey(filtered[i].id),
+            listing: filtered[i],
+          ),
         );
       },
     );
@@ -457,7 +464,14 @@ class _DraftsView extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
           itemCount: drafts.length,
           separatorBuilder: (_, __) => const SizedBox(height: 10),
-          itemBuilder: (context, i) => _DraftRow(draft: drafts[i]),
+          // Keyed by id — without it, deleting a draft leaves the removed
+          // row's State (with _deleting still true) attached to the index,
+          // so the draft that shifts up renders "Deleting…" and refuses
+          // taps until the whole list is rebuilt.
+          itemBuilder: (context, i) => _DraftRow(
+            key: ValueKey(drafts[i].id),
+            draft: drafts[i],
+          ),
         );
       },
     );
@@ -465,7 +479,7 @@ class _DraftsView extends StatelessWidget {
 }
 
 class _ListingRow extends ConsumerStatefulWidget {
-  const _ListingRow({required this.listing});
+  const _ListingRow({super.key, required this.listing});
   final SellerListing listing;
 
   @override
@@ -531,7 +545,14 @@ class _ListingRowState extends ConsumerState<_ListingRow> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               GestureDetector(
-                onTap: () => context.push('/listings/${l.id}'),
+                // Awaiting (or refused by) moderation → the public page
+                // 404s it, so send the seller to their own edit screen,
+                // which loads via the seller endpoint and shows the real
+                // state. Approved listings still open the buyer view,
+                // which is the point of tapping: seeing it as a buyer does.
+                onTap: () => l.isPubliclyVisible
+                    ? context.push('/listings/${l.id}')
+                    : context.push('/sell/edit/${l.id}'),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(17),
                   child: Container(
@@ -691,42 +712,95 @@ class _ListingRowState extends ConsumerState<_ListingRow> {
     );
   }
 
-  Widget _chipButton({required String label, required VoidCallback? onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 32,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(99),
-          border: Border.all(color: const Color(0xFFD7CDC4)),
-        ),
-        child: Text(
-          label,
-          style: GoogleFonts.jost(
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-            color: onTap == null
-                ? const Color(0xFFA39082)
-                : const Color(0xFF5F4A3C),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
-class _DraftRow extends StatelessWidget {
-  const _DraftRow({required this.draft});
+/// Pill action used by both the listing and draft rows. Top-level so the
+/// two rows share one definition of the chip.
+Widget _chipButton({required String label, required VoidCallback? onTap}) {
+  return GestureDetector(
+    onTap: onTap,
+    child: Container(
+      height: 32,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: const Color(0xFFD7CDC4)),
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.jost(
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+          color: onTap == null
+              ? const Color(0xFFA39082)
+              : const Color(0xFF5F4A3C),
+        ),
+      ),
+    ),
+  );
+}
+
+class _DraftRow extends ConsumerStatefulWidget {
+  const _DraftRow({super.key, required this.draft});
   final SellerDraft draft;
 
   @override
+  ConsumerState<_DraftRow> createState() => _DraftRowState();
+}
+
+class _DraftRowState extends ConsumerState<_DraftRow> {
+  bool _deleting = false;
+
+  /// Drafts are the only listing state a seller can't otherwise get rid of
+  /// — publishing needs every required field filled in, so a half-started
+  /// draft would sit in the tab forever. Confirmed because the row's own
+  /// tap target is "resume editing"; a mis-tap must not destroy work.
+  Future<void> _confirmAndDelete(BuildContext context) async {
+    final draft = widget.draft;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete draft?'),
+        content: Text(
+          '"${draft.displayTitle}" will be removed. This can\'t be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _deleting = true);
+    try {
+      await ref.read(sellerRepositoryProvider).deleteDraft(draft.id);
+      ref.invalidate(sellerDraftsProvider);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(this.context).showSnackBar(
+        const SnackBar(content: Text('Couldn\'t delete draft')),
+      );
+      setState(() => _deleting = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final draft = widget.draft;
     return InkWell(
       borderRadius: BorderRadius.circular(16),
-      onTap: () => context.push('/sell/create?draftId=${draft.id}'),
+      // Don't reopen a draft that's mid-delete — the row is about to go.
+      onTap: _deleting
+          ? null
+          : () => context.push('/sell/create?draftId=${draft.id}'),
       child: Container(
       decoration: BoxDecoration(
         color: ModaireColors.tileBg,
@@ -803,6 +877,17 @@ class _DraftRow extends StatelessWidget {
                   style: GoogleFonts.jost(
                     fontSize: 11,
                     color: ModaireColors.tileTextSubtle,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                // Its GestureDetector sits deeper than the row's InkWell,
+                // so it wins the gesture arena — tapping Delete doesn't
+                // also open the draft.
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: _chipButton(
+                    label: _deleting ? 'Deleting…' : 'Delete',
+                    onTap: _deleting ? null : () => _confirmAndDelete(context),
                   ),
                 ),
               ],
