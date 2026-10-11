@@ -6,6 +6,7 @@ import { getAppUrl } from "@/lib/app-url";
 import { getPrimaryListingImage } from "@/lib/listing-images";
 import { prisma } from "@/lib/prisma";
 import { getEffectivePriceForListing } from "@/lib/promotions/get-effective-price";
+import { getOfferAwarePrice, isReservedForOtherBuyer } from "@/lib/offers";
 import { getShipmentRateById, getShipmentRates } from "@/lib/shippo";
 import { stripe } from "@/lib/stripe";
 import { computeProcessingFeeCents } from "@/lib/fees";
@@ -144,6 +145,11 @@ async function getValidatedListingForCheckout(listingId: string, buyerId: string
     if (!listing) throw new Error("Listing not found.");
     if (listing.status !== "AVAILABLE") throw new Error("This item is no longer available.");
     if (listing.user_id === buyerId) throw new Error("You cannot buy your own listing.");
+    // Offer reservation: block everyone except the buyer the item is held for
+    // during an accepted offer's pay-window.
+    if (await isReservedForOtherBuyer(listing, buyerId)) {
+        throw new Error("This item is reserved for another buyer right now.");
+    }
 
     return listing;
 }
@@ -251,7 +257,7 @@ export async function createCheckoutSessionWithShipping(
         // listing id alone — factoring in any active promotion the seller
         // opted this listing into. Buyer cannot manipulate the discount from
         // the browser.
-        const effectivePrice = await getEffectivePriceForListing(listing.id);
+        const effectivePrice = await getOfferAwarePrice(listing.id, session.user.id);
         // Buyer-facing PromotionCode (Modaire-absorbs) is validated + applied
         // server-side. Client-provided code is NEVER trusted for money math;
         // we re-run validatePromotionCode here so the amount on the Stripe
@@ -602,7 +608,7 @@ export async function createPaymentIntentForListingByUserId(
         // from the listing id. Mobile client sees whatever amount the server
         // returns in `breakdown.itemAmount` below and displays that in the
         // PaymentSheet.
-        const effectivePrice = await getEffectivePriceForListing(listing.id);
+        const effectivePrice = await getOfferAwarePrice(listing.id, buyerId);
         const buyerOriginalCents = effectivePrice.effectiveCents;
         let unitAmount = buyerOriginalCents;
         let appliedPromo: {

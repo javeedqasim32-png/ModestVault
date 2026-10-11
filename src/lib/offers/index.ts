@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { createNotification } from "@/app/actions/notifications";
+import { getEffectivePriceForListing, type EffectivePrice } from "@/lib/promotions/get-effective-price";
 
 /**
  * Make an Offer / negotiation engine. ALL offer business rules live here —
@@ -267,7 +268,37 @@ export async function expireOffers() {
     expiredOffers++;
   }
 
-  // 2. Pay-window expiries: release the reservation, item goes live again.
+  // 2. Reconcile PAID offers. The payment path (checkout-finalize) is left
+  //    untouched to avoid risk; instead we detect completion here: an
+  //    AWAITING_PAYMENT offer whose listing is now SOLD with a matching
+  //    Purchase by that buyer -> COMPLETED. Also expires the losing offers on
+  //    that now-sold listing. (Eventually-consistent within the cron interval.)
+  let completedOffers = 0;
+  const awaiting = await prisma.offer.findMany({
+    where: { payment_state: "AWAITING_PAYMENT", status: "ACCEPTED" },
+    select: { id: true, buyer_id: true, listing_id: true, listing: { select: { title: true, status: true } } },
+    take: 500,
+  });
+  for (const o of awaiting) {
+    if (o.listing.status !== "SOLD") continue;
+    const purchase = await prisma.purchase.findFirst({
+      where: { buyer_id: o.buyer_id, listing_id: o.listing_id },
+      orderBy: { created_at: "desc" },
+      select: { id: true },
+    });
+    if (!purchase) continue;
+    const res = await prisma.offer.updateMany({
+      where: { id: o.id, payment_state: "AWAITING_PAYMENT" },
+      data: { status: "COMPLETED", payment_state: "PAID", purchase_id: purchase.id },
+    });
+    if (res.count === 0) continue;
+    await prisma.offerEvent.create({ data: { offer_id: o.id, actor: "SYSTEM", type: "PAID", amount: null } });
+    await prisma.listing.updateMany({ where: { id: o.listing_id, reserved_offer_id: o.id }, data: { reserved_offer_id: null, reserved_until: null } });
+    completedOffers++;
+    await expireLosingOffers(o.listing_id, o.id, o.listing.title);
+  }
+
+  // 3. Pay-window expiries: release the reservation, item goes live again.
   const unpaid = await prisma.offer.findMany({
     where: { payment_state: "AWAITING_PAYMENT", pay_window_expires_at: { lt: now } },
     select: { id: true, buyer_id: true, seller_id: true, listing_id: true, listing: { select: { title: true } } },
@@ -290,7 +321,64 @@ export async function expireOffers() {
     releasedReservations++;
   }
 
-  return { expiredOffers, releasedReservations };
+  return { expiredOffers, completedOffers, releasedReservations };
+}
+
+/** Expire the other active offers on a listing that just sold, notifying those buyers. */
+async function expireLosingOffers(listingId: string, winningOfferId: string, title: string) {
+  const losers = await prisma.offer.findMany({
+    where: { listing_id: listingId, id: { not: winningOfferId }, status: { in: ACTIVE as unknown as string[] } },
+    select: { id: true, buyer_id: true },
+    take: 500,
+  });
+  for (const l of losers) {
+    const res = await prisma.offer.updateMany({
+      where: { id: l.id, status: { in: ACTIVE as unknown as string[] } },
+      data: { status: "EXPIRED" },
+    });
+    if (res.count === 0) continue;
+    await prisma.offerEvent.create({ data: { offer_id: l.id, actor: "SYSTEM", type: "EXPIRE" } });
+    await notify(l.buyer_id, "OFFER_EXPIRED", "Item sold", `"${title}" was sold, so your offer is no longer active.`, l.id);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Checkout integration
+// ---------------------------------------------------------------------------
+
+/**
+ * Price the buyer should be charged at checkout for a listing. If they hold an
+ * ACCEPTED offer in its pay-window, that negotiated amount wins over the normal
+ * promo-aware price; otherwise falls back to the standard effective price.
+ * Called from the single-listing checkout paths in src/app/actions/checkout.ts.
+ */
+export async function getOfferAwarePrice(listingId: string, buyerId: string): Promise<EffectivePrice> {
+  const base = await getEffectivePriceForListing(listingId);
+  const offer = await prisma.offer.findFirst({
+    where: { listing_id: listingId, buyer_id: buyerId, status: "ACCEPTED", payment_state: "AWAITING_PAYMENT" },
+    select: { current_amount: true },
+  });
+  if (!offer) return base;
+  const cents = Math.round(Number(offer.current_amount) * 100);
+  return { originalCents: base.originalCents, effectiveCents: cents, discountPercent: 0, promotionCampaignId: null };
+}
+
+/**
+ * True when this item is reserved for another buyer's accepted offer during its
+ * pay-window. Checkout rejects other buyers while this holds.
+ */
+export async function isReservedForOtherBuyer(
+  listing: { reserved_offer_id: string | null; reserved_until: Date | null },
+  buyerId: string,
+): Promise<boolean> {
+  if (!listing.reserved_offer_id || !listing.reserved_until || listing.reserved_until <= new Date()) {
+    return false;
+  }
+  const resOffer = await prisma.offer.findUnique({
+    where: { id: listing.reserved_offer_id },
+    select: { buyer_id: true },
+  });
+  return !!resOffer && resOffer.buyer_id !== buyerId;
 }
 
 // ---------------------------------------------------------------------------
