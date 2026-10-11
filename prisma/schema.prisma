@@ -46,6 +46,8 @@ model User {
   drafts             Draft[]
   notifications      Notification[] @relation("UserNotifications")
   aiCoverJobs        AICoverJob[]
+  offersAsBuyer      Offer[]    @relation("OfferBuyer")
+  offersAsSeller     Offer[]    @relation("OfferSeller")
   refreshTokens      RefreshToken[]
   deviceTokens       DeviceToken[]
   listingPromotions   ListingPromotion[]
@@ -122,6 +124,14 @@ model Listing {
   size              String?
   status            String    @default("AVAILABLE") // AVAILABLE, SOLD
   moderation_status String    @default("PENDING")   // PENDING, APPROVED, PARTIAL_APPROVED, REJECTED
+  // Offers / negotiation. offers_enabled lets a seller turn off "Make an Offer"
+  // for a listing (3.1 eligibility). reserved_* holds the item for a buyer whose
+  // accepted offer is in its "pay now" window — checkout rejects other buyers
+  // while reserved_until is in the future (status stays AVAILABLE so existing
+  // AVAILABLE/SOLD queries are untouched; the reservation is enforced at checkout).
+  offers_enabled    Boolean   @default(true)
+  reserved_offer_id String?
+  reserved_until    DateTime?
   is_featured       Boolean   @default(false)       // curation: surfaces on Home "Featured" rail when true
   featured_order    Int?                            // admin-set sort order for the Home "Featured" rail; lower first, NULLs last
   reviewed_at       DateTime?
@@ -136,6 +146,7 @@ model Listing {
   conversations     Conversation[]
   listingPromotions ListingPromotion[]
   marketingDrafts   MarketingDraft[]
+  offers            Offer[]
 
   @@index([status, moderation_status, created_at])
   @@index([style, category, subcategory, type])
@@ -464,6 +475,57 @@ model AICoverJob {
 
   @@index([user_id, status, created_at])
   @@index([status, created_at])
+}
+
+// Make an Offer / negotiation thread. One active Offer per (buyer, listing);
+// historical rows (ACCEPTED/REJECTED/EXPIRED/WITHDRAWN/COMPLETED) stay for the
+// buyer's and seller's history. Business rules live in src/lib/offers; both the
+// web server actions (src/app/actions/offers.ts) and the mobile API
+// (/api/v1/offers) are thin wrappers over it.
+model Offer {
+  id         String   @id @default(uuid())
+  listing_id String
+  listing    Listing  @relation(fields: [listing_id], references: [id], onDelete: Cascade)
+  buyer_id   String
+  buyer      User     @relation("OfferBuyer", fields: [buyer_id], references: [id])
+  seller_id  String
+  seller     User     @relation("OfferSeller", fields: [seller_id], references: [id])
+
+  // PENDING, COUNTERED, ACCEPTED, REJECTED, EXPIRED, WITHDRAWN, COMPLETED
+  status         String   @default("PENDING")
+  current_amount Decimal              // amount on the table right now
+  current_turn   String               // SELLER | BUYER — whose response we await
+  expires_at     DateTime             // deadline for the party in current_turn
+
+  // Payment path (set at accept time). Phase 1 uses the AWAITING_PAYMENT
+  // fallback only; binding/off-session auto-charge is wired in a later phase.
+  binding               Boolean  @default(false) // card confirmed up front -> auto-charge
+  setup_intent_id       String?                  // SetupIntent that saved the card
+  payment_state         String?  // AUTO_CHARGED | AWAITING_PAYMENT | PAID | CHARGE_FAILED
+  pay_window_expires_at DateTime?                // fallback "pay now" deadline
+  purchase_id           String?  @unique         // set once converted to a Purchase
+
+  events     OfferEvent[]
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([listing_id, status])
+  @@index([buyer_id, status, updated_at])
+  @@index([seller_id, status, updated_at])
+  @@index([status, expires_at])
+}
+
+// One row per turn in a negotiation — the history surfaced to both parties (3.2).
+model OfferEvent {
+  id         String   @id @default(uuid())
+  offer_id   String
+  offer      Offer    @relation(fields: [offer_id], references: [id], onDelete: Cascade)
+  actor      String   // BUYER | SELLER | SYSTEM
+  type       String   // OFFER | COUNTER | ACCEPT | REJECT | EXPIRE | WITHDRAW | PAID
+  amount     Decimal?
+  created_at DateTime @default(now())
+
+  @@index([offer_id, created_at])
 }
 
 // Refresh tokens issued by /api/v1/auth/login for the mobile (Flutter) client.
