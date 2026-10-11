@@ -49,6 +49,8 @@ class OfferSummary {
     required this.listing,
     this.buyerName,
     this.sellerName,
+    this.buyerId,
+    this.sellerId,
   });
 
   final String id;
@@ -56,6 +58,8 @@ class OfferSummary {
   final double? currentAmount;
   final String currentTurn; // SELLER | BUYER
   final String viewerRole; // BUYER | SELLER
+  final String? buyerId;
+  final String? sellerId;
   final DateTime? expiresAt;
   final String? paymentState;
   final DateTime? payWindowExpiresAt;
@@ -79,6 +83,8 @@ class OfferSummary {
         listing: OfferListingRef.fromJson(j['listing'] as Map<String, dynamic>),
         buyerName: j['buyerName'] as String?,
         sellerName: j['sellerName'] as String?,
+        buyerId: j['buyerId'] as String?,
+        sellerId: j['sellerId'] as String?,
       );
 }
 
@@ -95,6 +101,8 @@ class OfferThread extends OfferSummary {
     required super.listing,
     super.buyerName,
     super.sellerName,
+    super.buyerId,
+    super.sellerId,
     required this.events,
   });
 
@@ -114,6 +122,8 @@ class OfferThread extends OfferSummary {
       listing: s.listing,
       buyerName: s.buyerName,
       sellerName: s.sellerName,
+      buyerId: s.buyerId,
+      sellerId: s.sellerId,
       events: ((j['events'] as List<dynamic>?) ?? [])
           .map((e) => OfferEvent.fromJson(e as Map<String, dynamic>))
           .toList(),

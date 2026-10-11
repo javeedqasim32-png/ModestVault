@@ -61,7 +61,18 @@ class _OffersList extends ConsumerWidget {
       loading: () => const Center(child: CircularProgressIndicator(color: ModaireColors.espresso, strokeWidth: 2)),
       error: (e, _) => Center(child: Text('Couldn\'t load offers', style: GoogleFonts.jost(color: ModaireColors.tileTextSubtle))),
       data: (offers) {
-        if (offers.isEmpty) {
+        // One tile per (item, buyer): repeat attempts on the same item collapse
+        // into the latest one. The API returns newest-first, so the first
+        // occurrence of each key is the latest.
+        final counts = <String, int>{};
+        for (final o in offers) {
+          final k = '${o.listing.id}:${o.buyerId ?? ''}';
+          counts[k] = (counts[k] ?? 0) + 1;
+        }
+        final seen = <String>{};
+        final tiles = offers.where((o) => seen.add('${o.listing.id}:${o.buyerId ?? ''}')).toList();
+
+        if (tiles.isEmpty) {
           return Center(
             child: Text(selling ? 'No offers on your listings yet.' : 'You haven\'t made any offers yet.',
                 style: GoogleFonts.jost(color: ModaireColors.tileTextSubtle)),
@@ -72,9 +83,12 @@ class _OffersList extends ConsumerWidget {
           onRefresh: () async => ref.refresh(_offersProvider(selling).future),
           child: ListView.separated(
             padding: const EdgeInsets.all(16),
-            itemCount: offers.length,
+            itemCount: tiles.length,
             separatorBuilder: (_, __) => const SizedBox(height: 8),
-            itemBuilder: (_, i) => _OfferTile(offer: offers[i], selling: selling),
+            itemBuilder: (_, i) {
+              final o = tiles[i];
+              return _OfferTile(offer: o, selling: selling, attemptCount: counts['${o.listing.id}:${o.buyerId ?? ''}'] ?? 1);
+            },
           ),
         );
       },
@@ -83,9 +97,10 @@ class _OffersList extends ConsumerWidget {
 }
 
 class _OfferTile extends StatelessWidget {
-  const _OfferTile({required this.offer, required this.selling});
+  const _OfferTile({required this.offer, required this.selling, this.attemptCount = 1});
   final OfferSummary offer;
   final bool selling;
+  final int attemptCount;
 
   @override
   Widget build(BuildContext context) {
@@ -116,7 +131,8 @@ class _OfferTile extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     '\$${offer.currentAmount?.toStringAsFixed(2)} · ${_statusLabel(offer.status)}'
-                    '${selling && offer.buyerName != null ? ' · ${offer.buyerName}' : ''}',
+                    '${selling && offer.buyerName != null ? ' · ${offer.buyerName}' : ''}'
+                    '${attemptCount > 1 ? ' · $attemptCount attempts' : ''}',
                     style: GoogleFonts.jost(fontSize: 13, color: ModaireColors.tileTextSubtle),
                   ),
                 ],

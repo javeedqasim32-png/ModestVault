@@ -5,8 +5,7 @@ import { auth } from "@/auth";
 import { getAppUrl } from "@/lib/app-url";
 import { getPrimaryListingImage } from "@/lib/listing-images";
 import { prisma } from "@/lib/prisma";
-import { getEffectivePriceForListing } from "@/lib/promotions/get-effective-price";
-import { getOfferAwarePrice, isReservedForOtherBuyer } from "@/lib/offers";
+import { getOfferAwarePrice, getOfferAwarePricesForListings, isReservedForOtherBuyer } from "@/lib/offers";
 import { getShipmentRateById, getShipmentRates } from "@/lib/shippo";
 import { stripe } from "@/lib/stripe";
 import { computeProcessingFeeCents } from "@/lib/fees";
@@ -920,10 +919,12 @@ export async function createBundledCheckoutSessionWithShipping(
         // is simplified vs the single-item path; a follow-up can pack
         // per-line originals into metadata if line-level attribution is
         // needed for reporting.
+        // Offer-aware like the single-item path: a listing with this buyer's
+        // accepted offer awaiting payment is charged the agreed amount.
+        const offerAwarePrices = await getOfferAwarePricesForListings(listings, session.user.id);
         const bundleEffectivePrices = new Map<string, number>();
         for (const listing of listings) {
-            const ep = await getEffectivePriceForListing(listing.id);
-            bundleEffectivePrices.set(listing.id, ep.effectiveCents);
+            bundleEffectivePrices.set(listing.id, offerAwarePrices.get(listing.id)!.effectiveCents);
         }
         const itemLineItems = listings.map((listing) => {
             const coverImage = getPrimaryListingImage(listing, "detail");
@@ -1072,10 +1073,11 @@ export async function createPaymentIntentForBundleByUserId(
         // Bundle-level promotion recompute for mobile PaymentIntent — mirrors
         // the bundle Checkout Session path above. Buyer is charged
         // sum(effectivePrices) + shipping, never listing.price sum.
+        // Offer-aware like the single-item path (see createCheckoutSessionWithShipping).
+        const offerAwarePrices = await getOfferAwarePricesForListings(listings, buyerId);
         const bundleEffectivePrices = new Map<string, number>();
         for (const l of listings) {
-            const ep = await getEffectivePriceForListing(l.id);
-            bundleEffectivePrices.set(l.id, ep.effectiveCents);
+            bundleEffectivePrices.set(l.id, offerAwarePrices.get(l.id)!.effectiveCents);
         }
         const itemAmountCentsTotal = listings.reduce(
             (sum, l) => sum + (bundleEffectivePrices.get(l.id) ?? Math.round(Number(l.price) * 100)),

@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { ChevronRight, CircleHelp, CreditCard, FileText, MessageCircle, Package, ShieldCheck, ShoppingBag, Star, Tag, TrendingUp, UserRound, Wallet } from "lucide-react";
+import { ChevronRight, CircleHelp, CreditCard, FileText, Handshake, MessageCircle, Package, ShieldCheck, ShoppingBag, Star, Tag, TrendingUp, UserRound, Wallet } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -44,6 +44,7 @@ export default async function ProfileDashboard() {
     const cards: DashboardCard[] = [
         ...(isAdmin ? [{ label: "Admin", value: "Manage marketplace", icon: ShieldCheck, href: "/admin/listings" }] : []),
         { label: "Orders", value: "Track purchases", icon: ShoppingBag, href: "/dashboard/purchases", guestIntent: "orders" },
+        { label: "My Offers", value: "Offers & negotiations", icon: Handshake, href: "/offers", guestIntent: "account" },
         { label: "Sell", value: "Create listing", icon: Tag, href: "/sell", guestIntent: "sell" },
         { label: "Your Listings", value: "Manage listings", icon: Package, href: "/sell?manage=1", guestIntent: "sell" },
         { label: "Sales", value: "Sold items", icon: TrendingUp, href: "/dashboard/sales", guestIntent: "account" },

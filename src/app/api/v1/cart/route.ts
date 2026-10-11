@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/api/errors";
 import { requireBearer } from "@/lib/api/bearer-auth";
 import { serializeListingSummaryForMobile } from "@/lib/api/mobile-serializers";
-import { getEffectivePricesForListings } from "@/lib/promotions/get-effective-price";
+import { getOfferAwarePricesForListings } from "@/lib/offers";
 
 export const dynamic = "force-dynamic";
 
@@ -51,12 +51,15 @@ export async function GET(req: NextRequest) {
         },
     });
 
-    const priceMap = await getEffectivePricesForListings(
+    // Promo price, or this buyer's accepted offer awaiting payment — the app
+    // builds its checkout summary from these, so they must match the charge.
+    const priceMap = await getOfferAwarePricesForListings(
         rows.map((row) => ({
             id: row.listing.id,
             price: row.listing.price,
             status: row.listing.status,
         })),
+        principal.id,
     );
 
     const items = rows.map((row) => ({

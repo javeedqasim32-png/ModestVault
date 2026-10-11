@@ -21,7 +21,7 @@ type OfferWithRefs = {
   updated_at: Date;
   buyer_id: string;
   seller_id: string;
-  listing: { id: string; title: string; price: Prisma.Decimal; image_url?: string | null };
+  listing: { id: string; title: string; price: Prisma.Decimal; image_url?: string | null; size?: string | null; condition?: string | null };
   buyer?: { id: string; first_name: string } | null;
   seller?: { id: string; first_name: string } | null;
 };
@@ -33,6 +33,8 @@ export function serializeOfferSummary(o: OfferWithRefs, viewerId: string) {
     currentAmount: num(o.current_amount),
     currentTurn: o.current_turn, // SELLER | BUYER
     viewerRole: o.buyer_id === viewerId ? "BUYER" : "SELLER",
+    buyerId: o.buyer_id,
+    sellerId: o.seller_id,
     expiresAt: o.expires_at.toISOString(),
     paymentState: o.payment_state,
     payWindowExpiresAt: o.pay_window_expires_at?.toISOString() ?? null,
@@ -43,6 +45,8 @@ export function serializeOfferSummary(o: OfferWithRefs, viewerId: string) {
       title: o.listing.title,
       price: num(o.listing.price),
       imageUrl: o.listing.image_url ?? null,
+      size: o.listing.size ?? null,
+      condition: o.listing.condition ?? null,
     },
     buyerName: o.buyer?.first_name ?? null,
     sellerName: o.seller?.first_name ?? null,
@@ -61,11 +65,14 @@ export type SerializedOfferSummary = ReturnType<typeof serializeOfferSummary>;
 export type SerializedOfferThread = ReturnType<typeof serializeOfferThread>;
 
 export function serializeOfferThread(
-  o: OfferWithRefs & { events: OfferEventRow[]; viewerRole: "BUYER" | "SELLER" },
+  o: OfferWithRefs & { events: OfferEventRow[]; viewerRole: "BUYER" | "SELLER"; attemptCount?: number },
 ) {
   return {
     ...serializeOfferSummary(o, o.viewerRole === "BUYER" ? o.buyer_id : o.seller_id),
     viewerRole: o.viewerRole,
+    // Number of separate offer attempts by this buyer on this item; history
+    // below is merged across all of them.
+    attemptCount: o.attemptCount ?? 1,
     events: o.events.map((e) => ({
       id: e.id,
       actor: e.actor, // BUYER | SELLER | SYSTEM

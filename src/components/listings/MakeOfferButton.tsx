@@ -31,13 +31,15 @@ export default function MakeOfferButton({
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const pill =
-    "inline-flex h-9 w-[170px] items-center justify-center gap-1.5 rounded-full border border-[#2f2925] bg-transparent px-3 text-[12px] font-medium text-[#2f2925] whitespace-nowrap transition hover:bg-[#2f2925] hover:text-white";
+  // Round icon button that sits inline with the favorite / message / share
+  // icons on the listing's action row.
+  const iconCls =
+    "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#ddd3cb] bg-[#fbf8f5] text-[#2f2925]";
 
   if (existingOfferId) {
     return (
-      <button type="button" onClick={() => router.push(`/offers/${existingOfferId}`)} className={pill}>
-        <Tag className="h-4 w-4" /> View your offer
+      <button type="button" aria-label="View your offer" title="View your offer" onClick={() => router.push(`/offers/${existingOfferId}`)} className={`${iconCls} bg-[#efe7de]`}>
+        <Tag className="h-5 w-5" />
       </button>
     );
   }
@@ -78,8 +80,8 @@ export default function MakeOfferButton({
 
   return (
     <>
-      <button type="button" onClick={openSheet} className={pill}>
-        <Tag className="h-4 w-4" /> Make an Offer
+      <button type="button" aria-label="Make an offer" title="Make an offer" onClick={openSheet} className={iconCls}>
+        <Tag className="h-5 w-5" />
       </button>
 
       {open && (

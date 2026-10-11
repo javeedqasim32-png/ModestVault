@@ -18,7 +18,8 @@ export type SignInPromptIntent =
     | "message"
     | "orders"
     | "account"
-    | "offer";
+    | "offer"
+    | "comment";
 
 type IntentCopy = {
     title: string;
@@ -46,6 +47,12 @@ const INTENTS: Record<SignInPromptIntent, IntentCopy> = {
         title: "Sign in to make an offer",
         subtitle: "Sign in or create a free account to negotiate with sellers and send offers.",
         emoji: "🏷️",
+        primary: "signin",
+    },
+    comment: {
+        title: "Sign in to comment",
+        subtitle: "Sign in or create a free account to ask questions and join the conversation on this listing.",
+        emoji: "💬",
         primary: "signin",
     },
     cart: {

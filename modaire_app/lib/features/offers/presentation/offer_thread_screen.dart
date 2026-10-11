@@ -8,6 +8,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../app/theme.dart';
 import '../../../core/api/api_exception.dart';
+import '../../../core/cart/cart_controller.dart';
 import '../../../core/offers/offer_models.dart';
 import '../../../core/offers/offer_repository.dart';
 
@@ -128,7 +129,15 @@ class _OfferThreadScreenState extends ConsumerState<OfferThreadScreen> {
           SizedBox(
             width: double.infinity, height: 48,
             child: ElevatedButton(
-              onPressed: () => context.push('/checkout?items=${o.listing.id}'),
+              // Checkout builds its items from the bag, so make sure the
+              // accepted item is in it before opening checkout for it.
+              onPressed: () async {
+                try {
+                  await ref.read(cartIdsProvider.notifier).setInCart(o.listing.id, true);
+                } catch (_) {}
+                if (!mounted) return;
+                context.push('/checkout?items=${o.listing.id}');
+              },
               style: ElevatedButton.styleFrom(backgroundColor: ModaireColors.espresso, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(99))),
               child: Text('Pay now — \$${o.currentAmount?.toStringAsFixed(2)}', style: GoogleFonts.jost(color: ModaireColors.cream, fontWeight: FontWeight.w600)),
             ),

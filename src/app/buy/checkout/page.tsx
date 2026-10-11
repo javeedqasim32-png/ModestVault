@@ -4,10 +4,7 @@ import { redirect } from "next/navigation";
 import localFont from "next/font/local";
 import { PreCheckoutClient } from "@/components/marketplace/PreCheckoutClient";
 import { getPrimaryListingImage } from "@/lib/listing-images";
-import {
-    getEffectivePriceForListing,
-    getEffectivePricesForListings,
-} from "@/lib/promotions/get-effective-price";
+import { getOfferAwarePrice, getOfferAwarePricesForListings } from "@/lib/offers";
 
 export const dynamic = "force-dynamic";
 
@@ -101,10 +98,11 @@ export default async function BuyCheckoutPage({
               }
             : undefined;
 
-        // Promotion pricing per bundle line — mirrors checkout server-side
-        // so what buyer sees in this preview matches Stripe.
-        const bundleEffectivePrices = await getEffectivePricesForListings(
+        // Per-line pricing mirrors checkout server-side (promo price, or this
+        // buyer's accepted offer) so what the buyer sees matches Stripe.
+        const bundleEffectivePrices = await getOfferAwarePricesForListings(
             listings.map((l) => ({ id: l.id, price: l.price as unknown as number, status: l.status })),
+            sessionUserId,
         );
 
         const bundleItems = listings.map((l) => {
@@ -193,9 +191,9 @@ export default async function BuyCheckoutPage({
         phone: user.phone || "",
     } : undefined;
 
-    // Effective price mirrors checkout server-side — buyer sees what Stripe
-    // will actually charge, not the original.
-    const effectivePrice = await getEffectivePriceForListing(listing.id);
+    // Effective price mirrors checkout server-side (promo price, or this
+    // buyer's accepted offer) — buyer sees what Stripe will actually charge.
+    const effectivePrice = await getOfferAwarePrice(listing.id, sessionUserId);
     const listingPrice = effectivePrice.effectiveCents / 100;
 
     return (

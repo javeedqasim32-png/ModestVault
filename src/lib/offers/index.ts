@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { createNotification } from "@/app/actions/notifications";
-import { getEffectivePriceForListing, type EffectivePrice } from "@/lib/promotions/get-effective-price";
+import { getEffectivePriceForListing, getEffectivePricesForListings, type EffectivePrice } from "@/lib/promotions/get-effective-price";
 
 /**
  * Make an Offer / negotiation engine. ALL offer business rules live here —
@@ -50,7 +50,14 @@ export class OfferError extends Error {
 
 const ACTIVE = ["PENDING", "COUNTERED"] as const;
 const hoursFromNow = (h: number) => new Date(Date.now() + h * 3600_000);
-const dec = (v: Prisma.Decimal.Value) => new Prisma.Decimal(v);
+// Money in: reject NaN/Infinity up front (Decimal comparisons against NaN are
+// all false, which would let a crafted server-action payload slip past the
+// range checks) and normalise to cents so Stripe and the DB agree.
+const dec = (v: Prisma.Decimal.Value) => {
+  const d = new Prisma.Decimal(v);
+  if (!d.isFinite()) throw new OfferError("INVALID_AMOUNT", "Enter a valid amount.");
+  return d.toDecimalPlaces(2);
+};
 
 /** Which role a user plays in an offer, or null if they're neither party. */
 function roleOf(offer: { buyer_id: string; seller_id: string }, userId: string): OfferRole | null {
@@ -364,6 +371,39 @@ export async function getOfferAwarePrice(listingId: string, buyerId: string): Pr
 }
 
 /**
+ * Batch form of getOfferAwarePrice for bundles and carts: promo-aware base
+ * prices, overridden per listing by this buyer's accepted offer that is
+ * awaiting payment. One query for all offers. Every input id gets an entry.
+ */
+export async function getOfferAwarePricesForListings(
+  listings: Array<{ id: string; price: number | string | { toString(): string }; status: string }>,
+  buyerId: string,
+): Promise<Map<string, EffectivePrice>> {
+  const base = await getEffectivePricesForListings(listings);
+  if (listings.length === 0) return base;
+  const offers = await prisma.offer.findMany({
+    where: {
+      listing_id: { in: listings.map((l) => l.id) },
+      buyer_id: buyerId,
+      status: "ACCEPTED",
+      payment_state: "AWAITING_PAYMENT",
+    },
+    select: { listing_id: true, current_amount: true },
+  });
+  for (const o of offers) {
+    const b = base.get(o.listing_id);
+    if (!b) continue;
+    base.set(o.listing_id, {
+      originalCents: b.originalCents,
+      effectiveCents: Math.round(Number(o.current_amount) * 100),
+      discountPercent: 0,
+      promotionCampaignId: null,
+    });
+  }
+  return base;
+}
+
+/**
  * True when this item is reserved for another buyer's accepted offer during its
  * pay-window. Checkout rejects other buyers while this holds.
  */
@@ -390,7 +430,7 @@ export async function getOfferThreadForUser(userId: string, offerId: string) {
     where: { id: offerId },
     include: {
       events: { orderBy: { created_at: "asc" } },
-      listing: { select: { id: true, title: true, price: true, image_url: true, status: true } },
+      listing: { select: { id: true, title: true, price: true, image_url: true, status: true, size: true, condition: true } },
       buyer: { select: { id: true, first_name: true } },
       seller: { select: { id: true, first_name: true } },
     },
@@ -398,7 +438,20 @@ export async function getOfferThreadForUser(userId: string, offerId: string) {
   if (!offer) throw new OfferError("NOT_FOUND", "Offer not found.");
   const role = roleOf(offer, userId);
   if (!role) throw new OfferError("FORBIDDEN", "Not your offer.");
-  return { ...offer, viewerRole: role };
+
+  // Consolidate: a buyer who re-offers on the same item after a rejection or
+  // expiry creates a new Offer row each time. Surface the whole relationship
+  // as one thread by merging every attempt's events (same buyer + listing)
+  // into a single chronological history.
+  const siblings = await prisma.offer.findMany({
+    where: { listing_id: offer.listing_id, buyer_id: offer.buyer_id },
+    select: { id: true, events: { orderBy: { created_at: "asc" } } },
+  });
+  const mergedEvents = siblings
+    .flatMap((s) => s.events)
+    .sort((a, b) => a.created_at.getTime() - b.created_at.getTime());
+
+  return { ...offer, events: mergedEvents, attemptCount: siblings.length, viewerRole: role };
 }
 
 export async function listOffersForUser(userId: string, role: OfferRole) {
