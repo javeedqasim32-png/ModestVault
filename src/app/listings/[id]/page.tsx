@@ -17,6 +17,8 @@ import ShareListingButton from "@/components/marketplace/ShareListingButton";
 import SmartBackButton from "@/components/layout/SmartBackButton";
 import AddToBagButton from "@/components/listings/AddToBagButton";
 import MessageSellerButton from "@/components/listings/MessageSellerButton";
+import MakeOfferButton from "@/components/listings/MakeOfferButton";
+import { getOfferEligibility } from "@/lib/offers";
 
 import { getUserSlugMap } from "@/lib/user-slugs";
 
@@ -152,6 +154,12 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
     // helper the checkout action uses, so what you see here is what you pay.
     const effectivePrice = await getEffectivePriceForListing(listing.id);
     const hasPromo = effectivePrice.discountPercent > 0;
+
+    // Offer eligibility (3.1): whether to show "Make an Offer" and whether the
+    // buyer already has an active offer to link to.
+    const offerElig = await getOfferEligibility(session?.user?.id ?? null, listing.id);
+    const canMakeOffer = offerElig.eligible;
+    const existingOfferId = offerElig.eligible ? offerElig.activeOfferId ?? null : null;
     const metaPills = [
         { label: "Size", value: listing.size || "M" },
         { label: "Condition", value: listing.condition || "Like new" },
@@ -396,6 +404,16 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                             </button>
                         )}
                     </div>
+                    {canMakeOffer && (
+                        <div className="mt-3">
+                            <MakeOfferButton
+                                listingId={listing.id}
+                                askingPrice={Number(listing.price)}
+                                isAuthed={isAuthed}
+                                existingOfferId={existingOfferId}
+                            />
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

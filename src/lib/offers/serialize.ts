@@ -57,6 +57,9 @@ type OfferEventRow = {
   created_at: Date;
 };
 
+export type SerializedOfferSummary = ReturnType<typeof serializeOfferSummary>;
+export type SerializedOfferThread = ReturnType<typeof serializeOfferThread>;
+
 export function serializeOfferThread(
   o: OfferWithRefs & { events: OfferEventRow[]; viewerRole: "BUYER" | "SELLER" },
 ) {
