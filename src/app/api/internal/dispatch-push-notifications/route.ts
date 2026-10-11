@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendFcmMessages, isFcmEnabled, type FcmMessage } from "@/lib/fcm";
+import { isCronAuthorized } from "@/lib/api/cron-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -25,20 +26,13 @@ export const dynamic = "force-dynamic";
  * with sent_at=null. They drain automatically once Firebase is configured and
  * the flag flips on; nothing is lost.
  */
-function isAuthorized(request: Request) {
-    const expected = process.env.INTERNAL_CRON_SECRET;
-    if (!expected) return false;
-    const provided = request.headers.get("x-cron-secret");
-    return provided === expected;
-}
-
 const MAX_PER_RUN = 100;
 const MAX_ATTEMPTS = 8;
 const BASE_BACKOFF_MS = 60 * 1000;       // 1 minute
 const MAX_BACKOFF_MS = 60 * 60 * 1000;   // 1 hour
 
 export async function POST(request: Request) {
-    if (!isAuthorized(request)) {
+    if (!isCronAuthorized(request)) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

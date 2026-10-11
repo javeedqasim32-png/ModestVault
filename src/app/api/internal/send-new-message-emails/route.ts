@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { sendNewMessageEmail } from "@/lib/email";
 import { sendNewMessagesSMS } from "@/lib/sms";
 import { getAppUrl } from "@/lib/app-url";
+import { isCronAuthorized } from "@/lib/api/cron-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -34,18 +35,11 @@ export const dynamic = "force-dynamic";
  *
  * Auth: `x-cron-secret` header against INTERNAL_CRON_SECRET.
  */
-function isAuthorized(request: Request) {
-    const expected = process.env.INTERNAL_CRON_SECRET;
-    if (!expected) return false;
-    const provided = request.headers.get("x-cron-secret");
-    return provided === expected;
-}
-
 const DELAY_MINUTES = 5;
 const MAX_PER_RUN = 200;
 
 export async function POST(request: Request) {
-    if (!isAuthorized(request)) {
+    if (!isCronAuthorized(request)) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

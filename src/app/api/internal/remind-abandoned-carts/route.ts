@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendCartReminderEmail } from "@/lib/email";
 import { getAppUrl } from "@/lib/app-url";
+import { isCronAuthorized } from "@/lib/api/cron-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -29,13 +30,6 @@ export const dynamic = "force-dynamic";
  * Auth: `x-cron-secret` header against INTERNAL_CRON_SECRET.
  * Recommended schedule: hourly (`0 * * * *`).
  */
-function isAuthorized(request: Request) {
-    const expected = process.env.INTERNAL_CRON_SECRET;
-    if (!expected) return false;
-    const provided = request.headers.get("x-cron-secret");
-    return provided === expected;
-}
-
 const MAX_PER_PASS = 500;
 
 type CartRowForReminder = {
@@ -171,7 +165,7 @@ async function runPass(
 }
 
 export async function POST(request: Request) {
-    if (!isAuthorized(request)) {
+    if (!isCronAuthorized(request)) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

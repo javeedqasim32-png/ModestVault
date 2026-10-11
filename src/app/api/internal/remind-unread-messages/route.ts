@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendUnreadMessagesReminderEmail } from "@/lib/email";
 import { getAppUrl } from "@/lib/app-url";
+import { isCronAuthorized } from "@/lib/api/cron-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -25,19 +26,12 @@ export const dynamic = "force-dynamic";
  *
  * Idempotency: relies on reminder_sent_at; safe to invoke repeatedly.
  */
-function isAuthorized(request: Request) {
-    const expected = process.env.INTERNAL_CRON_SECRET;
-    if (!expected) return false;
-    const provided = request.headers.get("x-cron-secret");
-    return provided === expected;
-}
-
 // Soft cap so a backlog doesn't blow up the request. Anything left
 // over picks up on the next hourly run.
 const MAX_PER_RUN = 500;
 
 export async function POST(request: Request) {
-    if (!isAuthorized(request)) {
+    if (!isCronAuthorized(request)) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

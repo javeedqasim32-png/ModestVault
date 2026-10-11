@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { processAICoverJob } from "@/lib/ai-cover-worker";
 import { createNotification } from "@/app/actions/notifications";
+import { isCronAuthorized } from "@/lib/api/cron-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -24,19 +25,12 @@ export const dynamic = "force-dynamic";
  * Recommended schedule: every 2 minutes via EC2 crontab.
  *   `* /2 * * * * curl -X POST https://shopmodaire.com/api/internal/process-ai-jobs -H "x-cron-secret: $SECRET"`
  */
-function isAuthorized(request: Request) {
-    const expected = process.env.INTERNAL_CRON_SECRET;
-    if (!expected) return false;
-    const provided = request.headers.get("x-cron-secret");
-    return provided === expected;
-}
-
 const QUEUED_RESCUE_THRESHOLD_MS = 90 * 1000;          // 90 seconds
 const PROCESSING_TIMEOUT_MS = 5 * 60 * 1000;           // 5 minutes
 const MAX_RESCUES_PER_RUN = 10;                        // cap per cron tick
 
 export async function POST(request: Request) {
-    if (!isAuthorized(request)) {
+    if (!isCronAuthorized(request)) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
