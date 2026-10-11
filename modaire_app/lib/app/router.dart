@@ -37,6 +37,8 @@ import '../features/sell/presentation/earnings_screen.dart';
 import '../features/sell/presentation/edit_listing_screen.dart';
 import '../features/sell/presentation/sell_placeholder_screen.dart';
 import '../features/sell/presentation/seller_listing_photos_screen.dart';
+import '../features/offers/presentation/offers_screen.dart';
+import '../features/offers/presentation/offer_thread_screen.dart';
 import '../shared/widgets/main_shell.dart';
 
 class _AuthRefreshListenable extends ChangeNotifier {
@@ -135,6 +137,16 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         path: '/legal/terms',
         name: 'legal-terms',
         builder: (context, state) => const TermsOfServiceScreen(),
+      ),
+      GoRoute(
+        path: '/offers',
+        name: 'offers',
+        builder: (context, state) => const OffersScreen(),
+      ),
+      GoRoute(
+        path: '/offers/:id',
+        name: 'offer-thread',
+        builder: (context, state) => OfferThreadScreen(offerId: state.pathParameters['id']!),
       ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navShell) =>

@@ -17,6 +17,7 @@ import '../../../core/recently_viewed/recently_viewed_store.dart';
 import '../../../shared/utils/asset_url.dart';
 import '../../../shared/utils/share_listing.dart';
 import '../../../shared/widgets/modaire_app_bar.dart';
+import '../../offers/presentation/make_offer_button.dart';
 import 'lightbox_screen.dart';
 
 /// Mirrors src/app/listings/[id]/page.tsx — same #EFE7DE page bg, serif
@@ -518,8 +519,15 @@ class _DetailBodyState extends ConsumerState<_DetailBody> {
         16,
         12 + MediaQuery.viewPaddingOf(context).bottom,
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
+          if (isAvailable) ...[
+            MakeOfferButton(listingId: d.id, askingPrice: d.price, sellerId: d.seller?.id),
+            const SizedBox(height: 10),
+          ],
+          Row(
+            children: [
           _roundIconButton(
             icon: isFavorited ? Icons.favorite : LucideIcons.heart,
             iconColor: isFavorited
@@ -551,6 +559,8 @@ class _DetailBodyState extends ConsumerState<_DetailBody> {
           ),
           const Spacer(),
           _AddToBagButton(listingId: d.id, isAvailable: isAvailable),
+            ],
+          ),
         ],
       ),
     );
