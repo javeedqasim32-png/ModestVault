@@ -18,6 +18,8 @@ import '../../../shared/utils/asset_url.dart';
 import '../../../shared/utils/share_listing.dart';
 import '../../../shared/widgets/modaire_app_bar.dart';
 import '../../offers/presentation/make_offer_button.dart';
+import '../../comments/presentation/listing_comments_section.dart';
+import '../widgets/similar_listings_rail.dart';
 import 'lightbox_screen.dart';
 
 /// Mirrors src/app/listings/[id]/page.tsx — same #EFE7DE page bg, serif
@@ -175,6 +177,9 @@ class _DetailBodyState extends ConsumerState<_DetailBody> {
                 _sellerCard(d.seller),
                 _metaPills(d),
                 _section('Description', d.description),
+                // Listing-page rework: comments -> Similar items.
+                ListingCommentsSection(listingId: d.id),
+                SimilarListingsRail(listingId: d.id),
                 const SizedBox(height: 32),
               ],
             ),

@@ -48,6 +48,8 @@ model User {
   aiCoverJobs        AICoverJob[]
   offersAsBuyer      Offer[]    @relation("OfferBuyer")
   offersAsSeller     Offer[]    @relation("OfferSeller")
+  listingComments    ListingComment[] @relation("ListingCommentAuthor")
+  commentReports     CommentReport[]
   refreshTokens      RefreshToken[]
   deviceTokens       DeviceToken[]
   listingPromotions   ListingPromotion[]
@@ -147,6 +149,7 @@ model Listing {
   listingPromotions ListingPromotion[]
   marketingDrafts   MarketingDraft[]
   offers            Offer[]
+  comments          ListingComment[]
 
   @@index([status, moderation_status, created_at])
   @@index([style, category, subcategory, type])
@@ -526,6 +529,49 @@ model OfferEvent {
   created_at DateTime @default(now())
 
   @@index([offer_id, created_at])
+}
+
+// Public comments under a listing — open, with threaded replies (parent_id).
+// Every guardrail lives in src/lib/comments: sign-in required, DB-backed rate
+// limit, links / phone / email blocked (scam + fee-circumvention vector), and
+// SOFT delete so a removed comment keeps the thread's shape as "removed"
+// instead of orphaning its replies. Deletable by the author, the listing's
+// seller, or an admin.
+model ListingComment {
+  id           String   @id @default(uuid())
+  listing_id   String
+  listing      Listing  @relation(fields: [listing_id], references: [id], onDelete: Cascade)
+  user_id      String
+  user         User     @relation("ListingCommentAuthor", fields: [user_id], references: [id], onDelete: Cascade)
+  parent_id    String?                                  // null = top-level; otherwise a reply
+  parent       ListingComment?  @relation("CommentReplies", fields: [parent_id], references: [id], onDelete: Cascade)
+  replies      ListingComment[] @relation("CommentReplies")
+  body         String
+  deleted_at   DateTime?
+  deleted_by   String?                                  // AUTHOR | SELLER | ADMIN
+  report_count Int      @default(0)
+  reports      CommentReport[]
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  @@index([listing_id, created_at])
+  @@index([parent_id])
+  @@index([user_id, created_at])                        // rate-limit lookups
+}
+
+// One row per (comment, reporter) so a user can't report the same comment
+// twice; admins are notified on each new report.
+model CommentReport {
+  id          String         @id @default(uuid())
+  comment_id  String
+  comment     ListingComment @relation(fields: [comment_id], references: [id], onDelete: Cascade)
+  reporter_id String
+  reporter    User           @relation(fields: [reporter_id], references: [id], onDelete: Cascade)
+  reason      String?
+  created_at  DateTime       @default(now())
+
+  @@unique([comment_id, reporter_id])
+  @@index([comment_id])
 }
 
 // Refresh tokens issued by /api/v1/auth/login for the mobile (Flutter) client.

@@ -4,7 +4,7 @@ import { auth } from "@/auth";
 import { addToCartAndRedirect } from "@/app/actions/cart";
 import { getFavoriteListingIdsForSessionUser } from "@/app/actions/favorites";
 import { getOrderedListingGallery, getPrimaryListingImage } from "@/lib/listing-images";
-import { getEffectivePriceForListing } from "@/lib/promotions/get-effective-price";
+import { getEffectivePriceForListing, getEffectivePricesForListings } from "@/lib/promotions/get-effective-price";
 import { buildPageMetadata } from "@/lib/seo/metadata";
 import { JsonLd, breadcrumbJsonLd, productJsonLd } from "@/lib/seo/json-ld";
 import { Pencil, Star, ChevronRight } from "lucide-react";
@@ -18,6 +18,10 @@ import SmartBackButton from "@/components/layout/SmartBackButton";
 import AddToBagButton from "@/components/listings/AddToBagButton";
 import MessageSellerButton from "@/components/listings/MessageSellerButton";
 import MakeOfferButton from "@/components/listings/MakeOfferButton";
+import FeaturedListingTile from "@/components/listings/FeaturedListingTile";
+import { getSimilarListings, recommendationImage } from "@/lib/listings/recommendations";
+import ListingComments from "@/components/listings/ListingComments";
+import { listComments, resolveViewer } from "@/lib/comments";
 import { getOfferEligibility } from "@/lib/offers";
 
 import { getUserSlugMap } from "@/lib/user-slugs";
@@ -139,7 +143,17 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
     const isAuthed = !!session?.user?.id;
     const isAvailable = listing.status === "AVAILABLE";
     const orderedImages = getOrderedListingGallery(listing);
-    const favoriteListingIds = new Set(await getFavoriteListingIdsForSessionUser([listing.id]));
+    // "Similar items" rendered below the comments (any seller, this one
+    // included), using the same tile + promo-aware prices as the home page.
+    // Their ids are folded into the favorites lookup so every heart is right.
+    const similarListings = await getSimilarListings(listing, 8);
+    const [favoriteListingIds, similarPrices] = await Promise.all([
+        getFavoriteListingIdsForSessionUser([listing.id, ...similarListings.map((l) => l.id)]).then((ids) => new Set(ids)),
+        getEffectivePricesForListings(similarListings),
+    ]);
+    // Threaded comments, loaded here so the section renders with no flash and
+    // the viewer's delete permissions are already resolved.
+    const comments = await listComments(listing.id, await resolveViewer(session?.user?.id ?? null));
     const sellerFullName = `${listing.user.first_name} ${listing.user.last_name}`.trim();
     const slugMap = await getUserSlugMap();
     const sellerSlug = slugMap.get(listing.user_id) || listing.user_id;
@@ -148,7 +162,6 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
     const sellerRatingAverage = sellerReviewCount
         ? Number((listing.user.reviewsReceived.reduce((sum, review) => sum + review.rating, 0) / sellerReviewCount).toFixed(1))
         : 0;
-    const sellerReviews = listing.user.reviewsReceived.slice(0, 5);
     const { description: cleanDescription, measurements } = splitDescriptionAndMeasurements(listing.description || "");
     // Server-side promo lookup — never trust the client for pricing. Same
     // helper the checkout action uses, so what you see here is what you pay.
@@ -304,58 +317,33 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                         </div>
                     ) : null}
 
-                    {sellerReviews.length > 0 ? (
+                    <ListingComments listingId={listing.id} initialComments={comments} isAuthed={isAuthed} />
+                    {similarListings.length > 0 ? (
                         <div className="mt-6">
                             <div className="flex items-center justify-between gap-3">
-                                <h2 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[#8a7667]">Reviews</h2>
-                                {sellerReviewCount > sellerReviews.length ? (
-                                    <Link
-                                        href={`/${sellerSlug}#reviews`}
-                                        className="text-[12px] font-medium text-[#8a7667] hover:text-[#2f2925]"
-                                    >
-                                        View all {sellerReviewCount}
-                                    </Link>
-                                ) : null}
+                                <h2 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[#8a7667]">Similar items</h2>
                             </div>
-                            <div className="mt-3 space-y-3">
-                                {sellerReviews.map((review) => {
-                                    const reviewerName = `${review.reviewer.first_name} ${review.reviewer.last_name?.[0] ? `${review.reviewer.last_name[0].toUpperCase()}.` : ""}`.trim();
-                                    const reviewerInitial = (review.reviewer.first_name?.[0] || "A").toUpperCase();
-                                    const dateLabel = review.created_at.toLocaleDateString("en-US", { month: "short", year: "numeric" });
-                                    return (
-                                        <div key={review.id} className="rounded-[12px] border border-[#ddd3cb] bg-[#fbf8f5] p-4">
-                                            <div className="flex items-center justify-between gap-3">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[#ddd3cb] bg-[#efe7de] text-[18px] font-semibold text-[#8a7667]">
-                                                        {reviewerInitial}
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-[15px] font-semibold text-[#2f2925]">{reviewerName}</p>
-                                                        <div className="mt-0.5 flex items-center gap-0.5 text-[#2f2925]">
-                                                            {[1, 2, 3, 4, 5].map((star) => (
-                                                                <Star
-                                                                    key={`${review.id}-star-${star}`}
-                                                                    className={`h-4 w-4 ${star <= review.rating ? "fill-current" : "text-[#cfc7be]"}`}
-                                                                />
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <span className="text-[12px] text-[#8a7667]">{dateLabel}</span>
-                                            </div>
-                                            <p className="mt-3 text-[13px] leading-[1.55] text-[#8a7667]">
-                                                {review.text}
-                                            </p>
-                                        </div>
-                                    );
-                                })}
+                            <div className="mt-3 grid grid-cols-2 gap-[10px] sm:grid-cols-3 lg:grid-cols-4">
+                                {similarListings.map((l) => (
+                                    <FeaturedListingTile
+                                        key={l.id}
+                                        id={l.id}
+                                        title={l.title}
+                                        category={l.category}
+                                        size={l.size}
+                                        price={Number(l.price)}
+                                        coverImage={recommendationImage(l)}
+                                        isFavorited={favoriteListingIds.has(l.id)}
+                                        effectivePrice={similarPrices.get(l.id) ?? null}
+                                    />
+                                ))}
                             </div>
                         </div>
                     ) : null}
                 </div>
 
                 <div className="fixed inset-x-0 bottom-[86px] z-[70] border-t border-[#ddd3cb] bg-[#fbf8f5]/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-[#fbf8f5]/80 md:bottom-0">
-                    <div className="mx-auto flex w-full max-w-[480px] items-center justify-between gap-4">
+                    <div className="mx-auto flex w-full max-w-[480px] items-center justify-between gap-2">
                         <FavoriteButton
                             listingId={listing.id}
                             initialFavorited={favoriteListingIds.has(listing.id)}
@@ -382,8 +370,16 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                             className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#ddd3cb] bg-[#fbf8f5] text-[#2f2925]"
                             iconClassName="h-5 w-5"
                         />
+                        {canMakeOffer && (
+                            <MakeOfferButton
+                                listingId={listing.id}
+                                askingPrice={Number(listing.price)}
+                                isAuthed={isAuthed}
+                                existingOfferId={existingOfferId}
+                            />
+                        )}
                         {isAvailable && !isOwner ? (
-                            <div className="w-[170px]">
+                            <div className="ml-1 min-w-[120px] max-w-[170px] flex-1">
                                 <AddToBagButton
                                     listingId={listing.id}
                                     isAuthed={isAuthed}
@@ -404,16 +400,6 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                             </button>
                         )}
                     </div>
-                    {canMakeOffer && (
-                        <div className="mt-3">
-                            <MakeOfferButton
-                                listingId={listing.id}
-                                askingPrice={Number(listing.price)}
-                                isAuthed={isAuthed}
-                                existingOfferId={existingOfferId}
-                            />
-                        </div>
-                    )}
                 </div>
             </div>
         </div>
