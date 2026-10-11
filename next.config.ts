@@ -22,6 +22,12 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // The prod server (1.9GB EC2) can't run next build's type-check
+  // worker without OOM on the grown codebase. We gate `tsc --noEmit` and
+  // eslint locally before every deploy, so skipping it in the server build
+  // is safe and keeps the build inside memory. Do NOT rely on the build to
+  // catch type errors — run tsc locally first.
+  typescript: { ignoreBuildErrors: true },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
